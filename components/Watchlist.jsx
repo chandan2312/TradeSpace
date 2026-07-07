@@ -1,0 +1,288 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Trash2, Plus, GripVertical, Flag, X } from "lucide-react";
+
+// Right-sidebar watchlist with multiple named lists (tabs), create/rename/delete,
+// live bid/spread per symbol, click-to-switch, and drag-to-reorder rows.
+export default function Watchlist({
+  watchlists, activeListId, setActiveListId,
+  symbol, setSymbol, ticks, alerts,
+  onCreate, onRename, onDelete, onAddSymbol, onRemoveSymbol,
+  symbolFlags, setSymbolFlags
+}) {
+  const list = watchlists.find((w) => w._id === activeListId) || null;
+  const [editing, setEditing] = useState(null); // list id being renamed, or "new"
+  const [name, setName] = useState("");
+  const [drag, setDrag] = useState(null); // symbol being dragged
+  const [over, setOver] = useState(null); // symbol currently hovered
+
+  const activeAlertSymbols = new Set(
+    alerts.filter((a) => a.status === "active").map((a) => a.symbol)
+  );
+
+  const startCreate = () => { setEditing("new"); setName(""); };
+  const startRename = (w) => { setEditing(w._id); setName(w.name); };
+
+  const commitName = async () => {
+    const v = name.trim();
+    if (editing === "new") {
+      if (v) await onCreate(v);
+    } else if (editing) {
+      if (v) await onRename(editing, v);
+    }
+    setEditing(null);
+    setName("");
+  };
+
+  return (
+    <div style={{ flex: "0 0 auto", maxHeight: "52%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* Tabs row */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 4, padding: "6px 8px",
+        borderBottom: "1px solid var(--border)", overflowX: "auto",
+      }}>
+        {watchlists.map((w) => (
+          editing === w._id ? (
+            <NameEditor
+              key={w._id}
+              value={name}
+              setValue={setName}
+              onCommit={commitName}
+              onCancel={() => { setEditing(null); setName(""); }}
+            />
+          ) : (
+            <button
+              key={w._id}
+              onClick={() => setActiveListId(w._id)}
+              onDoubleClick={() => startRename(w)}
+              className={w._id === activeListId ? "primary" : "ghost"}
+              title={`${w.name} (${(w.symbols || []).length}) — double-click to rename`}
+              style={{
+                fontSize: 11, padding: "3px 9px", whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", gap: 5,
+              }}
+            >
+              {w.name}
+              <span style={{ opacity: 0.55 }}>{(w.symbols || []).length}</span>
+            </button>
+          )
+        ))}
+        {editing === "new" ? (
+          <NameEditor
+            value={name}
+            setValue={setName}
+            onCommit={commitName}
+            onCancel={() => { setEditing(null); setName(""); }}
+            placeholder="List name…"
+          />
+        ) : (
+          <button className="ghost" onClick={startCreate} title="New watchlist" style={{ padding: "3px 7px" }}>＋</button>
+        )}
+      </div>
+
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", padding: "7px 12px",
+        borderBottom: "1px solid var(--border)",
+      }}>
+        <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 600 }}>
+          {list ? `${list.name} · ${(list.symbols || []).length}` : "No list"}
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+          {list && watchlists.length > 0 && (
+            <button
+              className="ghost danger"
+              onClick={() => {
+                if (confirm(`Delete list “${list.name}”? Its symbols stay in your alerts.`)) onDelete(list._id);
+              }}
+              title="Delete this list"
+              style={{ padding: "4px", display: "flex", alignItems: "center" }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+          {list && (
+            <button className="ghost" onClick={onAddSymbol} title="Add symbol to list" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              <Plus size={14} /> Add
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Rows */}
+      <div className="wl-rows">
+        {!list && (
+          <div className="muted" style={{ padding: 16, textAlign: "center", fontSize: 12 }}>
+            No watchlist selected.
+          </div>
+        )}
+        {list && !(list.symbols || []).length && (
+          <div className="muted" style={{ padding: 16, textAlign: "center", fontSize: 12 }}>
+            Empty list. Click <b><Plus size={12} style={{verticalAlign:"middle", display:"inline-block"}} /> Add</b> to search the broker universe.
+          </div>
+        )}
+
+        {list && (list.symbols || []).map((sym, i) => (
+          <WatchRow
+            key={sym + i}
+            sym={sym}
+            tick={ticks[sym]}
+            current={sym === symbol}
+            hasAlert={activeAlertSymbols.has(sym)}
+            onJump={() => setSymbol(sym)}
+            onRemove={() => onRemoveSymbol(list._id, sym)}
+            dragging={drag === sym}
+            dropTarget={over === sym && drag && drag !== sym}
+            onDragStart={() => setDrag(sym)}
+            onDragOver={(e) => { e.preventDefault(); setOver(sym); }}
+            onDragLeave={() => setOver((o) => (o === sym ? null : o))}
+            onDrop={() => {
+              if (drag && drag !== sym) reorder(list, drag, sym);
+              setDrag(null); setOver(null);
+            }}
+            onDragEnd={() => { setDrag(null); setOver(null); }}
+            flag={symbolFlags?.[sym]}
+            onFlag={(color) => setSymbolFlags(p => {
+              const next = { ...p };
+              if (color) next[sym] = color;
+              else delete next[sym];
+              return next;
+            })}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Reorder by persisting the new symbol order to the active list.
+// We reuse the rename endpoint's "watchlists changed" broadcast path by
+// POSTing the full symbol array to a small dedicated endpoint.
+async function reorder(list, fromSym, toSym) {
+  const syms = [...(list.symbols || [])];
+  const from = syms.indexOf(fromSym);
+  const to = syms.indexOf(toSym);
+  if (from < 0 || to < 0 || from === to) return;
+  syms.splice(from, 1);
+  syms.splice(to, 0, fromSym);
+  try {
+    await fetch(`/api/watchlists/${list._id}/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbols: syms }),
+    });
+  } catch { /* optimistic UI will self-heal on next WS broadcast */ }
+}
+
+function WatchRow({
+  sym, tick, current, hasAlert, onJump, onRemove,
+  dragging, dropTarget, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
+  flag, onFlag
+}) {
+  const [showPalette, setShowPalette] = useState(false);
+  const digits = tick?.digits ?? 5;
+  const bid = tick?.bid;
+  const spreadPips = tick?.bid && tick?.ask ? (tick.ask - tick.bid) * Math.pow(10, digits === 3 || digits === 5 ? digits - 1 : 0) : null;
+  const dir = tick?.dir;
+
+  return (
+    <div
+      className="wl-row-item"
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      onClick={onJump}
+      title={current ? "Current chart" : `Switch to ${sym}`}
+      style={{
+        background: dropTarget
+          ? "var(--accent-soft)"
+          : current ? "rgba(41,98,255,.08)" : "transparent",
+        opacity: dragging ? 0.4 : 1,
+        borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
+      }}
+    >
+      <div className="wl-row-drag muted" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={14} /></div>
+      
+      {/* Flag */}
+      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <button 
+          className="ghost" 
+          onClick={(e) => { e.stopPropagation(); setShowPalette(!showPalette); }}
+          style={{ padding: "4px", color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)", opacity: flag ? 1 : 0.2 }}
+        >
+          <Flag size={14} fill={flag ? "currentColor" : "none"} strokeWidth={flag ? 0 : 2} />
+        </button>
+        {showPalette && (
+          <div style={{
+            position: "absolute", top: "100%", left: 0, zIndex: 100,
+            background: "var(--panel)", border: "1px solid var(--border)",
+            display: "flex", gap: 4, padding: 4, borderRadius: 4, boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+          }}>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("red"); setShowPalette(false); }} style={{color: "#ef5350", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("blue"); setShowPalette(false); }} style={{color: "#2962ff", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("green"); setShowPalette(false); }} style={{color: "#26a69a", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} style={{color: "#ffeb3b", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag(null); setShowPalette(false); }} style={{padding: 4}}><X size={14} /></button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span className="num" style={{ fontWeight: 700, fontSize: 12 }}>{sym}</span>
+          {hasAlert && <span style={{ color: "var(--orange)", fontSize: 10 }} title="Has active alert">●</span>}
+        </div>
+        {spreadPips != null && (
+          <div className="muted wl-row-spread" style={{ fontSize: 10 }}>{spreadPips.toFixed(1)} pips</div>
+        )}
+      </div>
+
+      {bid != null ? (
+        <div className="num" style={{ textAlign: "right", fontSize: 12, fontWeight: 600 }}>
+          <div className={dir > 0 ? "up" : dir < 0 ? "down" : ""}>
+            {Number(bid).toFixed(digits)}
+          </div>
+          {tick?.ask && (
+            <div className="muted wl-row-price-sub" style={{ fontSize: 10, fontWeight: 400 }}>
+              {Number(tick.ask).toFixed(digits)}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 11 }}>—</div>
+      )}
+
+      <button
+        className="ghost danger wl-row-remove"
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        title={`Remove ${sym} from list`}
+        style={{ padding: "4px", display: "flex", alignItems: "center" }}
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
+function NameEditor({ value, setValue, onCommit, onCancel, placeholder }) {
+  const ref = useRef(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  return (
+    <input
+      ref={ref}
+      value={value}
+      placeholder={placeholder || "Rename…"}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); onCommit(); }
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      }}
+      style={{ width: 120, fontSize: 11, padding: "3px 7px" }}
+    />
+  );
+}

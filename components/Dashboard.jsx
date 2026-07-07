@@ -1,0 +1,708 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import TopBar from "./TopBar";
+import ChartPanel from "./ChartPanel";
+import Watchlist from "./Watchlist";
+import AlertsPanel from "./AlertsPanel";
+import SymbolPalette from "./SymbolPalette";
+import AlertDialog from "./AlertDialog";
+import ChecklistPanel from "./ChecklistPanel";
+import SaveLayoutModal from "./SaveLayoutModal";
+import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square } from "lucide-react";
+
+const api = async (path, opts) => {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  return res.json();
+};
+
+function playAlertSound() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  try {
+    const ctx = new AudioContext();
+    const beeps = 5;
+    for (let i = 0; i < beeps; i++) {
+      const time = ctx.currentTime + i * 1.0;
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(880, time);
+      osc1.frequency.exponentialRampToValueAtTime(440, time + 0.1);
+      gain1.gain.setValueAtTime(0, time);
+      gain1.gain.linearRampToValueAtTime(0.5, time + 0.05);
+      gain1.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(time);
+      osc1.stop(time + 0.2);
+    }
+  } catch (e) {}
+}
+
+function showBrowserNotification(alert) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  new Notification(`TradeSpace Alert: ${alert.symbol}`, {
+    body: `${alert.condition} ${alert.price} triggered @ ${alert.triggeredPrice}`,
+  });
+}
+
+export default function Dashboard() {
+  const [panes, setPanes] = useState([{ id: 1, symbol: "EURUSD", tf: "M5" }]);
+  const [activePaneId, setActivePaneId] = useState(1);
+  const [fullScreenPaneId, setFullScreenPaneId] = useState(null);
+  const [preFullScreenPanes, setPreFullScreenPanes] = useState(null);
+  const [layout, setLayout] = useState("1"); // "1", "2v", "2h", "4", "6", "8"
+  const [gridFractions, setGridFractions] = useState({ col: 50, row: 50 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
+  const [watchlistOpen, setWatchlistOpen] = useState(true);
+  const [symbolFlags, setSymbolFlags] = useState({}); // { symbol: "red" | "blue" | "green" | "yellow" }
+  
+  // Loop Mode State
+  const [isLooping, setIsLooping] = useState(false);
+  const [loopMenuOpen, setLoopMenuOpen] = useState(false);
+  const [loopInterval, setLoopInterval] = useState(5000);
+  const [loopColor, setLoopColor] = useState("red");
+
+  const [alerts, setAlerts] = useState([]);
+  const [watchlists, setWatchlists] = useState([]);
+  const [activeListId, setActiveListId] = useState(null);
+  const [ticks, setTicks] = useState({}); // SYM -> {bid, ask, digits, dir}
+  const [connected, setConnected] = useState(false);
+  const [palette, setPalette] = useState(null); // null | "switch" | "add"
+  const [alertDraft, setAlertDraft] = useState(null); // {price} | null
+  const [toast, setToast] = useState(null);
+  const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
+
+  const [savedLayouts, setSavedLayouts] = useState([]);
+  const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
+  const [checklist, setChecklist] = useState([]);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+
+  const wsRef = useRef(null);
+  const symbolsRef = useRef([]); 
+  const barsCache = useRef(new Map()); // `${sym}:${tf}` -> { bars, at }
+  const toastTimer = useRef(null);
+
+  const [syncedLogicalRange, setSyncedLogicalRange] = useState(null);
+  const [syncedCrosshair, setSyncedCrosshair] = useState(null);
+
+  // ---------- boot: restore prefs ----------
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem("ts_panes");
+      if (p) {
+        const parsed = JSON.parse(p);
+        if (parsed.length) setPanes(parsed);
+      }
+      const l = localStorage.getItem("ts_layout");
+      if (l) setLayout(l);
+      const gf = localStorage.getItem("ts_grid_fractions");
+      if (gf) setGridFractions(JSON.parse(gf));
+      const s = localStorage.getItem("ts_sync");
+      if (s) setSyncOpts(JSON.parse(s));
+      const w = localStorage.getItem("ts_watchlist_open");
+      if (w) setWatchlistOpen(w === "true");
+      const f = localStorage.getItem("ts_symbol_flags");
+      if (f) setSymbolFlags(JSON.parse(f));
+    } catch {}
+
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Sync state to local storage
+  useEffect(() => { localStorage.setItem("ts_panes", JSON.stringify(panes)); }, [panes]);
+  useEffect(() => { localStorage.setItem("ts_layout", layout); }, [layout]);
+  useEffect(() => { localStorage.setItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions]);
+  useEffect(() => { localStorage.setItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts]);
+  useEffect(() => { localStorage.setItem("ts_watchlist_open", String(watchlistOpen)); }, [watchlistOpen]);
+  useEffect(() => { localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); }, [symbolFlags]);
+
+  // ---------- Keyboard Shortcuts ----------
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        toggleFullscreen(activePaneId);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activePaneId, fullScreenPaneId, panes, preFullScreenPanes]);
+
+  // ---------- Loop Mode Logic ----------
+  const loopSymbols = useMemo(() => {
+    return Object.keys(symbolFlags).filter(sym => symbolFlags[sym] === loopColor);
+  }, [symbolFlags, loopColor]);
+
+  useEffect(() => {
+    if (!isLooping || layout !== "1" || loopSymbols.length === 0) return;
+    const interval = setInterval(() => {
+      setPanes(prev => {
+        const currentSym = prev[0].symbol;
+        const currentIndex = loopSymbols.indexOf(currentSym);
+        const nextIndex = (currentIndex + 1) % loopSymbols.length;
+        return [{ ...prev[0], symbol: loopSymbols[nextIndex] }];
+      });
+    }, loopInterval);
+    return () => clearInterval(interval);
+  }, [isLooping, layout, loopSymbols, loopInterval]);
+
+  const loopPrev = () => {
+    if (loopSymbols.length === 0) return;
+    setPanes(prev => {
+      const currentSym = prev[0].symbol;
+      const currentIndex = loopSymbols.indexOf(currentSym);
+      const prevIndex = (currentIndex - 1 + loopSymbols.length) % loopSymbols.length;
+      return [{ ...prev[0], symbol: loopSymbols[prevIndex] }];
+    });
+  };
+
+  const loopNext = () => {
+    if (loopSymbols.length === 0) return;
+    setPanes(prev => {
+      const currentSym = prev[0].symbol;
+      const currentIndex = loopSymbols.indexOf(currentSym);
+      const nextIndex = (currentIndex + 1) % loopSymbols.length;
+      return [{ ...prev[0], symbol: loopSymbols[nextIndex] }];
+    });
+  };
+
+  // ---------- WebSockets Subscriptions ----------
+  useEffect(() => {
+    const unique = [...new Set(panes.map(p => p.symbol))];
+    symbolsRef.current = unique;
+    if (wsRef.current?.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: "subscribe", symbols: unique }));
+    }
+  }, [panes]);
+
+  const showToast = useCallback((text) => {
+    setToast(text);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const loadAlerts = useCallback(async () => {
+    const data = await api("/api/alerts");
+    if (data.ok) setAlerts(data.alerts);
+  }, []);
+
+  const loadWatchlists = useCallback(async () => {
+    const data = await api("/api/watchlists");
+    if (data.ok) {
+      setWatchlists(data.watchlists);
+      setActiveListId((prev) =>
+        data.watchlists.some((w) => w._id === prev) ? prev : data.watchlists[0]?._id ?? null
+      );
+    }
+  }, []);
+
+  const loadSavedLayouts = useCallback(async () => {
+    const data = await api("/api/layouts");
+    if (data.ok) setSavedLayouts(data.layouts);
+  }, []);
+
+  const loadChecklist = useCallback(async () => {
+    const data = await api("/api/checklist");
+    if (data.ok) setChecklist(data.checklist);
+  }, []);
+
+  useEffect(() => { loadAlerts(); loadWatchlists(); loadSavedLayouts(); loadChecklist(); }, [loadAlerts, loadWatchlists, loadSavedLayouts, loadChecklist]);
+
+  // ---------- websocket connect ----------
+  useEffect(() => {
+    let dead = false;
+    let sock;
+    const connect = () => {
+      if (dead) return;
+      sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+      wsRef.current = sock;
+      sock.onopen = () => {
+        setConnected(true);
+        sock.send(JSON.stringify({ type: "subscribe", symbols: symbolsRef.current }));
+      };
+      sock.onclose = () => {
+        setConnected(false);
+        if (!dead) setTimeout(connect, 2000);
+      };
+      sock.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === "ticks") {
+          setTicks((prev) => {
+            const nextTicks = { ...prev };
+            for (const [sym, t] of Object.entries(msg.ticks)) {
+              const old = prev[sym];
+              nextTicks[sym] = {
+                ...t,
+                dir: old ? Math.sign(t.bid - old.bid) || old.dir || 0 : 0,
+              };
+            }
+            return nextTicks;
+          });
+        }
+        if (msg.type === "alerts_changed") loadAlerts();
+        if (msg.type === "watchlists_changed") loadWatchlists();
+        if (msg.type === "alert_triggered") {
+          loadAlerts();
+          showToast(`🔔 ${msg.alert.symbol} ${msg.alert.condition} ${msg.alert.price} triggered @ ${msg.alert.triggeredPrice}`);
+          playAlertSound();
+          showBrowserNotification(msg.alert);
+        }
+      };
+    };
+    connect();
+    return () => { dead = true; sock?.close(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------- Multi-Pane Logic ----------
+  const activePane = panes.find(p => p.id === activePaneId) || panes[0];
+  const symbol = activePane.symbol;
+  const tf = activePane.tf;
+
+  const changeSymbol = (newSym) => {
+    if (fullScreenPaneId) {
+      setPanes(prev => prev.map(p => p.id === fullScreenPaneId ? { ...p, symbol: newSym } : p));
+    } else if (syncOpts.symbol) {
+      setPanes(prev => prev.map(p => ({ ...p, symbol: newSym })));
+    } else {
+      setPanes(prev => prev.map(p => p.id === activePaneId ? { ...p, symbol: newSym } : p));
+    }
+  };
+
+  const changeTf = (newTf) => {
+    if (fullScreenPaneId) {
+      setPanes(prev => prev.map(p => p.id === fullScreenPaneId ? { ...p, tf: newTf } : p));
+    } else if (syncOpts.tf) {
+      setPanes(prev => prev.map(p => ({ ...p, tf: newTf })));
+    } else {
+      setPanes(prev => prev.map(p => p.id === activePaneId ? { ...p, tf: newTf } : p));
+    }
+  };
+
+  const toggleFullscreen = (id) => {
+    if (fullScreenPaneId) {
+      if (preFullScreenPanes) setPanes(preFullScreenPanes);
+      setFullScreenPaneId(null);
+      setPreFullScreenPanes(null);
+    } else {
+      setPreFullScreenPanes(panes);
+      setFullScreenPaneId(id);
+      setActivePaneId(id);
+    }
+  };
+
+  const changeLayout = (newLayout) => {
+    let required = 1;
+    if (newLayout === "2v" || newLayout === "2h") required = 2;
+    if (newLayout === "4") required = 4;
+    if (newLayout === "6") required = 6;
+    if (newLayout === "8") required = 8;
+    
+    setPanes(prev => {
+      const next = [...prev];
+      while (next.length < required) {
+        next.push({ id: Math.max(0, ...next.map(p => p.id)) + 1, symbol: next[0].symbol, tf: next[0].tf });
+      }
+      return next.slice(0, required);
+    });
+    setLayout(newLayout);
+    if (fullScreenPaneId) toggleFullscreen(fullScreenPaneId);
+  };
+
+  const saveLayout = async ({ name, includeSync }) => {
+    const data = await api("/api/layouts", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        layoutMode: layout,
+        panes,
+        gridFractions,
+        syncOpts: includeSync ? syncOpts : undefined
+      })
+    });
+    if (data.ok) {
+      setSavedLayouts(data.layouts);
+      showToast("Layout saved");
+    } else {
+      showToast("Failed to save layout");
+    }
+    setSaveLayoutOpen(false);
+  };
+
+  const onLoadLayout = (id) => {
+    const l = savedLayouts.find(x => x._id === id);
+    if (!l) return;
+    if (fullScreenPaneId) toggleFullscreen(fullScreenPaneId);
+    setLayout(l.layoutMode);
+    setPanes(l.panes);
+    if (l.gridFractions) setGridFractions(l.gridFractions);
+    if (l.syncOpts) setSyncOpts(l.syncOpts);
+    setActivePaneId(l.panes[0]?.id || 1);
+    showToast(`Loaded layout: ${l.name}`);
+  };
+
+  const saveChecklist = async (items) => {
+    const data = await api("/api/checklist", { method: "PUT", body: JSON.stringify({ items }) });
+    if (data.ok) {
+      setChecklist(data.checklist);
+      showToast("Checklist saved");
+    }
+  };
+
+  // ---------- alert actions ----------
+  const createAlert = useCallback(async (draft) => {
+    const data = await api("/api/alerts", { method: "POST", body: JSON.stringify(draft) });
+    if (data.ok) {
+      showToast(`Alert set: ${draft.symbol} ${draft.condition} ${draft.price}`);
+      loadAlerts();
+    } else {
+      showToast(`Failed: ${data.error}`);
+    }
+    setAlertDraft(null);
+  }, [loadAlerts, showToast]);
+
+  const deleteAlert = useCallback(async (id) => {
+    await api(`/api/alerts/${id}`, { method: "DELETE" });
+    loadAlerts();
+  }, [loadAlerts]);
+
+  const rearmAlert = useCallback(async (id) => {
+    await api(`/api/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ status: "active" }) });
+    loadAlerts();
+  }, [loadAlerts]);
+
+  const moveAlert = useCallback(async (id, price) => {
+    setAlerts((prev) => prev.map((a) => (a._id === id ? { ...a, price } : a)));
+    const data = await api(`/api/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ price }) });
+    if (!data.ok) showToast("Move failed — reverting");
+    loadAlerts();
+  }, [loadAlerts, showToast]);
+
+  // ---------- watchlist actions ----------
+  const createWatchlist = useCallback(async (name) => {
+    const data = await api("/api/watchlists", { method: "POST", body: JSON.stringify({ name }) });
+    if (data.ok) {
+      setWatchlists(data.watchlists);
+      const created = data.watchlists[data.watchlists.length - 1];
+      if (created) setActiveListId(created._id);
+    }
+  }, []);
+
+  const renameWatchlist = useCallback(async (id, name) => {
+    const data = await api(`/api/watchlists/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+    if (data.ok) setWatchlists(data.watchlists);
+  }, []);
+
+  const deleteWatchlist = useCallback(async (id) => {
+    const data = await api(`/api/watchlists/${id}`, { method: "DELETE" });
+    if (data.ok) {
+      setWatchlists(data.watchlists);
+      setActiveListId((prev) => (prev === id ? data.watchlists[0]?._id ?? null : prev));
+    }
+  }, []);
+
+  const addSymbolToList = useCallback(async (listId, sym) => {
+    const data = await api(`/api/watchlists/${listId}/symbols`, { method: "POST", body: JSON.stringify({ symbol: sym }) });
+    if (data.ok) { setWatchlists(data.watchlists); showToast(`Added ${sym}`); }
+  }, [showToast]);
+
+  const removeSymbolFromList = useCallback(async (listId, sym) => {
+    const data = await api(`/api/watchlists/${listId}/symbols/${encodeURIComponent(sym)}`, { method: "DELETE" });
+    if (data.ok) setWatchlists(data.watchlists);
+  }, []);
+
+  // ---------- keyboard: Ctrl+K / "/" opens palette ----------
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette("switch"); }
+      else if (e.key === "/" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+        e.preventDefault(); setPalette("switch");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // ---------- render helpers ----------
+  const cX = gridFractions.col;
+  const cY = gridFractions.row;
+  let gridStyle = { 
+    flex: 1, display: "grid", gap: "1px", background: "var(--border)", minHeight: 0,
+    transition: isDragging ? "none" : "grid-template-columns 0.2s, grid-template-rows 0.2s"
+  };
+  
+  if (fullScreenPaneId) {
+    gridStyle.gridTemplateColumns = "100%";
+    gridStyle.gridTemplateRows = "100%";
+  } else if (layout === "1") {
+    gridStyle.gridTemplateColumns = "100%";
+    gridStyle.gridTemplateRows = "100%";
+  } else if (layout === "2v") {
+    gridStyle.gridTemplateColumns = `${cX}% ${100 - cX}%`;
+    gridStyle.gridTemplateRows = "100%";
+  } else if (layout === "2h") {
+    gridStyle.gridTemplateColumns = "100%";
+    gridStyle.gridTemplateRows = `${cY}% ${100 - cY}%`;
+  } else if (layout === "4") {
+    gridStyle.gridTemplateColumns = `${cX}% ${100 - cX}%`;
+    gridStyle.gridTemplateRows = `${cY}% ${100 - cY}%`;
+  } else if (layout === "6") {
+    gridStyle.gridTemplateColumns = "1fr 1fr 1fr";
+    gridStyle.gridTemplateRows = "1fr 1fr";
+  } else if (layout === "8") {
+    gridStyle.gridTemplateColumns = "1fr 1fr 1fr 1fr";
+    gridStyle.gridTemplateRows = "1fr 1fr";
+  }
+
+  // Define splitters
+  const onDragStart = (e, type) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const startPos = type === "col" ? e.clientX : e.clientY;
+    const startFrac = gridFractions[type];
+    const container = e.target.parentElement;
+    const size = type === "col" ? container.clientWidth : container.clientHeight;
+
+    const onMove = (ev) => {
+      const delta = type === "col" ? ev.clientX - startPos : ev.clientY - startPos;
+      const deltaFrac = (delta / size) * 100;
+      const newFrac = Math.max(10, Math.min(90, startFrac + deltaFrac));
+      setGridFractions(p => ({ ...p, [type]: newFrac }));
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <TopBar
+        symbol={symbol}
+        tf={tf}
+        setTf={changeTf}
+        tick={ticks[symbol]}
+        connected={connected}
+        onOpenPalette={() => setPalette("switch")}
+        onAddAlert={() => setAlertDraft({ price: ticks[symbol]?.bid ?? "" })}
+        onOpenAlerts={() => setAlertsOpen(true)}
+        activeAlertCount={alerts.filter((a) => a.status === "active").length}
+        layout={layout}
+        setLayout={changeLayout}
+        syncOpts={syncOpts}
+        setSyncOpts={setSyncOpts}
+        watchlistOpen={watchlistOpen}
+        setWatchlistOpen={setWatchlistOpen}
+        savedLayouts={savedLayouts}
+        onLoadLayout={onLoadLayout}
+        onOpenSaveLayout={() => setSaveLayoutOpen(true)}
+        onOpenLoop={() => { setLoopMenuOpen(true); setIsLooping(true); }}
+      />
+      <div className="layout-row" style={{position: "relative"}}>
+        {checklistOpen && (
+          <ChecklistPanel items={checklist} onSave={saveChecklist} onClose={() => setChecklistOpen(false)} />
+        )}
+        
+        {/* Loop Controller */}
+        {layout === "1" && loopMenuOpen && (
+          <div style={{
+            position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", zIndex: 100,
+            display: "flex", gap: 8, alignItems: "center", background: "var(--panel)", padding: "6px 12px",
+            borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.5)"
+          }}>
+            <select 
+              value={loopColor} 
+              onChange={e => setLoopColor(e.target.value)}
+              style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, marginRight: 4, cursor: "pointer" }}
+            >
+              <option value="red" style={{color: "#000"}}>Red Flags</option>
+              <option value="blue" style={{color: "#000"}}>Blue Flags</option>
+              <option value="green" style={{color: "#000"}}>Green Flags</option>
+              <option value="yellow" style={{color: "#000"}}>Yellow Flags</option>
+            </select>
+            <button className="ghost" onClick={loopPrev} title="Previous" style={{padding: "4px"}}><SkipBack size={16} /></button>
+            <button className={isLooping ? "primary" : "ghost"} onClick={() => setIsLooping(!isLooping)} title={isLooping ? "Pause" : "Play"} style={{padding: "4px 8px"}}>
+              {isLooping ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+            <button className="ghost" onClick={loopNext} title="Next" style={{padding: "4px"}}><SkipForward size={16} /></button>
+            <button className="ghost" onClick={() => { setIsLooping(false); setLoopMenuOpen(false); }} title="Stop" style={{padding: "4px", color: "var(--orange)"}}><Square size={16} /></button>
+            <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
+            <select 
+              value={loopInterval} 
+              onChange={e => setLoopInterval(Number(e.target.value))}
+              style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, cursor: "pointer" }}
+            >
+              <option value={3000} style={{color: "#000"}}>3s</option>
+              <option value={5000} style={{color: "#000"}}>5s</option>
+              <option value={10000} style={{color: "#000"}}>10s</option>
+              <option value={30000} style={{color: "#000"}}>30s</option>
+              <option value={60000} style={{color: "#000"}}>60s</option>
+            </select>
+            <div style={{fontSize: 10, opacity: 0.5, marginLeft: 4}}>({loopSymbols.length} items)</div>
+          </div>
+        )}
+
+        <div className="responsive-chart-grid" style={gridStyle}>
+          {panes.map((pane) => {
+            if (fullScreenPaneId && pane.id !== fullScreenPaneId) return null;
+            return (
+              <div 
+                key={pane.id} 
+                onClick={() => setActivePaneId(pane.id)}
+                onDoubleClick={() => toggleFullscreen(pane.id)}
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  flexDirection: "column",
+                  minWidth: 0,
+                  minHeight: 0,
+                  background: "var(--bg)",
+                  boxShadow: activePaneId === pane.id ? "inset 0 0 0 2px var(--accent)" : "none",
+                  zIndex: activePaneId === pane.id ? 2 : 1
+                }}
+              >
+                <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                  <button className="ghost" onClick={() => setChecklistOpen(!checklistOpen)} title="Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                    <CheckSquare size={16} />
+                  </button>
+                  <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                    {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </button>
+                  <div style={{ fontSize: 18, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)" }}>
+                    {pane.symbol} <span style={{fontSize: 13, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+                  </div>
+                </div>
+              <ChartPanel
+                symbol={pane.symbol}
+                tf={pane.tf}
+                tick={ticks[pane.symbol]}
+                alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered"))}
+                barsCache={barsCache}
+                onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
+                onDeleteAlert={deleteAlert}
+                onMoveAlert={moveAlert}
+                onRearmAlert={rearmAlert}
+                // sync logic
+                syncOpts={fullScreenPaneId ? {} : syncOpts}
+                paneId={pane.id}
+                syncedLogicalRange={syncedLogicalRange}
+                setSyncedLogicalRange={setSyncedLogicalRange}
+                syncedCrosshair={syncedCrosshair}
+                setSyncedCrosshair={setSyncedCrosshair}
+              />
+            </div>
+            );
+          })}
+
+          {/* Grid Splitters */}
+          {!fullScreenPaneId && (layout === "2v" || layout === "4") && (
+            <div 
+              className="hide-mobile"
+              onMouseDown={(e) => onDragStart(e, "col")}
+              style={{
+                position: "absolute", top: 0, left: `calc(${cX}% - 3px)`, width: 6, height: "100%",
+                cursor: "col-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
+              }}
+            />
+          )}
+          {!fullScreenPaneId && (layout === "2h" || layout === "4") && (
+            <div 
+              className="hide-mobile"
+              onMouseDown={(e) => onDragStart(e, "row")}
+              style={{
+                position: "absolute", left: 0, top: `calc(${cY}% - 3px)`, height: 6, width: "100%",
+                cursor: "row-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
+              }}
+            />
+          )}
+
+        </div>
+        {watchlistOpen && (
+          <aside className="sidebar">
+            <Watchlist
+              watchlists={watchlists}
+              activeListId={activeListId}
+              setActiveListId={setActiveListId}
+              symbol={symbol}
+              setSymbol={changeSymbol}
+              ticks={ticks}
+              alerts={alerts}
+              onCreate={createWatchlist}
+              onRename={renameWatchlist}
+              onDelete={deleteWatchlist}
+              onAddSymbol={() => setPalette("add")}
+              onRemoveSymbol={removeSymbolFromList}
+              symbolFlags={symbolFlags}
+              setSymbolFlags={setSymbolFlags}
+            />
+          </aside>
+        )}
+      </div>
+
+      <div className={`alerts-wrap ${alertsOpen ? "mobile-open" : ""}`} style={alertsOpen ? {display: 'block'} : {display: 'none'}}>
+        <AlertsPanel
+          alerts={alerts}
+          symbol={symbol}
+          setSymbol={changeSymbol}
+          onDelete={deleteAlert}
+          onRearm={rearmAlert}
+          onCloseMobile={() => setAlertsOpen(false)}
+        />
+      </div>
+
+      {palette && (
+        <SymbolPalette
+          mode={palette}
+          onClose={() => setPalette(null)}
+          onPick={(sym) => {
+            if (palette === "add" && activeListId) addSymbolToList(activeListId, sym);
+            else setSymbol(sym);
+            setPalette(null);
+          }}
+          onAddToList={(sym) => activeListId && addSymbolToList(activeListId, sym)}
+        />
+      )}
+
+      {alertDraft && (
+        <AlertDialog
+          symbol={symbol}
+          draft={alertDraft}
+          marketPrice={ticks[symbol]?.bid}
+          onCancel={() => setAlertDraft(null)}
+          onSave={createAlert}
+        />
+      )}
+
+      {saveLayoutOpen && (
+        <SaveLayoutModal
+          onCancel={() => setSaveLayoutOpen(false)}
+          onSave={saveLayout}
+        />
+      )}
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)",
+          background: "var(--accent)", color: "#fff", padding: "10px 18px",
+          borderRadius: 8, zIndex: 90, boxShadow: "0 6px 24px rgba(0,0,0,.5)",
+          animation: "toast-in 160ms ease-out",
+        }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}

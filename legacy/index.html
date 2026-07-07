@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TradeSpace — MT5 Alerts</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root {
+    --bg: #131722; --panel: #1e222d; --border: #2a2e39;
+    --text: #d1d4dc; --muted: #787b86; --accent: #2962ff;
+    --green: #26a69a; --red: #ef5350; --orange: #ff9800;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 15px; font-weight: 600; margin-right: 8px; }
+  header h1 span { color: var(--accent); }
+  .sym-box { display: flex; gap: 6px; align-items: center; }
+  input, select, button { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 9px; font-size: 13px; outline: none; }
+  input:focus { border-color: var(--accent); }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tf-group button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip { padding: 4px 8px; font-size: 12px; }
+  #status { margin-left: auto; font-size: 12px; color: var(--muted); }
+  #status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 5px; }
+  #status.live .dot { background: var(--green); }
+  #price-badge { font-size: 14px; font-weight: 600; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #chart-wrap { flex: 1; position: relative; min-width: 0; }
+  #chart { position: absolute; inset: 0; }
+
+  /* TradingView-style hover "+" button on the price axis */
+  #add-alert-btn {
+    position: absolute; right: 0; display: none; z-index: 20;
+    transform: translateY(-50%);
+    background: var(--accent); color: #fff; border: none; border-radius: 4px 0 0 4px;
+    padding: 2px 8px; font-size: 12px; cursor: pointer; white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  }
+  #add-alert-btn:hover { filter: brightness(1.15); }
+
+  /* right-click context menu */
+  #ctx-menu {
+    position: absolute; display: none; z-index: 30; min-width: 190px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.6); overflow: hidden;
+  }
+  #ctx-menu div { padding: 9px 14px; cursor: pointer; }
+  #ctx-menu div:hover { background: var(--accent); color: #fff; }
+
+  aside { width: 320px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+  aside h2 { font-size: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; gap: 6px; }
+  aside h2 .add { margin-left: auto; background: none; border: 1px solid var(--border); border-radius: 4px; padding: 1px 8px; font-size: 14px; color: var(--muted); }
+  aside h2 .add:hover { color: var(--accent); border-color: var(--accent); }
+
+  #watchlist { max-height: 45vh; overflow-y: auto; border-bottom: 1px solid var(--border); }
+  .watch-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.03); }
+  .watch-item:hover { background: rgba(255,255,255,.04); }
+  .watch-item.active { background: rgba(41,98,255,.15); border-left: 2px solid var(--accent); padding-left: 10px; }
+  .watch-item .name { font-weight: 600; font-size: 13px; }
+  .watch-item .bid { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 12px; }
+  .watch-item .spread { color: var(--muted); font-size: 10px; min-width: 30px; text-align: right; }
+  .watch-item .del { visibility: hidden; background: none; border: none; color: var(--muted); font-size: 14px; padding: 0 4px; cursor: pointer; }
+  .watch-item:hover .del { visibility: visible; }
+  .watch-item .del:hover { color: var(--red); }
+  .price-up { color: var(--green); }
+  .price-down { color: var(--red); }
+
+  #alert-list { flex: 1; overflow-y: auto; }
+  .alert-item { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .alert-item .row1 { display: flex; align-items: center; gap: 6px; }
+  .alert-item .sym { font-weight: 600; }
+  .alert-item .cond { color: var(--orange); font-size: 12px; }
+  .alert-item .price { margin-left: auto; font-weight: 600; }
+  .alert-item .row2 { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+  .alert-item .note { color: var(--muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alert-item .badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: var(--green); color: #fff; }
+  .alert-item.triggered { opacity: .6; }
+  .alert-item.triggered .badge { background: var(--muted); }
+  .alert-item button { padding: 2px 7px; font-size: 11px; }
+  .empty { padding: 20px; text-align: center; color: var(--muted); }
+
+  /* alert dialog */
+  #dialog-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 50; }
+  #dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px; width: 320px; }
+  #dialog h3 { font-size: 14px; margin-bottom: 14px; }
+  #dialog label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  #dialog input, #dialog select { width: 100%; }
+  #dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; padding: 10px 18px; border-radius: 6px; display: none; z-index: 60; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+
+  /* symbol picker */
+  #picker-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding-top: 8vh; z-index: 55; }
+  #picker { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; width: 480px; max-width: 92vw; max-height: 75vh; display: flex; flex-direction: column; overflow: hidden; }
+  #picker header { background: transparent; border-bottom: 1px solid var(--border); padding: 10px 12px; gap: 8px; }
+  #picker input { flex: 1; font-size: 14px; }
+  #picker-list { overflow-y: auto; }
+  #picker-list .row { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,.03); }
+  #picker-list .row:hover, #picker-list .row.hl { background: rgba(41,98,255,.15); }
+  #picker-list .row .n { font-weight: 600; }
+  #picker-list .row .d { color: var(--muted); font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #picker-list .row .p { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+  #picker-list .row .add { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--muted); }
+  #picker-list .row .add:hover { color: var(--accent); border-color: var(--accent); }
+  #picker-empty { padding: 20px; text-align: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trade<span>Space</span></h1>
+  <button id="sym-pick" class="primary">🔍 <span id="sym-current">EURUSD</span> ▾</button>
+  <div class="tf-group" id="tf-group">
+    <button data-tf="M1" class="chip">1m</button>
+    <button data-tf="M5" class="chip active">5m</button>
+    <button data-tf="M15" class="chip">15m</button>
+    <button data-tf="H1" class="chip">1h</button>
+  </div>
+  <span id="price-badge">—</span>
+  <span id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
+</header>
+
+<main>
+  <div id="chart-wrap">
+    <div id="chart"></div>
+    <button id="add-alert-btn">＋ Alert</button>
+    <div id="ctx-menu">
+      <div id="ctx-add">🔔 Add alert at <span id="ctx-price"></span></div>
+    </div>
+  </div>
+  <aside>
+    <h2>Watchlist <button class="add" id="wl-add" title="Add symbol">＋</button></h2>
+    <div id="watchlist"><div class="empty">No symbols yet. Click ＋ to add.</div></div>
+    <h2>Alerts</h2>
+    <div id="alert-list"><div class="empty">No alerts yet.<br/>Hover the chart & click “＋ Alert”,<br/>or right-click on the chart.</div></div>
+  </aside>
+</main>
+
+<div id="dialog-back">
+  <div id="dialog">
+    <h3 id="dialog-title">Create alert</h3>
+    <label>Symbol</label>
+    <input id="d-symbol" disabled />
+    <label>Condition</label>
+    <select id="d-cond">
+      <option value="cross">Crossing</option>
+      <option value="above">Crossing up / price above</option>
+      <option value="below">Crossing down / price below</option>
+    </select>
+    <label>Price</label>
+    <input id="d-price" type="number" step="any" />
+    <label>Note (sent to Telegram)</label>
+    <input id="d-note" placeholder="optional" />
+    <div class="actions">
+      <button id="d-cancel">Cancel</button>
+      <button id="d-save" class="primary">Create</button>
+    </div>
+  </div>
+</div>
+
+<div id="picker-back">
+  <div id="picker">
+    <header>
+      <input id="picker-q" placeholder="Search symbol (EUR, gold, US30…)" autocomplete="off" />
+    </header>
+    <div id="picker-list"></div>
+    <div id="picker-empty" style="display:none">No matching symbols. Try a shorter query.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
