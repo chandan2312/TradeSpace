@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PatternsPrimitive } from "../lib/patterns/primitive.js";
+import { runPatterns } from "../lib/patterns/index.js";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
@@ -16,14 +18,17 @@ function lineOpts(price, condition, status) {
   };
 }
 
-export default function ChartPanel({ 
-  symbol, tf, tick, alerts, barsCache, onAddAlert, onDeleteAlert, onMoveAlert, onRearmAlert,
-  syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair 
+export default function ChartPanel({
+  symbol, tf, tick, alerts, barsCache, onAddAlert, onDeleteAlert, onMoveAlert, onRearmAlert, indicators, onAutoAlert,
+  syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair
 }) {
   const wrapRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const lastBarRef = useRef(null);
+  const patternsRef = useRef(null);  // PatternsPrimitive attached to the series
+  const barsRef = useRef([]);        // full bar array the detectors run on
+  const [dataVersion, setDataVersion] = useState(0); // bumped on load + bar close
   const priceLinesRef = useRef([]);            // array of {id, line}
   const hoverPriceRef = useRef(null);
   const [barsDigits, setBarsDigits] = useState(null);
@@ -72,6 +77,9 @@ export default function ChartPanel({
         wickUpColor: "#26a69a", wickDownColor: "#ef5350",
         borderVisible: false,
       });
+      const patterns = new PatternsPrimitive();
+      series.attachPrimitive(patterns);
+      patternsRef.current = patterns;
       chartRef.current = chart;
       seriesRef.current = series;
     })();
@@ -96,6 +104,8 @@ export default function ChartPanel({
 
       seriesRef.current.setData(bars);
       lastBarRef.current = { key, bar: bars[bars.length - 1] };
+      barsRef.current = bars;
+      setDataVersion((v) => v + 1);
       // a manual price-axis drag turns autoscale off for good — a new series
       // must re-fit both axes or it renders outside the visible range
       chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
@@ -167,12 +177,35 @@ export default function ChartPanel({
     const sec = TF_SEC[tf];
     const barTime = Math.floor((tick.time / 1000) / sec) * sec;
     const last = entry.bar;
-    const nextBar = barTime > last.time
+    const isNewBar = barTime > last.time;
+    const nextBar = isNewBar
       ? { time: barTime, open: price, high: price, low: price, close: price }
       : { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
     lastBarRef.current = { key: entry.key, bar: nextBar };
     seriesRef.current.update(nextBar);
+    // keep the detector bar array current; re-detect only on bar close
+    if (isNewBar) {
+      barsRef.current = [...barsRef.current, nextBar];
+      setDataVersion((v) => v + 1);
+    } else if (barsRef.current.length) {
+      barsRef.current[barsRef.current.length - 1] = nextBar;
+    }
   }, [tick, symbol, tf]);
+
+  // ---------- pattern indicators ----------
+  useEffect(() => {
+    const prim = patternsRef.current;
+    if (!prim) return;
+    const anyOn = indicators && Object.values(indicators).some(Boolean);
+    if (!anyOn) {
+      prim.setDrawings([]);
+      return;
+    }
+    const { drawings, autoAlerts } = runPatterns(barsRef.current, indicators, TF_SEC[tf]);
+    prim.setDrawings(drawings);
+    // e.g. AMD distribution trigger — Dashboard dedupes and creates the alert
+    if (onAutoAlert) for (const s of autoAlerts) onAutoAlert({ ...s, symbol });
+  }, [dataVersion, indicators, tf, symbol, onAutoAlert]);
 
   // ---------- alert price lines ----------
   // Keep a {id -> line} map so a drag can update one line without rebuilding all.

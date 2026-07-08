@@ -61,6 +61,7 @@ export default function Dashboard() {
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [symbolFlags, setSymbolFlags] = useState({}); // { symbol: "red" | "blue" | "green" | "yellow" }
+  const [indicators, setIndicators] = useState({}); // { patternId: bool } — ƒx pattern toggles
   
   // Loop Mode State
   const [isLooping, setIsLooping] = useState(false);
@@ -109,6 +110,8 @@ export default function Dashboard() {
       if (w) setWatchlistOpen(w === "true");
       const f = localStorage.getItem("ts_symbol_flags");
       if (f) setSymbolFlags(JSON.parse(f));
+      const ind = localStorage.getItem("ts_indicators");
+      if (ind) setIndicators(JSON.parse(ind));
     } catch {}
 
     if ("Notification" in window && Notification.permission === "default") {
@@ -123,6 +126,7 @@ export default function Dashboard() {
   useEffect(() => { localStorage.setItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts]);
   useEffect(() => { localStorage.setItem("ts_watchlist_open", String(watchlistOpen)); }, [watchlistOpen]);
   useEffect(() => { localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); }, [symbolFlags]);
+  useEffect(() => { localStorage.setItem("ts_indicators", JSON.stringify(indicators)); }, [indicators]);
 
   // ---------- Keyboard Shortcuts ----------
   useEffect(() => {
@@ -386,6 +390,30 @@ export default function Dashboard() {
     loadAlerts();
   }, [loadAlerts, showToast]);
 
+  // ---------- auto-alerts from pattern detectors (e.g. AMD) ----------
+  // Deduped by a tag embedded in the note: once per symbol/day/side, across
+  // panes, timeframes, reloads (existing alerts are checked) and this session.
+  const alertsRef = useRef([]);
+  useEffect(() => { alertsRef.current = alerts; }, [alerts]);
+  const autoAlertTags = useRef(new Set());
+
+  const handleAutoAlert = useCallback(async (sug) => {
+    const tag = `[AMD:${sug.symbol}:${sug.tagPart}]`;
+    if (autoAlertTags.current.has(tag)) return;
+    autoAlertTags.current.add(tag);
+    if (alertsRef.current.some((a) => a.note && a.note.includes(tag))) return;
+    const note = `${sug.noteBase} ${tag}`.slice(0, 200);
+    const price = Number(sug.price.toFixed(6));
+    const data = await api("/api/alerts", {
+      method: "POST",
+      body: JSON.stringify({ symbol: sug.symbol, price, condition: sug.condition, note }),
+    });
+    if (data.ok) {
+      showToast(`🤖 AMD auto-alert: ${sug.symbol} ${sug.condition} ${price}`);
+      loadAlerts();
+    }
+  }, [loadAlerts, showToast]);
+
   // ---------- watchlist actions ----------
   const createWatchlist = useCallback(async (name) => {
     const data = await api("/api/watchlists", { method: "POST", body: JSON.stringify({ name }) });
@@ -510,6 +538,8 @@ export default function Dashboard() {
         onLoadLayout={onLoadLayout}
         onOpenSaveLayout={() => setSaveLayoutOpen(true)}
         onOpenLoop={() => { setLoopMenuOpen(true); setIsLooping(true); }}
+        indicators={indicators}
+        setIndicators={setIndicators}
       />
       <div className="layout-row" style={{position: "relative"}}>
         {checklistOpen && (
@@ -595,6 +625,8 @@ export default function Dashboard() {
                 onDeleteAlert={deleteAlert}
                 onMoveAlert={moveAlert}
                 onRearmAlert={rearmAlert}
+                indicators={indicators}
+                onAutoAlert={handleAutoAlert}
                 // sync logic
                 syncOpts={fullScreenPaneId ? {} : syncOpts}
                 paneId={pane.id}
@@ -669,7 +701,7 @@ export default function Dashboard() {
           onClose={() => setPalette(null)}
           onPick={(sym) => {
             if (palette === "add" && activeListId) addSymbolToList(activeListId, sym);
-            else setSymbol(sym);
+            else changeSymbol(sym);
             setPalette(null);
           }}
           onAddToList={(sym) => activeListId && addSymbolToList(activeListId, sym)}

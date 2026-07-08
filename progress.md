@@ -20,6 +20,29 @@
 
 ## Log
 
+### 2026-07-07 — AMD v2 + auto-alerts
+- **Coil gate**: accumulation (00–06 broker time) must have low drift (≤0.55×range) and compression vs. the prior day's range, else the session draws nothing.
+- **Contained judas sweep**: depth-bounded (>1.3×range = real breakout → void), re-entry close inside within ~5h, **displacement** required (strong opposing body ≤6 bars after re-entry). Bonus if the sweep also ran the prior day's high/low.
+- **Score** (compression 30 / displacement 25 / depth shape 20 / re-entry speed 15 / PD sweep 10): <0.5 hidden; M marker carries ★ grade; pending distribution shows a dashed "D trigger" line at the opposite coil boundary (to current bar only).
+- **Auto-alert**: fresh (≤12 bars since re-entry), strong (≥0.6) formations emit a suggestion; `runPatterns` now returns `{drawings, autoAlerts}`, ChartPanel forwards, Dashboard POSTs a real alert at the distribution trigger. Deduped per symbol/day/side via a `[AMD:SYM:day:H|L]` tag in the note (checked against existing alerts + session set), so it fires once across panes/TFs/reloads. Telegram then fires server-side even with the browser closed.
+
+### 2026-07-07 — Trendline liquidity v2 (smart filtering)
+- **Untapped pools only**: any wick through the *projected* line after the last touch = hunted → hidden. Price must also still be on the respecting side and within 6×avg-range of the line (stale pools hidden).
+- **No projection**: segment drawn first→last touch only, no right extension.
+- **Correct-side only**: ascending lines through swing lows (sell-stops below) and descending lines through swing highs (buy-stops above); slope-sign + min/max slope constraints.
+- **Quality model**: candidates least-squares-refit through their touch set, then scored — touch count (30%), bounce strength after each touch (20%), touch precision (20%), spacing evenness (15%), lifespan (15%). Score ≥ 0.55 to display, ★/★★/★★★ grade in the label, max 2 per side, overlap-deduped.
+
+### 2026-07-07 — Pattern detection indicators (v1)
+- New **ƒx "Patterns" menu** in the TopBar — toggle each detector like an indicator; persisted in `localStorage (ts_indicators)`; applies to all panes.
+- Framework: `lib/patterns/` — pure detectors `(bars, ctx) → drawings[]`; one canvas **series primitive** (`primitive.js`, zOrder "bottom") renders everything faintly *behind* the candles. Tolerances scale off avg candle range, so detectors adapt to any symbol/TF. Detection re-runs on data load and bar close (not every tick).
+- Detectors:
+  1. **dtb** — Double/Triple Top & Bottom: clusters of near-equal pivots with a real pullback between; only **unswept** levels drawn (dashed level + touch dots + `DT/TT/DB/TB ×n`).
+  2. **tll** — Trendline Liquidity: lines through pivot pairs with **3+ touches**, no close-through between touches, deduped, max 2 per direction, extended right (`TL liq ×n`).
+  3. **fvg** — FVG / iFVG: 3-candle gaps ≥ 0.35×avg range; wick-through = filled (hidden), **close**-through = inverted (`iFVG`, drawn from inversion until reclaimed).
+  4. **amd** — Power of 3 (intraday): accumulation box 00–06 broker time (`A`), judas sweep beyond the range that closes back inside (`M` at the extreme), close beyond the opposite side (`D`). Last 2 sessions.
+- Also fixed: symbol palette crash — `Dashboard` `onPick` called `setSymbol()` which no longer exists (renamed `changeSymbol` in the multi-pane refactor).
+- **Not yet runtime-verified** — sandbox shell outage blocked `npm run build`/dev boot this session.
+
 ### 2026-07-07 — Production-readiness pass (bug fixes + hardening)
 - **Fixed** drag-to-move alert: price line now follows the pointer (`dragging.id` was compared against `a.id` instead of `a._id` in `ChartPanel`).
 - **Fixed** WS reconnect re-subscribing to the symbol from first mount instead of the current chart (`Dashboard` now tracks it in a ref).

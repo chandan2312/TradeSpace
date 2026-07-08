@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Save, Repeat, Bell, Sidebar, LayoutGrid } from "lucide-react";
+import IndicatorsMenu from "./IndicatorsMenu";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
@@ -11,7 +12,8 @@ export default function TopBar({
   onOpenAlerts, activeAlertCount,
   layout, setLayout, syncOpts, setSyncOpts,
   watchlistOpen, setWatchlistOpen,
-  savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop
+  savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop,
+  indicators, setIndicators
 }) {
   const digits = tick?.digits ?? 5;
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
@@ -111,6 +113,8 @@ export default function TopBar({
           </div>
         )}
       </div>
+
+      <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
 
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
         <button className="ghost" onClick={onOpenAlerts} title="View alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
