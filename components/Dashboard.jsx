@@ -868,22 +868,42 @@ export default function Dashboard() {
         })()}
         {watchlistOpen && (
           <aside className="sidebar">
-            <Watchlist
-              watchlists={watchlists}
-              activeListId={activeListId}
-              setActiveListId={setActiveListId}
-              symbol={symbol}
-              setSymbol={changeSymbol}
-              ticks={ticks}
-              alerts={alerts}
-              onCreate={createWatchlist}
-              onRename={renameWatchlist}
-              onDelete={deleteWatchlist}
-              onAddSymbol={() => setPalette("add")}
-              onRemoveSymbol={removeSymbolFromList}
-              symbolFlags={symbolFlags}
-              setSymbolFlags={setSymbolFlags}
-            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Watchlist
+                watchlists={watchlists}
+                activeListId={activeListId}
+                setActiveListId={setActiveListId}
+                symbol={symbol}
+                setSymbol={changeSymbol}
+                ticks={ticks}
+                alerts={alerts}
+                onCreate={createWatchlist}
+                onRename={renameWatchlist}
+                onDelete={deleteWatchlist}
+                onAddSymbol={() => setPalette("add")}
+                onRemoveSymbol={removeSymbolFromList}
+                symbolFlags={symbolFlags}
+                setSymbolFlags={setSymbolFlags}
+              />
+            </div>
+            {layout !== "1" && (
+              <div className="hide-desktop" style={{ display: "flex", gap: 6, padding: "0 8px" }}>
+                <button 
+                  className="ghost" 
+                  style={{ padding: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  onClick={() => window.scrollBy({ top: -(window.innerHeight * 0.4), behavior: 'smooth' })}
+                >
+                  <ArrowUp size={16} />
+                </button>
+                <button 
+                  className="ghost" 
+                  style={{ padding: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  onClick={() => window.scrollBy({ top: (window.innerHeight * 0.4), behavior: 'smooth' })}
+                >
+                  <ArrowDown size={16} />
+                </button>
+              </div>
+            )}
           </aside>
         )}
       </div>
@@ -953,32 +973,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Mobile multi-chart navigation buttons */}
-      {layout !== "1" && (
-        <div className="hide-desktop" style={{
-          position: "fixed", bottom: 20, right: 10, display: "flex", flexDirection: "column", gap: 8, zIndex: 50
-        }}>
-          <button 
-            className="primary" 
-            style={{ borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}
-            onClick={() => {
-              const grid = document.querySelector('.responsive-chart-grid');
-              if (grid) grid.scrollBy({ top: -(window.innerHeight * 0.4), behavior: 'smooth' });
-            }}
-          >
-            <ArrowUp size={20} />
-          </button>
-          <button 
-            className="primary" 
-            style={{ borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}
-            onClick={() => {
-              const grid = document.querySelector('.responsive-chart-grid');
-              if (grid) grid.scrollBy({ top: (window.innerHeight * 0.4), behavior: 'smooth' });
-            }}
-          >
-            <ArrowDown size={20} />
-          </button>
-        </div>
       )}
     </div>
   );

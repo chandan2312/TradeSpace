@@ -294,6 +294,8 @@ input::placeholder { color: var(--muted); }
     border-left: none;
     border-top: 1px solid var(--border);
     flex: 0 0 auto;
+    flex-direction: row !important;
+    align-items: center !important;
   }
 
   .wl-rows {
