@@ -6,6 +6,7 @@ export const metadata = {
   manifest: "/manifest.json",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
   appleWebApp: { capable: true, title: "TradeSpace", statusBarStyle: "black-translucent" },
+  other: { "mobile-web-app-capable": "yes" },
 };
 
 export const viewport = {
