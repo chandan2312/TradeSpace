@@ -697,7 +697,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div className="dashboard-root" style={{ display: "flex", flexDirection: "column" }}>
       <TopBar
         symbol={symbol}
         tf={tf}
