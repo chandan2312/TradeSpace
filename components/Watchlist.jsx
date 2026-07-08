@@ -248,6 +248,13 @@ function WatchRow({
 }) {
   const [showPalette, setShowPalette] = useState(false);
   const paletteRef = useRef(null);
+  const rowRef = useRef(null);
+
+  useEffect(() => {
+    if (current && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [current]);
 
   useEffect(() => {
     if (!showPalette) return;
@@ -265,6 +272,7 @@ function WatchRow({
 
   return (
     <div
+      ref={rowRef}
       className="wl-row-item"
       draggable
       onDragStart={onDragStart}
