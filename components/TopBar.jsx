@@ -209,14 +209,47 @@ export default function TopBar({
           </div>
 
           {showLayoutMenu && (
-            <div ref={mobileLayoutMenuRef} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                <button className={layout === "1" ? "primary" : "ghost"} onClick={() => { setLayout("1"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>1</button>
-                <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => { setLayout("2v"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2v</button>
-                <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => { setLayout("2h"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2h</button>
-                <button className={layout === "4" ? "primary" : "ghost"} onClick={() => { setLayout("4"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>4</button>
-                <button className={layout === "6" ? "primary" : "ghost"} onClick={() => { setLayout("6"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>6</button>
-                <button className={layout === "8" ? "primary" : "ghost"} onClick={() => { setLayout("8"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>8</button>
+            <div ref={mobileLayoutMenuRef} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4, textTransform: "uppercase", fontWeight: 600 }}>Grid</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <button className={layout === "1" ? "primary" : "ghost"} onClick={() => { setLayout("1"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>1</button>
+                  <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => { setLayout("2v"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2v</button>
+                  <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => { setLayout("2h"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2h</button>
+                  <button className={layout === "4" ? "primary" : "ghost"} onClick={() => { setLayout("4"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>4</button>
+                  <button className={layout === "6" ? "primary" : "ghost"} onClick={() => { setLayout("6"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>6</button>
+                  <button className={layout === "8" ? "primary" : "ghost"} onClick={() => { setLayout("8"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>8</button>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4, textTransform: "uppercase", fontWeight: 600 }}>Sync Across Charts</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <button className={syncOpts.symbol ? "primary" : "ghost"} onClick={() => toggleSync("symbol")} style={{padding: "2px 6px", fontSize: 11}}>SYM</button>
+                  <button className={syncOpts.tf ? "primary" : "ghost"} onClick={() => toggleSync("tf")} style={{padding: "2px 6px", fontSize: 11}}>TF</button>
+                  <button className={syncOpts.time ? "primary" : "ghost"} onClick={() => toggleSync("time")} style={{padding: "2px 6px", fontSize: 11}}>TIME</button>
+                  <button className={syncOpts.crosshair ? "primary" : "ghost"} onClick={() => toggleSync("crosshair")} style={{padding: "2px 6px", fontSize: 11}}>CROSS</button>
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <select 
+                    onChange={(e) => {
+                      if (e.target.value) onLoadLayout(e.target.value);
+                      e.target.value = "";
+                      setShowLayoutMenu(false);
+                      setMobileMenuOpen(false);
+                    }} 
+                    style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)", padding: "4px", borderRadius: 4, fontSize: 12, outline: "none", cursor: "pointer", flex: 1, marginRight: 8 }}
+                  >
+                    <option value="">Load template...</option>
+                    {savedLayouts && savedLayouts.map(l => (
+                      <option key={l._id} value={l._id}>{l.name}</option>
+                    ))}
+                  </select>
+                  <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); setMobileMenuOpen(false); }} title="Save Layout" style={{padding: "4px", display: "flex", alignItems: "center"}}><Save size={14} /></button>
+                </div>
               </div>
             </div>
           )}
