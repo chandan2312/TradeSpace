@@ -90,6 +90,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
   const [marketBiasOpen, setMarketBiasOpen] = useState(false);
+  const [biasEnabled, setBiasEnabled] = useState(false); // default off to save RAM on RDP
 
   const [savedLayouts, setSavedLayouts] = useState([]);
   const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
@@ -129,6 +130,8 @@ export default function Dashboard() {
         if (ind) setIndicators(JSON.parse(ind));
         const lid = localStorage.getItem("ts_loaded_layout_id");
         if (lid) setLoadedLayoutId(lid);
+        const be = localStorage.getItem("ts_bias_enabled");
+        if (be !== null) setBiasEnabled(be === "true");
       } catch {}
     };
 
@@ -326,14 +329,17 @@ export default function Dashboard() {
   }, [watchlists, activeListId, panes]);
 
   const loadBias = useCallback(async () => {
-    if (!biasSymbols.length) return;
+    if (!biasEnabled || !biasSymbols.length) {
+      setBiasData(null);
+      return;
+    }
     setBiasLoading(true);
     try {
       const data = await api(`/api/bias?symbols=${encodeURIComponent(biasSymbols.join(","))}`);
       if (data.ok) setBiasData(data);
     } catch {}
     setBiasLoading(false);
-  }, [biasSymbols.join(",")]);
+  }, [biasEnabled, biasSymbols.join(",")]);
 
   useEffect(() => { 
     loadAlerts(); loadWatchlists(); loadSavedLayouts(); loadChecklist(); 
@@ -702,6 +708,12 @@ export default function Dashboard() {
         onAddAlert={() => setAlertDraft({ price: ticks[symbol]?.bid ?? "" })}
         onOpenAlerts={() => setAlertsOpen(true)}
         onOpenMarketBias={() => setMarketBiasOpen(true)}
+        biasEnabled={biasEnabled}
+        onToggleBias={() => {
+          const next = !biasEnabled;
+          setBiasEnabled(next);
+          localStorage.setItem("ts_bias_enabled", next);
+        }}
         activeAlertCount={alerts.filter((a) => a.status === "active").length}
         onOpenPip={openPip}
         isPipActive={!!pipWindow}
@@ -919,6 +931,7 @@ export default function Dashboard() {
 
       {marketBiasOpen && (
         <BiasPanel
+          enabled={biasEnabled}
           symbols={biasSymbols}
           onJump={(s) => { setMarketBiasOpen(false); changeSymbol(s); }}
           onClose={() => setMarketBiasOpen(false)}

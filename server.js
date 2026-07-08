@@ -86,7 +86,7 @@ async function main() {
 
   server.listen(PORT, () => {
     console.log(`[tradespace] http://localhost:${PORT}  (${dev ? "dev" : "prod"})`);
-  });
+c  });
 
   // ---- graceful shutdown ----------------------------------------------
   let shuttingDown = false;

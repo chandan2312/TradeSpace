@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink } from "lucide-react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power } from "lucide-react";
 import IndicatorsMenu from "./IndicatorsMenu";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
@@ -9,7 +9,7 @@ const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h
 
 export default function TopBar({ 
   symbol, tf, setTf, tick, connected, onOpenPalette, onAddAlert, 
-  onOpenAlerts, activeAlertCount, onOpenMarketBias,
+  onOpenAlerts, activeAlertCount, onOpenMarketBias, biasEnabled, onToggleBias,
   onOpenPip, isPipActive,
   layout, setLayout, syncOpts, setSyncOpts,
   watchlistOpen, setWatchlistOpen,
@@ -132,6 +132,19 @@ export default function TopBar({
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
         <button className="ghost" onClick={onOpenMarketBias} title="Master Bias" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
           <Activity size={14} /> <span className="hide-mobile">Market Bias</span>
+        </button>
+        <button 
+          className={biasEnabled ? "primary" : "ghost"} 
+          onClick={onToggleBias} 
+          title={biasEnabled ? "Bias Engine is ON (Click to disable)" : "Bias Engine is OFF (Click to enable)"}
+          style={{ 
+            fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, 
+            background: biasEnabled ? "var(--green)" : "transparent", 
+            borderColor: biasEnabled ? "var(--green)" : "var(--border)",
+            color: biasEnabled ? "#fff" : "var(--muted)"
+          }}
+        >
+          <Power size={14} /> <span className="hide-mobile">Engine {biasEnabled ? "ON" : "OFF"}</span>
         </button>
         {layout === "1" && (
           <button 

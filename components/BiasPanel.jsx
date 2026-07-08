@@ -19,13 +19,17 @@ const PHASE = {
 const scoreColor = (s) =>
   s > 15 ? "var(--green)" : s < -15 ? "var(--red)" : "var(--muted)";
 
-export default function BiasPanel({ symbols, onJump, onClose }) {
+export default function BiasPanel({ enabled = true, symbols, onJump, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("ALL");
   const timer = useRef(null);
 
   const load = useCallback(async () => {
+    if (!enabled) {
+      setData(null);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/bias?symbols=ALL`);
@@ -33,7 +37,7 @@ export default function BiasPanel({ symbols, onJump, onClose }) {
       if (body.ok) setData(body);
     } catch { /* keep last read */ }
     setLoading(false);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     load();
@@ -106,7 +110,11 @@ export default function BiasPanel({ symbols, onJump, onClose }) {
                   <Loader2 size={28} className="spin" style={{ color: "var(--accent)" }} />
                   <div style={{ fontSize: 13 }}>Scanning market structure...</div>
                 </>
-              ) : "No data"}
+              ) : !enabled ? (
+                <div style={{ textAlign: "center", fontSize: 13 }}>Bias Engine is currently OFF.<br/>Enable it in the top menu.</div>
+              ) : (
+                "No data"
+              )}
             </div>
           )}
 
