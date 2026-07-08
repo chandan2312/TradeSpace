@@ -191,7 +191,7 @@ export default function TopBar({
 
       {/* Mobile Dropdown Menu */}
       {mobileMenuOpen && (
-        <div className="hide-desktop" style={{
+        <div style={{
           position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
           background: "var(--panel)", borderBottom: "1px solid var(--border)",
           padding: 12, display: "flex", flexDirection: "column", gap: 12,
