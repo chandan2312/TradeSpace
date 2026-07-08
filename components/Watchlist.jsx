@@ -55,7 +55,7 @@ export default function Watchlist({
   }, [list?.symbols]);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, width: "100%" }}>
       {/* Tabs row */}
       {/* Tabs and mobile action buttons row */}
       <div style={{

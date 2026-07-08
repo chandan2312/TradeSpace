@@ -214,7 +214,7 @@ input::placeholder { color: var(--muted); }
   }
 
   .hide-desktop {
-    display: inherit !important;
+    display: flex !important;
   }
 
   body {
