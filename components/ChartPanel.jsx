@@ -614,26 +614,26 @@ export default function ChartPanel({
             zIndex: 25, display: "flex", alignItems: "center",
             background: dragHandle.status === "triggered" ? "rgba(239, 83, 80, 0.9)" : "var(--orange)", 
             color: "#1a1206", fontWeight: 700,
-            borderRadius: "6px 0 0 6px",
+            borderRadius: "4px 0 0 4px",
             boxShadow: "0 2px 8px rgba(0,0,0,.4)", overflow: "hidden",
           }}
         >
           {dragHandle.status === "active" && (
             <div
               onPointerDown={(e) => beginDrag(e, dragHandle.id)}
-              style={{ cursor: "ns-resize", padding: "4px 6px" }}
+              style={{ cursor: "ns-resize", padding: "2px 4px", fontSize: 10 }}
               title="Drag up/down to move this alert"
             >
               ⇅
             </div>
           )}
-          <div style={{ padding: "4px 6px", fontSize: 12, whiteSpace: "nowrap" }}>
+          <div style={{ padding: "2px 4px", fontSize: 10, whiteSpace: "nowrap" }}>
             {fmt(dragHandle.price)}
           </div>
           {dragHandle.status === "triggered" && (
             <button
               onClick={() => onRearmAlert(dragHandle.id)}
-              style={{ background: "rgba(0,0,0,0.1)", border: "none", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 13 }}
+              style={{ background: "rgba(0,0,0,0.1)", border: "none", color: "inherit", padding: "2px 6px", cursor: "pointer", fontSize: 11 }}
               title="Renew (re-arm) alert"
             >
               ↻
@@ -641,7 +641,7 @@ export default function ChartPanel({
           )}
           <button
             onClick={() => onDeleteAlert(dragHandle.id)}
-            style={{ background: "rgba(0,0,0,0.15)", border: "none", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+            style={{ background: "rgba(0,0,0,0.15)", border: "none", color: "inherit", padding: "2px 6px", cursor: "pointer", fontSize: 10 }}
             title="Delete alert"
           >
             ✕

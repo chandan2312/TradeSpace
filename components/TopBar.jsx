@@ -172,6 +172,7 @@ export default function TopBar({
           <Sidebar size={14} /> {watchlistOpen ? "Hide" : "Show"}
         </button>
       </div>
+      </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         {tick && (
