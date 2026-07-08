@@ -218,21 +218,20 @@ input::placeholder { color: var(--muted); }
   }
 
   body {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    overflow: hidden !important;
   }
 
   .dashboard-root {
-    height: auto !important;
-    min-height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
   }
 
   .topbar-header {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 100 !important;
+    position: static !important;
     padding: 6px 8px !important;
     gap: 6px !important;
+    flex: none !important;
   }
 
   .responsive-chart-grid {
@@ -280,6 +279,8 @@ input::placeholder { color: var(--muted); }
 
   .layout-row {
     flex-direction: column;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
     padding-bottom: 132px !important;
   }
 
