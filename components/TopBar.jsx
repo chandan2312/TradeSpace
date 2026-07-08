@@ -43,7 +43,7 @@ export default function TopBar({
       background: "var(--panel)", borderBottom: "1px solid var(--border)",
       flexWrap: "wrap", position: "relative", zIndex: 100
     }}>
-      <div className="logo-text" style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
+      <div className="logo-text hide-mobile" style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
         Trade<span style={{ color: "var(--accent)" }}>Space</span>
       </div>
 
