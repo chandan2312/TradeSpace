@@ -248,8 +248,8 @@ input::placeholder { color: var(--muted); }
   }
 
   .responsive-chart-grid.single-chart > div {
-    min-height: calc(100dvh - 190px) !important;
-    height: calc(100dvh - 190px) !important;
+    min-height: calc(100dvh - 195px) !important;
+    height: calc(100dvh - 195px) !important;
     flex: 1 !important;
   }
 
@@ -281,7 +281,7 @@ input::placeholder { color: var(--muted); }
     flex-direction: column;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    padding-bottom: 137px !important;
+    padding-bottom: 142px !important;
   }
 
   .sidebar {
