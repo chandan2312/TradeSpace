@@ -35,16 +35,16 @@ export default function TopBar({
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
-    <header style={{
+    <header className="topbar-header" style={{
       display: "flex", alignItems: "center", gap: 12, padding: "8px 14px",
       background: "var(--panel)", borderBottom: "1px solid var(--border)",
       flexWrap: "wrap", position: "relative", zIndex: 100
     }}>
-      <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
+      <div className="logo-text" style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
         Trade<span style={{ color: "var(--accent)" }}>Space</span>
       </div>
 
-      <button className="primary" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
+      <button className="primary symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
         style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
         <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
       </button>
@@ -176,7 +176,7 @@ export default function TopBar({
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         {tick && (
-          <div className="num" style={{ fontSize: 15, fontWeight: 600 }}>
+          <div className="num hide-mobile" style={{ fontSize: 15, fontWeight: 600 }}>
             <span className={tick.dir >= 0 ? "up" : "down"}>{Number(tick.bid).toFixed(digits)}</span>
           </div>
         )}
