@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power } from "lucide-react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings } from "lucide-react";
 import IndicatorsMenu from "./IndicatorsMenu";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
@@ -18,6 +18,7 @@ export default function TopBar({
 }) {
   const digits = tick?.digits ?? 5;
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const layoutMenuRef = useRef(null);
 
   useEffect(() => {
@@ -61,7 +62,12 @@ export default function TopBar({
         ))}
       </div>
 
-      <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
+      <button className="ghost hide-desktop" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ marginLeft: "auto", padding: "4px 8px" }}>
+        {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+        <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
         <button 
           className={showLayoutMenu ? "primary" : "ghost"} 
           onClick={() => setShowLayoutMenu(!showLayoutMenu)} 
@@ -181,6 +187,53 @@ export default function TopBar({
           }} />
           <span className="hide-mobile">{connected ? "live" : "reconnecting"}</span>
         </div>
+      </div>
+
+      {/* Mobile Dropdown Menu */}
+      {mobileMenuOpen && (
+        <div className="hide-desktop" style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
+          background: "var(--panel)", borderBottom: "1px solid var(--border)",
+          padding: 12, display: "flex", flexDirection: "column", gap: 12,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)"
+        }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className={showLayoutMenu ? "primary" : "ghost"} onClick={() => setShowLayoutMenu(!showLayoutMenu)} style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <LayoutGrid size={14} /> Layout
+            </button>
+            <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
+          </div>
+
+          {showLayoutMenu && (
+            <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                <button className={layout === "1" ? "primary" : "ghost"} onClick={() => setLayout("1")} style={{padding: "2px 6px"}}>1</button>
+                <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => setLayout("2v")} style={{padding: "2px 6px"}}>2v</button>
+                <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => setLayout("2h")} style={{padding: "2px 6px"}}>2h</button>
+                <button className={layout === "4" ? "primary" : "ghost"} onClick={() => setLayout("4")} style={{padding: "2px 6px"}}>4</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenMarketBias(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
+              <Activity size={14} /> Market Bias
+            </button>
+            <button 
+              className={biasEnabled ? "primary" : "ghost"} 
+              onClick={onToggleBias} 
+              style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", background: biasEnabled ? "var(--green)" : "transparent", color: biasEnabled ? "#fff" : "var(--muted)" }}
+            >
+              <Power size={14} /> Engine {biasEnabled ? "ON" : "OFF"}
+            </button>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+            <button className={watchlistOpen ? "primary" : "ghost"} onClick={() => setWatchlistOpen(!watchlistOpen)} style={{ padding: "8px", flex: 1, display: "flex", justifyContent: "center" }}><Sidebar size={16} /></button>
+            <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenAlerts(); }} style={{ padding: "8px", flex: 1, display: "flex", justifyContent: "center" }}><Bell size={16} /></button>
+          </div>
+        </div>
+      )}
       </div>
     </header>
   );

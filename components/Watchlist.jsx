@@ -98,10 +98,31 @@ export default function Watchlist({
         ) : (
           <button className="ghost" onClick={startCreate} title="New watchlist" style={{ padding: "3px 7px" }}>＋</button>
         )}
+
+        {/* Mobile-only action buttons pulled into tabs row */}
+        <div className="hide-desktop" style={{ marginLeft: "auto", display: "flex", gap: 4, paddingLeft: 8 }}>
+          {list && watchlists.length > 0 && (
+            <button
+              className="ghost danger"
+              onClick={() => {
+                if (confirm(`Delete list “${list.name}”? Its symbols stay in your alerts.`)) onDelete(list._id);
+              }}
+              title="Delete this list"
+              style={{ padding: "4px", display: "flex", alignItems: "center" }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+          {list && (
+            <button className="ghost" onClick={onAddSymbol} title="Add symbol to list" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              <Plus size={14} /> Add
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Header */}
-      <div style={{
+      {/* Header (Desktop Only) */}
+      <div className="hide-mobile" style={{
         display: "flex", alignItems: "center", padding: "7px 12px",
         borderBottom: "1px solid var(--border)",
       }}>

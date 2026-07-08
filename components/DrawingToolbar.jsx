@@ -87,6 +87,7 @@ export default function DrawingToolbar({ api }) {
 
   return (
     <div 
+      className="drawing-toolbar"
       ref={toolbarRef}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
@@ -100,6 +101,7 @@ export default function DrawingToolbar({ api }) {
       padding: 4, boxShadow: "0 4px 14px rgba(0,0,0,.5)",
     }}>
       <div 
+        className="drawing-toolbar-drag"
         onPointerDown={onDragStart}
         style={{ cursor: "grab", display: "flex", justifyContent: "center", padding: "4px 0", color: "var(--muted)" }}
       >

@@ -10,7 +10,7 @@ import SymbolPalette from "./SymbolPalette";
 import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
-import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square } from "lucide-react";
+import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown } from "lucide-react";
 import BiasPanel from "./BiasPanel";
 import MiniBiasHeader from "./MiniBiasHeader";
 import ChartSettingsModal from "./ChartSettingsModal";
@@ -780,7 +780,7 @@ export default function Dashboard() {
 
         {(() => {
           const gridNode = (
-            <div className="responsive-chart-grid" style={{ ...gridStyle, height: pipWindow ? "100vh" : gridStyle.height }}>
+            <div className={`responsive-chart-grid ${layout === "1" ? "single-chart" : ""}`} style={{ ...gridStyle, height: pipWindow ? "100vh" : gridStyle.height }}>
               {panes.map((pane) => {
                 if (fullScreenPaneId && pane.id !== fullScreenPaneId) return null;
                 const symBias = biasData?.symbols?.find((s) => s.symbol === pane.symbol);
@@ -950,6 +950,34 @@ export default function Dashboard() {
           animation: "toast-in 160ms ease-out",
         }}>
           {toast}
+        </div>
+      )}
+
+      {/* Mobile multi-chart navigation buttons */}
+      {layout !== "1" && (
+        <div className="hide-desktop" style={{
+          position: "fixed", bottom: 20, right: 10, display: "flex", flexDirection: "column", gap: 8, zIndex: 50
+        }}>
+          <button 
+            className="primary" 
+            style={{ borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}
+            onClick={() => {
+              const grid = document.querySelector('.responsive-chart-grid');
+              if (grid) grid.scrollBy({ top: -(window.innerHeight * 0.4), behavior: 'smooth' });
+            }}
+          >
+            <ArrowUp size={20} />
+          </button>
+          <button 
+            className="primary" 
+            style={{ borderRadius: "50%", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.5)" }}
+            onClick={() => {
+              const grid = document.querySelector('.responsive-chart-grid');
+              if (grid) grid.scrollBy({ top: (window.innerHeight * 0.4), behavior: 'smooth' });
+            }}
+          >
+            <ArrowDown size={20} />
+          </button>
         </div>
       )}
     </div>

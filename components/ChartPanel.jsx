@@ -592,13 +592,12 @@ export default function ChartPanel({
 
       {hoverBtn && !loading && !dragHandle && (
         <button
-          className="primary"
+          className="primary alert-add-btn"
           onMouseEnter={() => setIsHoveringBtn(true)}
           onMouseLeave={() => setIsHoveringBtn(false)}
           style={{
             position: "absolute", right: 65, top: hoverBtn.y, transform: "translateY(-50%)",
-            zIndex: 20, borderRadius: "6px", padding: "4px 8px", fontSize: 13,
-            fontWeight: 700, lineHeight: 1,
+            zIndex: 20, fontWeight: 700, lineHeight: 1,
           }}
           onClick={() => onAddAlert(hoverBtn.price)}
           title="Add alert at this price"
