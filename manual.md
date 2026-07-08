@@ -81,8 +81,9 @@ If you just run `npm run start`, the server will shut down as soon as you close 
 # 1. Install PM2 globally on the Windows server
 npm install -g pm2
 
-# 2. Start the TradeSpace backend via PM2
-pm2 start npm --name "tradespace" -- run start
+# 2. Start the TradeSpace backend directly via the Next.js binary
+# (Bypassing npm fixes the "Script not found: run" error on Windows)
+pm2 start node_modules/next/dist/bin/next --name "tradespace" -- start
 
 # 3. Tell PM2 to save the current process list so it restarts if the server reboots
 pm2 save
@@ -108,14 +109,26 @@ By default, Windows blocks incoming connections. To view your TradeSpace dashboa
 
 ---
 
-## 7. Success!
+## 7. How to Update Code (Pulling New Changes)
+
+Whenever you make changes to the code on your local computer and push them to GitHub, you need to pull those changes onto your RDP server, rebuild the app, and restart it. 
+
+Open **Command Prompt** on your RDP, go to the project folder (`cd C:\Users\Administrator\Desktop\TradeSpace` or wherever you saved it), and run these commands in order:
+
+```bash
+# 1. Pull the newest code from GitHub
+git pull
+
+# 2. Rebuild the optimized app with the new code
+npm run build
+
+# 3. Restart the background process to apply the changes
+pm2 restart tradespace
+```
+
+---
+
+## 8. Success!
 
 You can now open a browser on your local laptop or mobile phone and navigate to:
 `http://<YOUR_RDP_PUBLIC_IP>:3000`
-
-Whenever you push new code changes from your local PC to GitHub, simply log into the RDP, open a command prompt in the project folder, and run:
-```bash
-git pull
-npm run build
-pm2 restart tradespace
-```
