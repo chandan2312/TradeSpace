@@ -20,11 +20,14 @@ export default function TopBar({
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const layoutMenuRef = useRef(null);
+  const mobileLayoutMenuRef = useRef(null);
 
   useEffect(() => {
     if (!showLayoutMenu) return;
     const handleClick = (e) => {
-      if (layoutMenuRef.current && !layoutMenuRef.current.contains(e.target)) {
+      const clickedDesktop = layoutMenuRef.current && layoutMenuRef.current.contains(e.target);
+      const clickedMobile = mobileLayoutMenuRef.current && mobileLayoutMenuRef.current.contains(e.target);
+      if (!clickedDesktop && !clickedMobile) {
         setShowLayoutMenu(false);
       }
     };
@@ -206,7 +209,7 @@ export default function TopBar({
           </div>
 
           {showLayoutMenu && (
-            <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div ref={mobileLayoutMenuRef} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 <button className={layout === "1" ? "primary" : "ghost"} onClick={() => { setLayout("1"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>1</button>
                 <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => { setLayout("2v"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2v</button>
