@@ -185,6 +185,13 @@ input::placeholder { color: var(--muted); }
 }
 
 @media (max-width: 768px) {
+  .tf-container {
+    gap: 2px !important;
+  }
+  .tf-btn {
+    padding: 3px 5px !important;
+    font-size: 11px !important;
+  }
   .alert-add-btn {
     padding: 2px 4px !important;
     font-size: 10px !important;

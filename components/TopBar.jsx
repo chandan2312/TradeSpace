@@ -49,12 +49,12 @@ export default function TopBar({
         <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
       </button>
 
-      <div style={{ display: "flex", gap: 4 }}>
+      <div className="tf-container" style={{ display: "flex", gap: 4 }}>
         {TFS.map((t) => (
           <button
             key={t}
             onClick={() => setTf(t)}
-            className={tf === t ? "primary" : "ghost"}
+            className={`tf-btn ${tf === t ? "primary" : "ghost"}`}
             style={{ padding: "4px 9px", fontSize: 12 }}
           >
             {TF_LABEL[t]}
