@@ -38,7 +38,7 @@ export default function TopBar({
     <header style={{
       display: "flex", alignItems: "center", gap: 12, padding: "8px 14px",
       background: "var(--panel)", borderBottom: "1px solid var(--border)",
-      flexWrap: "wrap"
+      flexWrap: "wrap", position: "relative"
     }}>
       <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
         Trade<span style={{ color: "var(--accent)" }}>Space</span>
