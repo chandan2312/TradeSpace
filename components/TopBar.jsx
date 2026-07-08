@@ -208,10 +208,12 @@ export default function TopBar({
           {showLayoutMenu && (
             <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                <button className={layout === "1" ? "primary" : "ghost"} onClick={() => setLayout("1")} style={{padding: "2px 6px"}}>1</button>
-                <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => setLayout("2v")} style={{padding: "2px 6px"}}>2v</button>
-                <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => setLayout("2h")} style={{padding: "2px 6px"}}>2h</button>
-                <button className={layout === "4" ? "primary" : "ghost"} onClick={() => setLayout("4")} style={{padding: "2px 6px"}}>4</button>
+                <button className={layout === "1" ? "primary" : "ghost"} onClick={() => { setLayout("1"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>1</button>
+                <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => { setLayout("2v"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2v</button>
+                <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => { setLayout("2h"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2h</button>
+                <button className={layout === "4" ? "primary" : "ghost"} onClick={() => { setLayout("4"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>4</button>
+                <button className={layout === "6" ? "primary" : "ghost"} onClick={() => { setLayout("6"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>6</button>
+                <button className={layout === "8" ? "primary" : "ghost"} onClick={() => { setLayout("8"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>8</button>
               </div>
             </div>
           )}
