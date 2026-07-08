@@ -431,14 +431,24 @@ export default function Dashboard() {
 
   const handleNavUp = () => {
     const idx = panes.findIndex(p => p.id === activePaneId);
-    if (idx > 0) setActivePaneId(panes[idx - 1].id);
-    window.scrollBy({ top: -(window.innerHeight * 0.4), behavior: 'smooth' });
+    if (idx > 0) {
+      const nextId = panes[idx - 1].id;
+      setActivePaneId(nextId);
+      setTimeout(() => {
+        document.getElementById(`pane-${nextId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 10);
+    }
   };
 
   const handleNavDown = () => {
     const idx = panes.findIndex(p => p.id === activePaneId);
-    if (idx < panes.length - 1) setActivePaneId(panes[idx + 1].id);
-    window.scrollBy({ top: (window.innerHeight * 0.4), behavior: 'smooth' });
+    if (idx < panes.length - 1) {
+      const nextId = panes[idx + 1].id;
+      setActivePaneId(nextId);
+      setTimeout(() => {
+        document.getElementById(`pane-${nextId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 10);
+    }
   };
 
   const toggleFullscreen = (id) => {
@@ -799,6 +809,7 @@ export default function Dashboard() {
                 const catBias = biasData?.categories?.find((c) => c.members.includes(pane.symbol));
                 return (
                   <div 
+                    id={`pane-${pane.id}`}
                     key={pane.id} 
                     onClick={() => setActivePaneId(pane.id)}
                     onDoubleClick={() => toggleFullscreen(pane.id)}

@@ -228,7 +228,7 @@ input::placeholder { color: var(--muted); }
   }
 
   .topbar-header {
-    position: static !important;
+    position: relative !important;
     padding: 6px 8px !important;
     gap: 6px !important;
     flex: none !important;
