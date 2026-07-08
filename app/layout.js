@@ -3,6 +3,9 @@ import "./globals.css";
 export const metadata = {
   title: "TradeSpace",
   description: "MT5 live charts with TradingView-style alerts → Telegram",
+  manifest: "/manifest.json",
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  appleWebApp: { capable: true, title: "TradeSpace", statusBarStyle: "black-translucent" },
 };
 
 export const viewport = {
