@@ -249,14 +249,14 @@ input::placeholder { color: var(--muted); }
   }
 
   .responsive-chart-grid.single-chart > div {
-    min-height: calc(100vh - 50px) !important;
-    height: calc(100vh - 50px) !important;
+    min-height: calc(100dvh - 185px) !important;
+    height: calc(100dvh - 185px) !important;
     flex: 1 !important;
   }
 
   .drawing-toolbar {
     position: fixed !important;
-    bottom: 95px !important;
+    bottom: 92px !important;
     left: 0 !important;
     z-index: 101 !important;
     top: auto !important;
@@ -280,7 +280,7 @@ input::placeholder { color: var(--muted); }
 
   .layout-row {
     flex-direction: column;
-    padding-bottom: 135px !important;
+    padding-bottom: 132px !important;
   }
 
   .sidebar {
