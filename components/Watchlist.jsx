@@ -57,10 +57,15 @@ export default function Watchlist({
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* Tabs row */}
+      {/* Tabs and mobile action buttons row */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 4, padding: "6px 8px",
-        borderBottom: "1px solid var(--border)", overflowX: "auto",
+        display: "flex", alignItems: "center",
+        borderBottom: "1px solid var(--border)",
       }}>
+        <div style={{
+          flex: 1, display: "flex", alignItems: "center", gap: 4, padding: "6px 8px",
+          overflowX: "auto", minWidth: 0
+        }}>
         {watchlists.map((w) => (
           editing === w._id ? (
             <NameEditor
@@ -99,8 +104,10 @@ export default function Watchlist({
           <button className="ghost" onClick={startCreate} title="New watchlist" style={{ padding: "3px 7px" }}>＋</button>
         )}
 
-        {/* Mobile-only action buttons pulled into tabs row */}
-        <div className="hide-desktop" style={{ marginLeft: "auto", display: "flex", gap: 4, paddingLeft: 8 }}>
+        </div>
+
+        {/* Mobile-only action buttons pinned to the right */}
+        <div className="hide-desktop" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "var(--panel)" }}>
           {onNavUp && (
             <>
               <button 
