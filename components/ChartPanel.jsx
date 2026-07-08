@@ -212,7 +212,6 @@ export default function ChartPanel({
           text: `${symbol} ${tf}`,
         },
         autoSize: true,
-        handleScroll: { vertTouchDrag: false },
       });
       const series = chart.addCandlestickSeries({
         upColor: settings.upColor, 
