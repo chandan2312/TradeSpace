@@ -47,7 +47,7 @@ export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onRea
             Alerts
           </div>
           {onCloseMobile && (
-            <button className="hide-desktop ghost" onClick={onCloseMobile} style={{ padding: "4px" }}><X size={14} /></button>
+            <button className="ghost" onClick={onCloseMobile} style={{ padding: "4px" }}><X size={14} /></button>
           )}
         </div>
         <div style={{ display: "flex", gap: 2 }}>

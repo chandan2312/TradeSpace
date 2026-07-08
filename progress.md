@@ -20,6 +20,74 @@
 
 ## Log
 
+### 2026-07-08 — M1/M5 removed from the bias engine (user call: they added chaos)
+- `data.js` SPEC back to 4 TFs (D1/H4/H1/M15) — less bridge load per symbol.
+- Playbook is now **sweep → M15 displaced MSS** (`playbook.js` rewritten): sweep fresh ≤12 M15 bars, MSS ≤16 bars after it, `mssTf` always "M15", `mssAgeMin` = age×15. Volume grading unchanged.
+- Engine: `intraday` IS frames.M15 (no M5 fallback chain), header/comments updated; route no-data check drops M5; panel badge title says M15; notify freshness window 20→45 min (≤3 M15 bars).
+- Test scenario rebuilt on 900s bars (60 prior-day + 40 today), M1 frame deleted.
+
+### 2026-07-08 — Bias v5: volume + volume profile (`lib/bias/volume.js`), RCA hardening
+- **RCA headline: the engine was volume-blind** — the bridge sends `tick_volume` but data.js dropped it. Now ingested as `v` (fail-soft: no volume → engine behaves exactly like v4).
+- **`volume.js`**: price-binned `volumeProfile` (POC, VAH/VAL 70% value area, HVN ≥1.3×mean, LVN ≤0.6×mean, max 3 each) over **smart ranges** — prior completed day (fixed reference), today (developing), and the current *dealing range* anchored at the last displaced MSS. Plus `volRatio` (bar vs 60-bar mean) and `relParticipation` (5/60 vol SMA).
+- **8th lens "Volume"** (base 0.9; fitness rises with participation): acceptance above/below prior value (w5), rotation-to-POC magnet inside value (w4), developing-POC draw (w3), HVN shelf/ceiling within 2×avg (w4), LVN void on the path to the active liquidity draw (w3).
+- **Volume now VETS existing signals**: sweeps ≥1.8× vol → ×1.25 "climactic" / ≤0.7× → ×0.75 thin; MSS structure drives ≥1.5× → ×1.15 / ≤0.6× → ×0.85; low-volume "broken & holding" → ×0.7 trap-risk (RCA #3); QML neck-break ≥1.5× → ×1.15. **Playbook setups** carry `volRatio` (max of confirming TFs): ≥1.8 upgrades grade to A, <0.6 downgrades to B — shown in the panel note + Telegram.
+- **New dampener**: dead tape (participation <55% of normal) −15%.
+- **Dedup (RCA #4)**: engine's `fvgStack()` deleted — gap imbalance now counted from zones.js `fvgZones()` open zones (single lifecycle source).
+- Test extended: profile sanity (val≤poc≤vah), climactic sweep annotation, setup volume-vetting, 8-lens payload, and no-volume graceful degradation.
+
+### 2026-07-08 — Group confirmation v2: per-currency FX bias + asymmetric index groups
+- **FX rethought at the currency level.** A EURUSD short is confirmed when **EUR reads weak AND USD reads strong**, each currency scored across a fixed 14-pair basket (majors + EUR/GBP/JPY crosses + CADJPY/NZDJPY) — mean leg direction, directional only on a ≥50% majority. Correlated currency (EUR↔GBP, AUD↔NZD only) must not contradict. Legs use full bias scores when watched, else on-demand cached M15 structure reads (`getBars` now exported from data.js).
+- **Indices per user spec**: US30 **standalone** (never gated, auto-confirms); NAS100→[US500, GER40]; US500→[NAS100, GER40]; GER40→[UK100, FR40, NAS100, US500]. Alias matching (NDX100/USTEC=NAS100, SPX500/SP500=US500, GER30/DE40/DAX=GER40, CAC40=FR40, FTSE=UK100) so broker naming differences don't break lookups.
+- Basket/partner bars fetched lazily inside `confirmSetups` (only when a setup exists, parallel, fail-soft) — route prefetch reverted to SMT-only. confirmSetups is now async.
+
+### 2026-07-08 — Group confirmation for setups (`lib/bias/group.js`)
+- **A setup only fires when its group agrees.** Signed partner map per symbol (EURUSD → GBPUSD +, USDCHF −, USDJPY −; AUD↔NZD, USDCAD −; US30/NAS100/US500 mutual; GER40/UK100; XAU↔XAG; BTC↔ETH). Each partner read from its full bias score when on the watchlist (±10 dead zone), else fetched and read from M15 structure with the fresh-MSS override.
+- **Rule**: confirmed = no partner actively contradicts AND ≥1 actively aligns. Neutral partners don't block; zero checkable partners → not blocked (fail-open).
+- **Held setups**: `setup.group.confirmed=false` → phase demoted to reversal-watch, Telegram suppressed; an active contradiction also adds a "group not aligned" −20% dampener. `confirmSetups()` runs in the route BEFORE `aggregate()` so the dampener participates in final scoring.
+- **Route** now prefetches group partners alongside SMT partners (cap 4→6 extra symbols). Telegram message gains a `group: GBPUSD ✓ · USDCHF ✓` line.
+- **Panel**: held setups show a dimmed `⚡… ↑/↓` badge with the hold reason in the tooltip; expanded view (and fullscreen cards) get a "Group check" chip row — each partner green ✓ / red ✗ / muted –, tooltip shows correlation sign and read source.
+- bias-v4-test.mjs extended: confirm / contradict / all-neutral / no-partners cases.
+
+### 2026-07-08 — Bias v4: 7-lens ensemble + playbook setup detection
+- **Lens set fanned out** from trend/reversal/flow to **7 concept lenses** (`lenses.js` LENSES registry, each with base weight + regime fitness): Structure 1.0 (ER-driven), Liquidity 1.0 (live pools in play), Reversal 1.1 (reversal-push freshness — playbook priority), FVG 0.8 (ER-driven), Order Blocks 0.85 (0.9 when price is at a zone), S/R 0.9 (inverse ER — ranges trust levels), Flow 0.7 (group corroboration). Vote/agreement/stability machinery unchanged; every drive retagged concept-true (sweeps/draws→liquidity, strong levels/PD/SR-flips→sr, FVG stack→fvg, etc).
+- **New detectors** `lib/bias/zones.js`: order blocks (last opposite candle before a ≥1.2×avg displacement through a confirmed pivot; killed by close through the far side, `tapped` tracked) on H1+M15 — price at an unmitigated OB w≤8, fresh OB w5; headless FVG lifecycle (open→inverted→reclaimed) — fresh iFVG flip w≤7, nearest open gap in the pullback path w4.
+- **Playbook signature** `lib/bias/playbook.js` (the user's exact trade): intraday pool swept (age ≤36 M5 bars) → **displaced MSS on M1 and/or M5 after the sweep** (event-stream scan, so continuation BOS after the MSS keeps it valid; any opposite event negates). Grade A when both TFs confirm or the pool is PDH/PDL/PWH/PWL/EQH/EQL. Fires the largest drive in the engine (w18, ×1.15 A), phase → **"setup"** (protected from the chop overwrite in `aggregate()`), `setup` object in the API payload. `structure.js` now also returns the full `events` array.
+- **M1 frames** added to `data.js` (240 bars, 30s TTL) — consumed only by the playbook detector, not by standing structure.
+- **Telegram** `lib/bias/notify.js`: one-time ⚡ ping (symbol, direction, pool, MSS TF+age, bias/confidence) when a setup is ≤20min fresh; deduped per symbol/dir/pool/day like the AMD auto-alerts; wired fail-soft into `/api/bias`. Only fires while a client is polling the panel (same limitation as AMD alerts).
+- **Panel**: lens diagram renders dynamically from server labels (7 rows), ⚡ phase badge with setup detail tooltip (pool, ages, grade, direction arrow), per-factor lens tag chips.
+- **Fullscreen popup**: ⛶ button in the panel header opens a 95vw/90vh modal — risk gauge + category chips + currency strength across the top, then every watchlist symbol as a card in an auto-fill grid with the FULL breakdown (lens vote, pillars, TF structure, factors, dampeners) always expanded. Esc / backdrop / ✕ closes; clicking a symbol jumps the chart and closes.
+- **Not yet runtime-verified** — a Claude-side permission-classifier outage blocked ALL command execution this session (`node`, `npm run build`). A synthetic engine test was left at `bias-v4-test.mjs` (project root): run `node bias-v4-test.mjs && npm run build`, fix anything it flags, then delete it.
+
+### 2026-07-08 — Bias v3: lens ensemble + stability stress-test (`lib/bias/lenses.js`)
+- **Lens vote replaces the single weighted sum.** Every drive is tagged trend / reversal / flow; three lens scores are combined by a regime-weighted vote: trend fitness from the H1 efficiency ratio (expansion), reversal fitness from reversal-push freshness (post-sweep), flow fitness from how many group signals corroborate. Base lens weights 1.0/1.0/0.8.
+- **Disagreement is output**: agreement % = share of fitness×magnitude mass pointing with the verdict; <70% = contested; contested + reversal lens ≥25 against trend → phase "reversal-watch". <60% agreement is also a −20% dampener.
+- **Stability**: 200 seeded trials jittering every drive weight ±30%; % of trials where the bias sign survives. <60% → "fragile verdict" dampener (−15%). Deterministic PRNG (mulberry32) so numbers are reproducible.
+- **Premium/discount re-added** (it was accidentally dropped in the v2 rewrite) as a reversal-lens drive, w≤9.
+- Panel: expanded view now shows the lens vote diagram (three centered bars, fitness-scaled opacity, f-values) with agreement % and stability % in the header.
+
+### 2026-07-08 — Reversal-anatomy detectors (`lib/bias/reversals.js`)
+- **Sweep-rejection wick**: range ≥1.3×avg, wick ≥55% of range, body ≥22%, close in the far third; grade A when the wick actually ran a prior swing (checked vs pivots). D1 w10 / H4 w8 / M15 w7, feeds reversalPush + triggerSum.
+- **V-reversal**: leg ≥2.2×avg into a pivot, ≥70% recovered within 10 bars; freshness measured from the recovery bar, grade A at ≥3.5×avg legs.
+- **Grind → displacement**: 10-bar retracement drift with mean body <0.55×avg and no impulse inside, broken by a candle ≥1.5×avg whose body is ≥2.5× the grind's mean → continuation trigger.
+- **Standing strong lows/highs**: every unviolated D1/H4 reversal extreme stays on the books ("hard to break") — nearest strong low below price is persistent bullish evidence (w5/w4 × proximity), nearest strong high above is bearish; killed only by a close through it.
+
+### 2026-07-07 — Bias engine v2: pillars, dampeners, group thinking, beyond-candles
+- **Drives vs dampeners**: evidence now has a "bad" ledger. Dampeners scale the final score multiplicatively and are listed with their penalty: structure chop (−35%), high-impact news ≤2h (−40%), post-news ≤1h (−25%), mixed evidence (−15%), extended >3×range from H1 20-bar mean (−15%), off-hours (−30%), counter-liquidity near (−15%).
+- **Pillars** for the diagram: every drive tagged HTF / Intraday / Liquidity / Context; per-pillar −100..+100 sub-scores returned.
+- **New detectors**: PWH/PWL (weekly liquidity draw + weekly stop hunts), FVG imbalance stack (net unfilled M15 gaps), A+ alignment bonus (HTF bias + fresh trigger agree), SMT divergence (M15 swing disagreement vs correlated partner — partners auto-fetched: EURUSD↔GBPUSD, AUD↔NZD, US30↔NAS100↔US500, XAU↔XAG, BTC↔ETH), risk sentiment (structure read of US500+BTCUSD proxies with per-symbol risk beta: indices/crypto +1, gold −1, XXXJPY +1).
+- **Beyond candles**: `lib/bias/news.js` — ForexFactory free weekly calendar (high-impact, per-currency, 30min cache, fails soft). Symbol→currency mapping incl. DAX→EUR, FTSE→GBP etc.
+- **Group pass in aggregate()**: category feedback (unchanged), NEW currency-strength consensus (each FX pair pulled toward its group-implied read, ±6; USD read spills inversely into metals ±5), dampeners applied last so group conviction is also scaled.
+- **Panel diagrams**: risk-on/off semicircle gauge (SVG needle), currency-strength centered-bar grid, per-symbol pillar bar diagram in the expanded view, ⚠ news badge on rows, dampener list in orange with −% penalties.
+
+### 2026-07-07 — Bias engine (narrative-based, anti-lag)
+- **Core** `lib/bias/`: `structure.js` (per-TF swing sequence + BOS/MSS event stream, displacement-validated), `liquidity.js` (PDH/PDL, Asia/London/NY session H/Ls, EQH/EQL builds; each level classified untapped / swept / broken; QML detector = sweep→neck-break), `engine.js` (factor scoring), `data.js` (5-TF frames D1/H4/H1/M15/M5 with per-TF TTL cache 10m→1m).
+- **Anti-lag principles** (the fix vs. the NEXUS engine): sweeps score AGAINST their direction; fresh displaced MSS overrides its TF's stale structure factor; untapped liquidity acts as a magnet (draw); premium/discount + streak exhaustion fade mature moves; all factors decay with age. Reversal override: fresh sweep/MSS/QML cluster against the HTF stack → phase "reversal-watch" and score blends toward the trigger.
+- **Weights**: D1 14 / H4 18 / H1 13 / M15 8 (structure, MSS-boosted), sweeps 12×level-mult, breaks 7, draw 6, QML 11, premium-discount ≤9, exhaustion 6. Score −100..+100, dir at ±15, confidence = agreeing-weight × data completeness.
+- **Categories**: fx/indices/metals/crypto/energy/stocks via symbol classification; category mean + alignment %, ±12% feedback into members (≥3 peers); FX **currency strength** meter derived from pair scores.
+- **API**: `GET /api/bias?symbols=` (default: watchlist union, cap 16, 60s response cache, sequential per symbol).
+- **UI**: `BiasPanel` below the Watchlist — session header, category chips, currency strength row, per-symbol rows (phase badge T/R/C, centered score bar, confidence, click → factor audit trail with weights), 90s auto-refresh, click symbol to jump chart.
+- Note: NEXUS baseline couldn't be read this session (sandbox shell/agent outage) — weights are from the user's described model; reconcile with NEXUS when tools return.
+
 ### 2026-07-07 — AMD v2 + auto-alerts
 - **Coil gate**: accumulation (00–06 broker time) must have low drift (≤0.55×range) and compression vs. the prior day's range, else the session draws nothing.
 - **Contained judas sweep**: depth-bounded (>1.3×range = real breakout → void), re-entry close inside within ~5h, **displacement** required (strong opposing body ≤6 bars after re-entry). Bonus if the sweep also ran the prior day's high/low.

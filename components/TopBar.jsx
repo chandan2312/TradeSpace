@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink } from "lucide-react";
 import IndicatorsMenu from "./IndicatorsMenu";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
@@ -9,7 +9,8 @@ const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h
 
 export default function TopBar({ 
   symbol, tf, setTf, tick, connected, onOpenPalette, onAddAlert, 
-  onOpenAlerts, activeAlertCount,
+  onOpenAlerts, activeAlertCount, onOpenMarketBias,
+  onOpenPip, isPipActive,
   layout, setLayout, syncOpts, setSyncOpts,
   watchlistOpen, setWatchlistOpen,
   savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop,
@@ -17,6 +18,18 @@ export default function TopBar({
 }) {
   const digits = tick?.digits ?? 5;
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const layoutMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!showLayoutMenu) return;
+    const handleClick = (e) => {
+      if (layoutMenuRef.current && !layoutMenuRef.current.contains(e.target)) {
+        setShowLayoutMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showLayoutMenu]);
   
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -59,8 +72,8 @@ export default function TopBar({
         </button>
 
         {showLayoutMenu && (
-          <div style={{
-            position: "absolute", top: "100%", left: 12, marginTop: 4, zIndex: 100,
+          <div ref={layoutMenuRef} style={{
+            position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 100,
             background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6,
             boxShadow: "0 4px 12px rgba(0,0,0,0.5)", padding: 12, width: 220,
             display: "flex", flexDirection: "column", gap: 12
@@ -97,9 +110,9 @@ export default function TopBar({
                   }} 
                   style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "4px", borderRadius: 4, fontSize: 12, outline: "none", cursor: "pointer", flex: 1, marginRight: 8 }}
                 >
-                  <option value="" style={{color: "#000"}}>Load template...</option>
+                  <option value="">Load template...</option>
                   {savedLayouts && savedLayouts.map(l => (
-                    <option key={l._id} value={l._id} style={{color: "#000"}}>{l.name}</option>
+                    <option key={l._id} value={l._id}>{l.name}</option>
                   ))}
                 </select>
                 <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); }} title="Save Layout" style={{padding: "4px", display: "flex", alignItems: "center"}}><Save size={14} /></button>
@@ -117,6 +130,19 @@ export default function TopBar({
       <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
 
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+        <button className="ghost" onClick={onOpenMarketBias} title="Master Bias" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
+          <Activity size={14} /> <span className="hide-mobile">Market Bias</span>
+        </button>
+        {layout === "1" && (
+          <button 
+            className="ghost" 
+            onClick={onOpenPip} 
+            title="Pop out chart to floating window (PiP)" 
+            style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, color: isPipActive ? "var(--brand)" : "inherit" }}
+          >
+            <ExternalLink size={14} /> <span className="hide-mobile">{isPipActive ? "Floating" : "Pop Out"}</span>
+          </button>
+        )}
         <button className="ghost" onClick={onOpenAlerts} title="View alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
           <Bell size={14} /> Alerts
         </button>

@@ -35,8 +35,27 @@ export default function Watchlist({
     setName("");
   };
 
+  const [dailyOpens, setDailyOpens] = useState({});
+  useEffect(() => {
+    const syms = list?.symbols || [];
+    syms.forEach((sym) => {
+      if (dailyOpens[sym] || dailyOpens[sym] === "loading") return;
+      setDailyOpens((prev) => ({ ...prev, [sym]: "loading" }));
+      fetch(`/api/rates?symbol=${sym}&tf=D1&count=1`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.ok && data.bars?.length > 0) {
+            setDailyOpens((prev) => ({ ...prev, [sym]: data.bars[0].o }));
+          } else {
+            setDailyOpens((prev) => ({ ...prev, [sym]: null }));
+          }
+        })
+        .catch(() => setDailyOpens((prev) => ({ ...prev, [sym]: null })));
+    });
+  }, [list?.symbols]);
+
   return (
-    <div style={{ flex: "0 0 auto", maxHeight: "52%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* Tabs row */}
       <div style={{
         display: "flex", alignItems: "center", gap: 4, padding: "6px 8px",
@@ -128,6 +147,7 @@ export default function Watchlist({
             key={sym + i}
             sym={sym}
             tick={ticks[sym]}
+            dailyOpen={typeof dailyOpens[sym] === "number" ? dailyOpens[sym] : null}
             current={sym === symbol}
             hasAlert={activeAlertSymbols.has(sym)}
             onJump={() => setSymbol(sym)}
@@ -176,11 +196,22 @@ async function reorder(list, fromSym, toSym) {
 }
 
 function WatchRow({
-  sym, tick, current, hasAlert, onJump, onRemove,
+  sym, tick, dailyOpen, current, hasAlert, onJump, onRemove,
   dragging, dropTarget, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
   flag, onFlag
 }) {
   const [showPalette, setShowPalette] = useState(false);
+  const paletteRef = useRef(null);
+
+  useEffect(() => {
+    if (!showPalette) return;
+    const close = (e) => {
+      if (!paletteRef.current?.contains(e.target)) setShowPalette(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [showPalette]);
+
   const digits = tick?.digits ?? 5;
   const bid = tick?.bid;
   const spreadPips = tick?.bid && tick?.ask ? (tick.ask - tick.bid) * Math.pow(10, digits === 3 || digits === 5 ? digits - 1 : 0) : null;
@@ -208,7 +239,7 @@ function WatchRow({
       <div className="wl-row-drag muted" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={14} /></div>
       
       {/* Flag */}
-      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+      <div ref={paletteRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
         <button 
           className="ghost" 
           onClick={(e) => { e.stopPropagation(); setShowPalette(!showPalette); }}
@@ -241,16 +272,11 @@ function WatchRow({
         )}
       </div>
 
-      {bid != null ? (
-        <div className="num" style={{ textAlign: "right", fontSize: 12, fontWeight: 600 }}>
-          <div className={dir > 0 ? "up" : dir < 0 ? "down" : ""}>
-            {Number(bid).toFixed(digits)}
+      {bid != null && dailyOpen != null ? (
+        <div className="num" style={{ textAlign: "right", fontSize: 13, fontWeight: 700 }}>
+          <div className={bid > dailyOpen ? "up" : bid < dailyOpen ? "down" : ""}>
+            {bid > dailyOpen ? "+" : ""}{(((bid - dailyOpen) / dailyOpen) * 100).toFixed(2)}%
           </div>
-          {tick?.ask && (
-            <div className="muted wl-row-price-sub" style={{ fontSize: 10, fontWeight: 400 }}>
-              {Number(tick.ask).toFixed(digits)}
-            </div>
-          )}
         </div>
       ) : (
         <div className="muted" style={{ fontSize: 11 }}>—</div>

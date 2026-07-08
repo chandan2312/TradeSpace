@@ -3,33 +3,117 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PatternsPrimitive } from "../lib/patterns/primitive.js";
 import { runPatterns } from "../lib/patterns/index.js";
+import { DrawingsPrimitive } from "../lib/draw/primitive.js";
+import { useDrawings } from "../lib/draw/useDrawings.js";
+import { useChartSettings } from "../lib/chartSettings.js";
+import { Loader2 } from "lucide-react";
+import DrawingToolbar from "./DrawingToolbar.jsx";
+import DrawingContextMenu from "./DrawingContextMenu.jsx";
+import DrawingSettings from "./DrawingSettings.jsx";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
-function lineOpts(price, condition, status) {
-  const isTriggered = status === "triggered";
-  return {
-    price,
-    color: isTriggered ? "rgba(239, 83, 80, 0.5)" : "rgba(255, 152, 0, 0.5)",
-    lineWidth: 1,
-    lineStyle: 2, // dashed
-    axisLabelVisible: false,
-    title: `🔔 ${condition}`,
-  };
+class AlertsPrimitive {
+  constructor() {
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = null;
+    this._alerts = [];
+    this._dragging = null;
+    this._bars = [];
+    this._paneView = { renderer: () => ({ draw: (target) => this._draw(target) }), zOrder: () => "top" };
+  }
+  attached({ chart, series, requestUpdate }) {
+    this._chart = chart; this._series = series; this._requestUpdate = requestUpdate;
+  }
+  detached() { this._chart = null; this._series = null; this._requestUpdate = null; }
+  updateAllViews() {}
+  paneViews() { return [this._paneView]; }
+
+  update(alerts, dragging, bars) {
+    this._alerts = alerts || [];
+    this._dragging = dragging;
+    this._bars = bars || [];
+    this._requestUpdate?.();
+  }
+
+  _draw(target) {
+    const chart = this._chart;
+    const series = this._series;
+    const bars = this._bars;
+    if (!chart || !series || !bars.length) return;
+
+    target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+      const ts = chart.timeScale();
+      const X = (i) => ts.logicalToCoordinate(i);
+      const Y = (p) => series.priceToCoordinate(p);
+      const W = mediaSize.width;
+
+      const drawRay = (price, condition, isTriggered) => {
+        let found = false;
+        let startIdx = 0;
+        for (let i = bars.length - 1; i >= 0; i--) {
+          const b = bars[i];
+          if (b.low <= price && b.high >= price) {
+            startIdx = i;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          startIdx = Math.max(0, bars.length - 1 - 25);
+        }
+        
+        const x1 = X(startIdx);
+        const y1 = Y(price);
+        if (x1 == null || y1 == null) return;
+        
+        const color = isTriggered ? "rgba(239, 83, 80, 0.75)" : "rgba(255, 152, 0, 0.75)";
+        
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(Math.max(x1, 0), y1);
+        ctx.lineTo(W, y1);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        ctx.save();
+        // position the 12x12 bell right above the line, near the right edge
+        ctx.translate(W - 16, y1 - 14);
+        ctx.scale(0.5, 0.5);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3; // 1.5px visual
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        const bell = new Path2D("M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0");
+        ctx.stroke(bell);
+        ctx.restore();
+      };
+
+      for (const a of this._alerts) {
+        const livePrice = this._dragging?.id === a._id ? this._dragging.price : a.price;
+        drawRay(livePrice, a.condition, a.status === "triggered");
+      }
+    });
+  }
 }
 
 export default function ChartPanel({
   symbol, tf, tick, alerts, barsCache, onAddAlert, onDeleteAlert, onMoveAlert, onRearmAlert, indicators, onAutoAlert,
-  syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair
+  syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
+  isActive = true, onOpenSettings
 }) {
   const wrapRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const lastBarRef = useRef(null);
   const patternsRef = useRef(null);  // PatternsPrimitive attached to the series
+  const alertsPrimRef = useRef(null); // AlertsPrimitive
+  const drawPrimRef = useRef(null);   // DrawingsPrimitive (user drawing tools)
   const barsRef = useRef([]);        // full bar array the detectors run on
   const [dataVersion, setDataVersion] = useState(0); // bumped on load + bar close
-  const priceLinesRef = useRef([]);            // array of {id, line}
   const hoverPriceRef = useRef(null);
   const [barsDigits, setBarsDigits] = useState(null);
   // broker-reported digits (live tick) win; decimals seen in the bars are the fallback
@@ -50,6 +134,50 @@ export default function ChartPanel({
   const alertsRef = useRef(alerts);
   useEffect(() => { alertsRef.current = alerts; }, [alerts]);
 
+  // ---------- drawing tools ----------
+  const draw = useDrawings({ chartRef, seriesRef, wrapRef, symbol, tf, barsRef, isActive, primRef: drawPrimRef });
+
+  // ---------- global settings ----------
+  const [settings] = useChartSettings();
+
+  // Apply settings whenever they change
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+
+    chart.applyOptions({
+      layout: { 
+        background: settings.bgType === "Solid" 
+          ? { type: "solid", color: settings.bgColor } 
+          : { type: "gradient", topColor: settings.bgGradientTop, bottomColor: settings.bgGradientBottom },
+        textColor: settings.textColor,
+        fontSize: 10,
+      },
+      grid: { 
+        vertLines: { color: settings.gridVertColor }, 
+        horzLines: { color: settings.gridHorzColor } 
+      },
+      watermark: {
+        visible: settings.watermark,
+        color: settings.watermarkColor,
+        text: `${symbol} ${tf}`
+      },
+      timeScale: { borderColor: settings.linesColor },
+      rightPriceScale: { borderColor: settings.linesColor },
+    });
+
+    series.applyOptions({
+      upColor: settings.upColor,
+      downColor: settings.downColor,
+      wickUpColor: settings.wickUpColor,
+      wickDownColor: settings.wickDownColor,
+      borderUpColor: settings.borderUpColor,
+      borderDownColor: settings.borderDownColor,
+      borderVisible: settings.borderVisible,
+    });
+  }, [settings, symbol, tf]);
+
   // ---------- create chart once ----------
   useEffect(() => {
     let disposed = false;
@@ -57,29 +185,52 @@ export default function ChartPanel({
       const { createChart, CrosshairMode } = await import("lightweight-charts");
       if (disposed || !wrapRef.current) return;
       const chart = createChart(wrapRef.current, {
-        layout: { background: { color: "#0e1116" }, textColor: "#d7dce6" },
-        grid: { vertLines: { color: "#151a23" }, horzLines: { color: "#151a23" } },
+        layout: { 
+          background: settings.bgType === "Solid" 
+            ? { type: "solid", color: settings.bgColor } 
+            : { type: "gradient", topColor: settings.bgGradientTop, bottomColor: settings.bgGradientBottom },
+          textColor: settings.textColor,
+          fontSize: 10,
+        },
+        grid: { 
+          vertLines: { color: settings.gridVertColor }, 
+          horzLines: { color: settings.gridHorzColor } 
+        },
         crosshair: { mode: CrosshairMode.Normal },
-        timeScale: { rightOffset: 12, timeVisible: true, secondsVisible: false, borderColor: "#232a38" },
-        rightPriceScale: { borderColor: "#232a38" },
+        timeScale: { rightOffset: 12, timeVisible: true, secondsVisible: false, borderColor: settings.linesColor },
+        rightPriceScale: { borderColor: settings.linesColor },
         watermark: {
-          visible: true,
+          visible: settings.watermark,
           fontSize: 64,
           horzAlign: 'center',
           vertAlign: 'center',
-          color: 'rgba(255, 255, 255, 0.04)',
+          color: settings.watermarkColor,
           text: `${symbol} ${tf}`,
         },
         autoSize: true,
       });
       const series = chart.addCandlestickSeries({
-        upColor: "#26a69a", downColor: "#ef5350",
-        wickUpColor: "#26a69a", wickDownColor: "#ef5350",
-        borderVisible: false,
+        upColor: settings.upColor, 
+        downColor: settings.downColor,
+        wickUpColor: settings.wickUpColor, 
+        wickDownColor: settings.wickDownColor,
+        borderUpColor: settings.borderUpColor,
+        borderDownColor: settings.borderDownColor,
+        borderVisible: settings.borderVisible,
       });
+      
       const patterns = new PatternsPrimitive();
       series.attachPrimitive(patterns);
       patternsRef.current = patterns;
+      
+      const alertsPrim = new AlertsPrimitive();
+      series.attachPrimitive(alertsPrim);
+      alertsPrimRef.current = alertsPrim;
+
+      const drawPrim = new DrawingsPrimitive();
+      series.attachPrimitive(drawPrim);
+      drawPrimRef.current = drawPrim;
+
       chartRef.current = chart;
       seriesRef.current = series;
     })();
@@ -139,7 +290,10 @@ export default function ChartPanel({
       // wait for the chart to exist (first mount races the dynamic import)
       for (let i = 0; i < 100 && !seriesRef.current; i++) await new Promise((r) => setTimeout(r, 50));
       try {
-        const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=600`, { cache: "no-store" });
+        let count = 600;
+        if (["M1", "M5", "M15"].includes(tf)) count = 1200;
+        else if (["H1", "H4", "D1"].includes(tf)) count = 900;
+        const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=${count}`, { cache: "no-store" });
         const data = await res.json();
         if (cancelled) return;
         if (!data.ok || !data.bars?.length) {
@@ -190,7 +344,8 @@ export default function ChartPanel({
     } else if (barsRef.current.length) {
       barsRef.current[barsRef.current.length - 1] = nextBar;
     }
-  }, [tick, symbol, tf]);
+    if (draw.pushPrimitive) draw.pushPrimitive();
+  }, [tick, symbol, tf, draw]);
 
   // ---------- pattern indicators ----------
   useEffect(() => {
@@ -207,35 +362,10 @@ export default function ChartPanel({
     if (onAutoAlert) for (const s of autoAlerts) onAutoAlert({ ...s, symbol });
   }, [dataVersion, indicators, tf, symbol, onAutoAlert]);
 
-  // ---------- alert price lines ----------
-  // Keep a {id -> line} map so a drag can update one line without rebuilding all.
+  // ---------- custom alert lines ----------
   useEffect(() => {
-    const series = seriesRef.current;
-    if (!series) return;
-    const existing = new Map(priceLinesRef.current.map((p) => [p.id, p.line]));
-    const next = [];
-
-    for (const a of alerts) {
-      // live price follows the pointer during an active drag
-      const livePrice = dragging?.id === a._id ? dragging.price : a.price;
-      let line = existing.get(a._id);
-      if (line) {
-        // reuse — but only re-create if price changed (createPriceLine has no setter)
-        // lightweight-charts has no movePriceLine, so on price change we replace.
-        // To keep this effect simple we replace whenever the price differs.
-        series.removePriceLine(line);
-        line = series.createPriceLine(lineOpts(livePrice, a.condition, a.status));
-      } else {
-        line = series.createPriceLine(lineOpts(livePrice, a.condition, a.status));
-      }
-      next.push({ id: a._id, line });
-    }
-    // drop lines for alerts that disappeared
-    for (const [id, line] of existing) {
-      if (!alerts.some((a) => a._id === id)) series.removePriceLine(line);
-    }
-    priceLinesRef.current = next;
-  }, [alerts, loading, dragging]);
+    alertsPrimRef.current?.update(alerts, dragging, barsRef.current);
+  }, [alerts, dragging, dataVersion]);
 
   // ---------- pointer tracking for "+ price" button and drag handle ----------
   // A wrapper mousemove (NOT subscribeCrosshairMove) so the button stays alive
@@ -413,22 +543,43 @@ export default function ChartPanel({
     }
   }, [syncedCrosshair, syncOpts?.crosshair, paneId]);
 
+  // Merge drawing + alert pointer handlers. Drawing handlers stopPropagation
+  // only when they actually grab a drawing/handle, so alert logic still runs
+  // when the pointer is on empty chart area.
+  const ph = draw.pointerHandlers;
+  const mergedContext = (ev) => {
+    ph.onContextMenu(ev);
+    if (ev.defaultPrevented) return; // drawing consumed it
+    onContextMenu(ev);
+  };
+
   return (
     <div
-      style={{ flex: 1, position: "relative", minWidth: 0, cursor: dragHandle ? "ns-resize" : "default" }}
-      onContextMenu={onContextMenu}
+      style={{ flex: 1, position: "relative", minWidth: 0,
+        cursor: draw.cursorFor(draw.activeTool, draw.hover) || (dragHandle ? "ns-resize" : "default") }}
+      onPointerDown={ph.onPointerDown}
+      onPointerMove={(ev) => { ph.onPointerMove(ev); }}
+      onPointerUp={ph.onPointerUp}
+      onContextMenu={mergedContext}
       onMouseMove={onMouseMove}
       onMouseLeave={() => { setHoverBtn(null); setDragHandle(null); }}
     >
       <div ref={wrapRef} style={{ position: "absolute", inset: 0 }} />
 
+      {isActive && !loading && !error && (
+        <DrawingToolbar api={draw} />
+      )}
+      {isActive && !loading && !error && (
+        <DrawingContextMenu api={draw} />
+      )}
+      {isActive && !loading && !error && (
+        <DrawingSettings api={draw} />
+      )}
+
       {loading && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
-          <div style={{ width: "70%", height: "55%", display: "flex", alignItems: "flex-end", gap: 6 }}>
-            {Array.from({ length: 32 }).map((_, i) => (
-              <div key={i} className="skeleton" style={{ flex: 1, height: `${25 + ((i * 37) % 60)}%` }} />
-            ))}
-          </div>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg)", zIndex: 10 }}>
+          <Loader2 size={36} className="spin" style={{ color: "var(--accent)", marginBottom: 12 }} />
+          <div className="muted" style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Loading {symbol} {tf}</div>
         </div>
       )}
 
@@ -520,6 +671,9 @@ export default function ChartPanel({
           background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,
           boxShadow: "0 8px 28px rgba(0,0,0,.6)", overflow: "hidden",
         }}>
+          <MenuItem onClick={() => { onOpenSettings && onOpenSettings(); setCtxMenu(null); }}>
+            ⚙️ Settings
+          </MenuItem>
           <MenuItem onClick={() => { onAddAlert(ctxMenu.price); setCtxMenu(null); }}>
             🔔 Add alert at <b className="num">{fmt(ctxMenu.price)}</b>
           </MenuItem>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 // Fast, keyboard-first symbol search across the entire broker universe.
 // Two modes: "switch" (load chart) or "add" (append to active watchlist).
@@ -92,10 +93,9 @@ export default function SymbolPalette({ mode, onClose, onPick, onAddToList }) {
 
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", minHeight: 120 }}>
           {loading && !items.length && (
-            <div style={{ padding: 14 }}>
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="skeleton" style={{ height: 30, marginBottom: 6 }} />
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: 40, gap: 12 }}>
+              <Loader2 size={28} className="spin" style={{ color: "var(--accent)" }} />
+              <div className="muted" style={{ fontSize: 12 }}>Searching...</div>
             </div>
           )}
 

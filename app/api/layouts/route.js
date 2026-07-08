@@ -18,7 +18,9 @@ export async function POST(req) {
       name: body.name,
       layoutMode: body.layoutMode,
       panes: body.panes,
+      gridFractions: body.gridFractions,
       syncOpts: body.syncOpts || { symbol: false, tf: false, time: false, crosshair: false },
+      drawings: body.drawings || "{}",
       createdAt: new Date(),
     };
     await layoutsCol.insertOne(doc);

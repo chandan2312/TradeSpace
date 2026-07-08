@@ -28,9 +28,9 @@ export default function IndicatorsMenu({ indicators, setIndicators }) {
         className={open || activeCount ? "primary" : "ghost"}
         onClick={() => setOpen(!open)}
         title="Pattern indicators"
-        style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+        style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12, flexShrink: 0 }}
       >
-        <Sparkles size={14} /> Patterns{activeCount ? ` · ${activeCount}` : ""}
+        <Sparkles size={14} /> <span className="hide-mobile">Patterns</span>{activeCount ? ` · ${activeCount}` : ""}
       </button>
 
       {open && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import TopBar from "./TopBar";
 import ChartPanel from "./ChartPanel";
 import Watchlist from "./Watchlist";
@@ -10,6 +11,10 @@ import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
 import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square } from "lucide-react";
+import BiasPanel from "./BiasPanel";
+import MiniBiasHeader from "./MiniBiasHeader";
+import ChartSettingsModal from "./ChartSettingsModal";
+import { useChartSettings } from "../lib/chartSettings";
 
 const api = async (path, opts) => {
   const res = await fetch(path, {
@@ -72,12 +77,19 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
+  const watchlistsRef = useRef(watchlists);
+  const activeListIdRef = useRef(activeListId);
+  useEffect(() => {
+    watchlistsRef.current = watchlists;
+    activeListIdRef.current = activeListId;
+  }, [watchlists, activeListId]);
   const [ticks, setTicks] = useState({}); // SYM -> {bid, ask, digits, dir}
   const [connected, setConnected] = useState(false);
   const [palette, setPalette] = useState(null); // null | "switch" | "add"
   const [alertDraft, setAlertDraft] = useState(null); // {price} | null
   const [toast, setToast] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
+  const [marketBiasOpen, setMarketBiasOpen] = useState(false);
 
   const [savedLayouts, setSavedLayouts] = useState([]);
   const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
@@ -91,35 +103,98 @@ export default function Dashboard() {
 
   const [syncedLogicalRange, setSyncedLogicalRange] = useState(null);
   const [syncedCrosshair, setSyncedCrosshair] = useState(null);
+  const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
+  const [settings] = useChartSettings();
 
   // ---------- boot: restore prefs ----------
   useEffect(() => {
-    try {
-      const p = localStorage.getItem("ts_panes");
-      if (p) {
-        const parsed = JSON.parse(p);
-        if (parsed.length) setPanes(parsed);
-      }
-      const l = localStorage.getItem("ts_layout");
-      if (l) setLayout(l);
-      const gf = localStorage.getItem("ts_grid_fractions");
-      if (gf) setGridFractions(JSON.parse(gf));
-      const s = localStorage.getItem("ts_sync");
-      if (s) setSyncOpts(JSON.parse(s));
-      const w = localStorage.getItem("ts_watchlist_open");
-      if (w) setWatchlistOpen(w === "true");
-      const f = localStorage.getItem("ts_symbol_flags");
-      if (f) setSymbolFlags(JSON.parse(f));
-      const ind = localStorage.getItem("ts_indicators");
-      if (ind) setIndicators(JSON.parse(ind));
-    } catch {}
+    const syncFromStorage = () => {
+      try {
+        const p = localStorage.getItem("ts_panes");
+        if (p) {
+          const parsed = JSON.parse(p);
+          if (parsed.length) setPanes(parsed);
+        }
+        const l = localStorage.getItem("ts_layout");
+        if (l) setLayout(l);
+        const gf = localStorage.getItem("ts_grid_fractions");
+        if (gf) setGridFractions(JSON.parse(gf));
+        const s = localStorage.getItem("ts_sync");
+        if (s) setSyncOpts(JSON.parse(s));
+        const w = localStorage.getItem("ts_watchlist_open");
+        if (w) setWatchlistOpen(w === "true");
+        const f = localStorage.getItem("ts_symbol_flags");
+        if (f) setSymbolFlags(JSON.parse(f));
+        const ind = localStorage.getItem("ts_indicators");
+        if (ind) setIndicators(JSON.parse(ind));
+        const lid = localStorage.getItem("ts_loaded_layout_id");
+        if (lid) setLoadedLayoutId(lid);
+      } catch {}
+    };
+
+    syncFromStorage();
+    window.addEventListener("storage", syncFromStorage);
 
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
+    
+    return () => window.removeEventListener("storage", syncFromStorage);
   }, []);
 
+  // ---------- App Theme Sync ----------
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.body.setAttribute("data-theme", settings.appTheme || "dark");
+    }
+  }, [settings.appTheme]);
+
   // Sync state to local storage
+  // PiP State
+  const [pipWindow, setPipWindow] = useState(null);
+
+  const openPip = async () => {
+    if (!("documentPictureInPicture" in window)) {
+      showToast("Picture-in-Picture API not supported on this browser (use Chrome/Edge 116+).");
+      return;
+    }
+    try {
+      const pip = await window.documentPictureInPicture.requestWindow({
+        width: 1000,
+        height: 700,
+      });
+
+      // Copy stylesheets
+      [...document.styleSheets].forEach((styleSheet) => {
+        try {
+          const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join('');
+          const style = document.createElement('style');
+          style.textContent = cssRules;
+          pip.document.head.appendChild(style);
+        } catch (e) {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.type = styleSheet.type;
+          link.media = styleSheet.media;
+          link.href = styleSheet.href;
+          pip.document.head.appendChild(link);
+        }
+      });
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = '/index.css';
+      pip.document.head.appendChild(link);
+
+      pip.addEventListener("pagehide", () => {
+        setPipWindow(null);
+      });
+      setPipWindow(pip);
+    } catch (err) {
+      console.error("PiP error:", err);
+      showToast("Failed to open floating window.");
+    }
+  };
+
   useEffect(() => { localStorage.setItem("ts_panes", JSON.stringify(panes)); }, [panes]);
   useEffect(() => { localStorage.setItem("ts_layout", layout); }, [layout]);
   useEffect(() => { localStorage.setItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions]);
@@ -208,9 +283,35 @@ export default function Dashboard() {
     }
   }, []);
 
+  const [loadedLayoutId, setLoadedLayoutId] = useState(null);
+
+  useEffect(() => {
+    if (loadedLayoutId) localStorage.setItem("ts_loaded_layout_id", loadedLayoutId);
+    else localStorage.removeItem("ts_loaded_layout_id");
+  }, [loadedLayoutId]);
+  const [biasData, setBiasData] = useState(null);
+  const [biasLoading, setBiasLoading] = useState(false);
+
   const loadSavedLayouts = useCallback(async () => {
     const data = await api("/api/layouts");
-    if (data.ok) setSavedLayouts(data.layouts);
+    if (data.ok) {
+      setSavedLayouts(data.layouts);
+      // ONLY load default if no recent panes were restored (e.g. fresh start)
+      if (!localStorage.getItem("ts_panes")) {
+        const defId = localStorage.getItem("ts_default_layout_id");
+        if (defId) {
+          const l = data.layouts.find((x) => x._id === defId);
+          if (l) {
+            setLayout(l.layoutMode);
+            setPanes(l.panes);
+            if (l.gridFractions) setGridFractions(l.gridFractions);
+            if (l.syncOpts) setSyncOpts(l.syncOpts);
+            setActivePaneId(l.panes[0]?.id || 1);
+            setLoadedLayoutId(defId);
+          }
+        }
+      }
+    }
   }, []);
 
   const loadChecklist = useCallback(async () => {
@@ -218,7 +319,31 @@ export default function Dashboard() {
     if (data.ok) setChecklist(data.checklist);
   }, []);
 
-  useEffect(() => { loadAlerts(); loadWatchlists(); loadSavedLayouts(); loadChecklist(); }, [loadAlerts, loadWatchlists, loadSavedLayouts, loadChecklist]);
+  // bias engine scope: active watchlist ∪ open panes
+  const biasSymbols = useMemo(() => {
+    const list = watchlists.find((w) => w._id === activeListId);
+    return [...new Set([...(list?.symbols || []), ...panes.map((p) => p.symbol)])].sort();
+  }, [watchlists, activeListId, panes]);
+
+  const loadBias = useCallback(async () => {
+    if (!biasSymbols.length) return;
+    setBiasLoading(true);
+    try {
+      const data = await api(`/api/bias?symbols=${encodeURIComponent(biasSymbols.join(","))}`);
+      if (data.ok) setBiasData(data);
+    } catch {}
+    setBiasLoading(false);
+  }, [biasSymbols.join(",")]);
+
+  useEffect(() => { 
+    loadAlerts(); loadWatchlists(); loadSavedLayouts(); loadChecklist(); 
+  }, [loadAlerts, loadWatchlists, loadSavedLayouts, loadChecklist]);
+
+  useEffect(() => {
+    loadBias();
+    const t = setInterval(loadBias, 90000);
+    return () => clearInterval(t);
+  }, [loadBias]);
 
   // ---------- websocket connect ----------
   useEffect(() => {
@@ -255,9 +380,16 @@ export default function Dashboard() {
         if (msg.type === "watchlists_changed") loadWatchlists();
         if (msg.type === "alert_triggered") {
           loadAlerts();
-          showToast(`🔔 ${msg.alert.symbol} ${msg.alert.condition} ${msg.alert.price} triggered @ ${msg.alert.triggeredPrice}`);
-          playAlertSound();
-          showBrowserNotification(msg.alert);
+          
+          // Only notify if the symbol is in the active watchlist
+          const activeList = watchlistsRef.current.find(w => w._id === activeListIdRef.current);
+          const inWatchlist = activeList?.symbols?.includes(msg.alert.symbol);
+          
+          if (inWatchlist) {
+            showToast(`🔔 ${msg.alert.symbol} ${msg.alert.condition} ${msg.alert.price} triggered @ ${msg.alert.triggeredPrice}`);
+            playAlertSound();
+            showBrowserNotification(msg.alert);
+          }
         }
       };
     };
@@ -329,11 +461,14 @@ export default function Dashboard() {
         layoutMode: layout,
         panes,
         gridFractions,
-        syncOpts: includeSync ? syncOpts : undefined
+        syncOpts: includeSync ? syncOpts : undefined,
+        drawings: localStorage.getItem("ts_drawings") || "{}"
       })
     });
     if (data.ok) {
       setSavedLayouts(data.layouts);
+      const newlyCreated = data.layouts[data.layouts.length - 1];
+      if (newlyCreated) setLoadedLayoutId(newlyCreated._id);
       showToast("Layout saved");
     } else {
       showToast("Failed to save layout");
@@ -349,8 +484,47 @@ export default function Dashboard() {
     setPanes(l.panes);
     if (l.gridFractions) setGridFractions(l.gridFractions);
     if (l.syncOpts) setSyncOpts(l.syncOpts);
+    if (l.drawings) {
+      localStorage.setItem("ts_drawings", l.drawings);
+      window.dispatchEvent(new Event("storage"));
+    }
     setActivePaneId(l.panes[0]?.id || 1);
+    setLoadedLayoutId(id);
     showToast(`Loaded layout: ${l.name}`);
+  };
+
+  const updateLayout = async (id) => {
+    const data = await api(`/api/layouts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ layoutMode: layout, panes, gridFractions, syncOpts, drawings: localStorage.getItem("ts_drawings") || "{}" })
+    });
+    if (data.ok) {
+      setSavedLayouts(data.layouts);
+      showToast("Layout updated");
+    } else {
+      showToast("Update failed");
+    }
+  };
+
+  const deleteLayout = async (id) => {
+    if (!window.confirm("Delete this layout?")) return;
+    const data = await api(`/api/layouts/${id}`, { method: "DELETE" });
+    if (data.ok) {
+      setSavedLayouts(data.layouts);
+      if (loadedLayoutId === id) setLoadedLayoutId(null);
+      if (defaultLayoutId === id) setDefaultLayoutId(null);
+      showToast("Layout deleted");
+    }
+  };
+
+  const renameLayout = async (id, currentName) => {
+    const newName = window.prompt("New name for layout:", currentName);
+    if (!newName || newName.trim() === currentName) return;
+    const data = await api(`/api/layouts/${id}`, { method: "PATCH", body: JSON.stringify({ name: newName.trim() }) });
+    if (data.ok) {
+      setSavedLayouts(data.layouts);
+      showToast("Layout renamed");
+    }
   };
 
   const saveChecklist = async (items) => {
@@ -527,7 +701,10 @@ export default function Dashboard() {
         onOpenPalette={() => setPalette("switch")}
         onAddAlert={() => setAlertDraft({ price: ticks[symbol]?.bid ?? "" })}
         onOpenAlerts={() => setAlertsOpen(true)}
+        onOpenMarketBias={() => setMarketBiasOpen(true)}
         activeAlertCount={alerts.filter((a) => a.status === "active").length}
+        onOpenPip={openPip}
+        isPipActive={!!pipWindow}
         layout={layout}
         setLayout={changeLayout}
         syncOpts={syncOpts}
@@ -540,6 +717,10 @@ export default function Dashboard() {
         onOpenLoop={() => { setLoopMenuOpen(true); setIsLooping(true); }}
         indicators={indicators}
         setIndicators={setIndicators}
+        loadedLayoutId={loadedLayoutId}
+        onUpdateLayout={updateLayout}
+        onRenameLayout={renameLayout}
+        onDeleteLayout={deleteLayout}
       />
       <div className="layout-row" style={{position: "relative"}}>
         {checklistOpen && (
@@ -585,83 +766,94 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="responsive-chart-grid" style={gridStyle}>
-          {panes.map((pane) => {
-            if (fullScreenPaneId && pane.id !== fullScreenPaneId) return null;
-            return (
-              <div 
-                key={pane.id} 
-                onClick={() => setActivePaneId(pane.id)}
-                onDoubleClick={() => toggleFullscreen(pane.id)}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  flexDirection: "column",
-                  minWidth: 0,
-                  minHeight: 0,
-                  background: "var(--bg)",
-                  boxShadow: activePaneId === pane.id ? "inset 0 0 0 2px var(--accent)" : "none",
-                  zIndex: activePaneId === pane.id ? 2 : 1
-                }}
-              >
-                <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                  <button className="ghost" onClick={() => setChecklistOpen(!checklistOpen)} title="Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
-                    <CheckSquare size={16} />
-                  </button>
-                  <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
-                    {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                  </button>
-                  <div style={{ fontSize: 18, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)" }}>
-                    {pane.symbol} <span style={{fontSize: 13, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+        {(() => {
+          const gridNode = (
+            <div className="responsive-chart-grid" style={{ ...gridStyle, height: pipWindow ? "100vh" : gridStyle.height }}>
+              {panes.map((pane) => {
+                if (fullScreenPaneId && pane.id !== fullScreenPaneId) return null;
+                const symBias = biasData?.symbols?.find((s) => s.symbol === pane.symbol);
+                const catBias = biasData?.categories?.find((c) => c.members.includes(pane.symbol));
+                return (
+                  <div 
+                    key={pane.id} 
+                    onClick={() => setActivePaneId(pane.id)}
+                    onDoubleClick={() => toggleFullscreen(pane.id)}
+                    style={{
+                      position: "relative",
+                      display: "flex",
+                      flexDirection: "column",
+                      minWidth: 0,
+                      minHeight: 0,
+                      background: "var(--bg)",
+                      boxShadow: activePaneId === pane.id ? "inset 0 0 0 2px var(--accent)" : "none",
+                      zIndex: activePaneId === pane.id ? 2 : 1
+                    }}
+                  >
+                    <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                      <button className="ghost" onClick={() => setChecklistOpen(!checklistOpen)} title="Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                        <CheckSquare size={16} />
+                      </button>
+                      <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                        {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                      </button>
+                      <div style={{ fontSize: 14, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)", display: "flex", alignItems: "center", gap: 6 }}>
+                        {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+                      </div>
+                      <MiniBiasHeader symbol={pane.symbol} symBias={symBias} catBias={catBias} />
+                    </div>
+                    <ChartPanel
+                      paneId={pane.id}
+                      symbol={pane.symbol}
+                      tf={pane.tf}
+                      tick={ticks[pane.symbol]}
+                      alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered"))}
+                      barsCache={barsCache}
+                      onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
+                      onDeleteAlert={deleteAlert}
+                      onMoveAlert={moveAlert}
+                      onRearmAlert={rearmAlert}
+                      indicators={indicators}
+                      onAutoAlert={handleAutoAlert}
+                      onOpenSettings={() => setChartSettingsOpen(true)}
+                      isActive={activePaneId === pane.id}
+                      // sync logic
+                      syncOpts={fullScreenPaneId ? {} : syncOpts}
+                      paneId={pane.id}
+                      syncedLogicalRange={syncedLogicalRange}
+                      setSyncedLogicalRange={setSyncedLogicalRange}
+                      syncedCrosshair={syncedCrosshair}
+                      setSyncedCrosshair={setSyncedCrosshair}
+                    />
                   </div>
-                </div>
-              <ChartPanel
-                symbol={pane.symbol}
-                tf={pane.tf}
-                tick={ticks[pane.symbol]}
-                alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered"))}
-                barsCache={barsCache}
-                onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
-                onDeleteAlert={deleteAlert}
-                onMoveAlert={moveAlert}
-                onRearmAlert={rearmAlert}
-                indicators={indicators}
-                onAutoAlert={handleAutoAlert}
-                // sync logic
-                syncOpts={fullScreenPaneId ? {} : syncOpts}
-                paneId={pane.id}
-                syncedLogicalRange={syncedLogicalRange}
-                setSyncedLogicalRange={setSyncedLogicalRange}
-                syncedCrosshair={syncedCrosshair}
-                setSyncedCrosshair={setSyncedCrosshair}
-              />
+                );
+              })}
+
+              {/* Grid Splitters */}
+              {!fullScreenPaneId && (layout === "2v" || layout === "4") && (
+                <div 
+                  className="hide-mobile"
+                  onMouseDown={(e) => onDragStart(e, "col")}
+                  style={{
+                    position: "absolute", top: 0, left: `calc(${cX}% - 3px)`, width: 6, height: "100%",
+                    cursor: "col-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
+                  }}
+                />
+              )}
+              {!fullScreenPaneId && (layout === "2h" || layout === "4") && (
+                <div 
+                  className="hide-mobile"
+                  onMouseDown={(e) => onDragStart(e, "row")}
+                  style={{
+                    position: "absolute", left: 0, top: `calc(${cY}% - 3px)`, height: 6, width: "100%",
+                    cursor: "row-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
+                  }}
+                />
+              )}
             </div>
-            );
-          })}
-
-          {/* Grid Splitters */}
-          {!fullScreenPaneId && (layout === "2v" || layout === "4") && (
-            <div 
-              className="hide-mobile"
-              onMouseDown={(e) => onDragStart(e, "col")}
-              style={{
-                position: "absolute", top: 0, left: `calc(${cX}% - 3px)`, width: 6, height: "100%",
-                cursor: "col-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
-              }}
-            />
-          )}
-          {!fullScreenPaneId && (layout === "2h" || layout === "4") && (
-            <div 
-              className="hide-mobile"
-              onMouseDown={(e) => onDragStart(e, "row")}
-              style={{
-                position: "absolute", left: 0, top: `calc(${cY}% - 3px)`, height: 6, width: "100%",
-                cursor: "row-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
-              }}
-            />
-          )}
-
-        </div>
+          );
+          
+          return pipWindow ? createPortal(gridNode, pipWindow.document.body) : gridNode;
+        })()}
         {watchlistOpen && (
           <aside className="sidebar">
             <Watchlist
@@ -723,6 +915,18 @@ export default function Dashboard() {
           onCancel={() => setSaveLayoutOpen(false)}
           onSave={saveLayout}
         />
+      )}
+
+      {marketBiasOpen && (
+        <BiasPanel
+          symbols={biasSymbols}
+          onJump={(s) => { setMarketBiasOpen(false); changeSymbol(s); }}
+          onClose={() => setMarketBiasOpen(false)}
+        />
+      )}
+
+      {chartSettingsOpen && (
+        <ChartSettingsModal onClose={() => setChartSettingsOpen(false)} />
       )}
 
       {toast && (

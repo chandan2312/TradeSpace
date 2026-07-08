@@ -16,6 +16,48 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
+[data-theme="light"] {
+  --bg: #f4f5f8;
+  --panel: #ffffff;
+  --panel-2: #f8f9fa;
+  --border: #e0e3eb;
+  --border-hi: #c5cbd8;
+  --text: #1a1e29;
+  --muted: #787b86;
+  --accent: #2962ff;
+  --accent-soft: rgba(41, 98, 255, 0.08);
+  --green: #089981;
+  --red: #f23645;
+}
+
+[data-theme="midnight"] {
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --panel-2: #121212;
+  --border: #1f1f1f;
+  --border-hi: #333333;
+  --text: #ededed;
+  --muted: #666666;
+  --accent: #0088ff;
+  --accent-soft: rgba(0, 136, 255, 0.12);
+  --green: #00ff88;
+  --red: #ff3344;
+}
+
+[data-theme="matrix"] {
+  --bg: #000000;
+  --panel: #001100;
+  --panel-2: #001a00;
+  --border: #003300;
+  --border-hi: #005500;
+  --text: #00ff00;
+  --muted: #00aa00;
+  --accent: #00ff00;
+  --accent-soft: rgba(0, 255, 0, 0.15);
+  --green: #00ff00;
+  --red: #005500;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body { height: 100%; }
@@ -83,6 +125,9 @@ input::placeholder { color: var(--muted); }
   from { transform: translate(-50%, 12px); opacity: 0; }
   to { transform: translate(-50%, 0); opacity: 1; }
 }
+
+@keyframes spin-cw { to { transform: rotate(360deg); } }
+.spin { animation: spin-cw 0.9s linear infinite; }
 
 /* ---------- Responsive Layout ---------- */
 .hide-desktop {
@@ -173,29 +218,28 @@ input::placeholder { color: var(--muted); }
     flex-direction: row;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 8px 12px;
-    gap: 8px;
+    padding: 4px 6px;
+    gap: 4px;
     border-bottom: 1px solid var(--border);
   }
 
   .wl-row-item {
     flex: 0 0 auto;
-    min-width: 130px;
     border-top: none;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 10px;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    border-radius: 6px;
+    padding: 2px 6px;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
     position: relative;
   }
 
   .wl-row-item > div {
-    width: 100%;
+    width: auto;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: flex-start;
   }
   
   .wl-row-item .num {
@@ -207,12 +251,11 @@ input::placeholder { color: var(--muted); }
   .wl-row-price-sub { display: none; }
   
   .wl-row-remove {
-    position: absolute;
-    top: 4px;
-    right: 4px;
+    position: static;
     padding: 0 !important;
-    width: 20px;
-    height: 20px;
+    width: auto;
+    height: auto;
+    margin-left: 2px;
     display: flex;
     align-items: center;
     justify-content: center;

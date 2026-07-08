@@ -12,15 +12,34 @@ export async function PATCH(req, { params }) {
   if (Number.isFinite(Number(body?.price))) update.price = Number(body.price);
   if (["cross", "above", "below"].includes(body?.condition)) update.condition = body.condition;
   if (body?.note !== undefined) update.note = String(body.note).slice(0, 200);
+  const { alertsCol } = await getCols();
+
   if (body?.status === "active") {
     update.status = "active";
     update.triggeredAt = null;
+
+    // Smart Renewal: auto-flip the condition based on the current live price
+    const alert = await alertsCol.findOne({ _id });
+    if (alert) {
+      // Use the newly passed price if updating price and renewing together, else use existing
+      const targetPrice = update.price !== undefined ? update.price : alert.price;
+      const currentLivePrice = globalThis._tsLastPrice?.get(alert.symbol);
+      
+      if (currentLivePrice) {
+        // If price is currently above the line, the only valid alert is waiting for it to go below (and vice versa)
+        if (currentLivePrice >= targetPrice) {
+          update.condition = "below";
+        } else {
+          update.condition = "above";
+        }
+      }
+    }
   }
+
   if (!Object.keys(update).length) {
     return json({ ok: false, error: "nothing to update" }, 400);
   }
 
-  const { alertsCol } = await getCols();
   await alertsCol.updateOne({ _id }, { $set: update });
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
