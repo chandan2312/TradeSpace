@@ -255,9 +255,10 @@ input::placeholder { color: var(--muted); }
   }
 
   .drawing-toolbar {
+    position: fixed !important;
+    bottom: 40px !important;
     left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
+    z-index: 99 !important;
     top: auto !important;
     transform: none !important;
     flex-direction: row !important;
@@ -266,6 +267,7 @@ input::placeholder { color: var(--muted); }
     border-left: none !important;
     border-right: none !important;
     border-bottom: none !important;
+    border-top: 1px solid var(--border) !important;
     padding: 6px !important;
     gap: 6px !important;
     width: 100% !important;
@@ -278,9 +280,15 @@ input::placeholder { color: var(--muted); }
 
   .layout-row {
     flex-direction: column;
+    padding-bottom: 85px !important;
   }
 
   .sidebar {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 100 !important;
+    background: var(--panel) !important;
     width: 100%;
     min-width: 100%;
     border-left: none;
