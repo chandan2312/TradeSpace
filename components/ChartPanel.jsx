@@ -625,19 +625,19 @@ export default function ChartPanel({
           {dragHandle.status === "active" && (
             <div
               onPointerDown={(e) => beginDrag(e, dragHandle.id)}
-              style={{ cursor: "ns-resize", padding: "2px 4px", fontSize: 10 }}
+              style={{ cursor: "ns-resize", padding: "6px 8px", fontSize: 14 }}
               title="Drag up/down to move this alert"
             >
               ⇅
             </div>
           )}
-          <div style={{ padding: "2px 4px", fontSize: 10, whiteSpace: "nowrap" }}>
+          <div style={{ padding: "6px 8px", fontSize: 12, whiteSpace: "nowrap", borderLeft: "1px solid rgba(0,0,0,0.1)" }}>
             {fmt(dragHandle.price)}
           </div>
           {dragHandle.status === "triggered" && (
             <button
               onClick={() => onRearmAlert(dragHandle.id)}
-              style={{ background: "rgba(0,0,0,0.1)", border: "none", color: "inherit", padding: "2px 6px", cursor: "pointer", fontSize: 11 }}
+              style={{ background: "rgba(0,0,0,0.1)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "6px 12px", cursor: "pointer", fontSize: 14 }}
               title="Renew (re-arm) alert"
             >
               ↻
@@ -645,7 +645,7 @@ export default function ChartPanel({
           )}
           <button
             onClick={() => onDeleteAlert(dragHandle.id)}
-            style={{ background: "rgba(0,0,0,0.15)", border: "none", color: "inherit", padding: "2px 6px", cursor: "pointer", fontSize: 10 }}
+            style={{ background: "rgba(0,0,0,0.15)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "6px 12px", cursor: "pointer", fontSize: 14 }}
             title="Delete alert"
           >
             ✕
