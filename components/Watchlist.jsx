@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Plus, GripVertical, Flag, X } from "lucide-react";
+import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown } from "lucide-react";
 
 // Right-sidebar watchlist with multiple named lists (tabs), create/rename/delete,
 // live bid/spread per symbol, click-to-switch, and drag-to-reorder rows.
@@ -9,7 +9,7 @@ export default function Watchlist({
   watchlists, activeListId, setActiveListId,
   symbol, setSymbol, ticks, alerts,
   onCreate, onRename, onDelete, onAddSymbol, onRemoveSymbol,
-  symbolFlags, setSymbolFlags
+  symbolFlags, setSymbolFlags, onNavUp, onNavDown
 }) {
   const list = watchlists.find((w) => w._id === activeListId) || null;
   const [editing, setEditing] = useState(null); // list id being renamed, or "new"
@@ -101,6 +101,24 @@ export default function Watchlist({
 
         {/* Mobile-only action buttons pulled into tabs row */}
         <div className="hide-desktop" style={{ marginLeft: "auto", display: "flex", gap: 4, paddingLeft: 8 }}>
+          {onNavUp && (
+            <>
+              <button 
+                className="ghost" 
+                style={{ padding: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}
+                onClick={onNavUp}
+              >
+                <ArrowUp size={14} />
+              </button>
+              <button 
+                className="ghost" 
+                style={{ padding: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}
+                onClick={onNavDown}
+              >
+                <ArrowDown size={14} />
+              </button>
+            </>
+          )}
           {list && watchlists.length > 0 && (
             <button
               className="ghost danger"

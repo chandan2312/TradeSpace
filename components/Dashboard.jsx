@@ -429,6 +429,18 @@ export default function Dashboard() {
     }
   };
 
+  const handleNavUp = () => {
+    const idx = panes.findIndex(p => p.id === activePaneId);
+    if (idx > 0) setActivePaneId(panes[idx - 1].id);
+    window.scrollBy({ top: -(window.innerHeight * 0.4), behavior: 'smooth' });
+  };
+
+  const handleNavDown = () => {
+    const idx = panes.findIndex(p => p.id === activePaneId);
+    if (idx < panes.length - 1) setActivePaneId(panes[idx + 1].id);
+    window.scrollBy({ top: (window.innerHeight * 0.4), behavior: 'smooth' });
+  };
+
   const toggleFullscreen = (id) => {
     if (fullScreenPaneId) {
       if (preFullScreenPanes) setPanes(preFullScreenPanes);
@@ -868,42 +880,24 @@ export default function Dashboard() {
         })()}
         {watchlistOpen && (
           <aside className="sidebar">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Watchlist
-                watchlists={watchlists}
-                activeListId={activeListId}
-                setActiveListId={setActiveListId}
-                symbol={symbol}
-                setSymbol={changeSymbol}
-                ticks={ticks}
-                alerts={alerts}
-                onCreate={createWatchlist}
-                onRename={renameWatchlist}
-                onDelete={deleteWatchlist}
-                onAddSymbol={() => setPalette("add")}
-                onRemoveSymbol={removeSymbolFromList}
-                symbolFlags={symbolFlags}
-                setSymbolFlags={setSymbolFlags}
-              />
-            </div>
-            {layout !== "1" && (
-              <div className="hide-desktop" style={{ display: "flex", gap: 6, padding: "0 8px" }}>
-                <button 
-                  className="ghost" 
-                  style={{ padding: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={() => window.scrollBy({ top: -(window.innerHeight * 0.4), behavior: 'smooth' })}
-                >
-                  <ArrowUp size={16} />
-                </button>
-                <button 
-                  className="ghost" 
-                  style={{ padding: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={() => window.scrollBy({ top: (window.innerHeight * 0.4), behavior: 'smooth' })}
-                >
-                  <ArrowDown size={16} />
-                </button>
-              </div>
-            )}
+            <Watchlist
+              watchlists={watchlists}
+              activeListId={activeListId}
+              setActiveListId={setActiveListId}
+              symbol={symbol}
+              setSymbol={changeSymbol}
+              ticks={ticks}
+              alerts={alerts}
+              onCreate={createWatchlist}
+              onRename={renameWatchlist}
+              onDelete={deleteWatchlist}
+              onAddSymbol={() => setPalette("add")}
+              onRemoveSymbol={removeSymbolFromList}
+              symbolFlags={symbolFlags}
+              setSymbolFlags={setSymbolFlags}
+              onNavUp={layout !== "1" ? handleNavUp : null}
+              onNavDown={layout !== "1" ? handleNavDown : null}
+            />
           </aside>
         )}
       </div>
