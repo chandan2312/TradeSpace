@@ -56,6 +56,7 @@ function showBrowserNotification(alert) {
 }
 
 export default function Dashboard() {
+  const [isHydrated, setIsHydrated] = useState(false);
   const [panes, setPanes] = useState([{ id: 1, symbol: "EURUSD", tf: "M5" }]);
   const [activePaneId, setActivePaneId] = useState(1);
   const [fullScreenPaneId, setFullScreenPaneId] = useState(null);
@@ -136,6 +137,7 @@ export default function Dashboard() {
     };
 
     syncFromStorage();
+    setIsHydrated(true);
     window.addEventListener("storage", syncFromStorage);
 
     if ("Notification" in window && Notification.permission === "default") {
@@ -198,13 +200,13 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { localStorage.setItem("ts_panes", JSON.stringify(panes)); }, [panes]);
-  useEffect(() => { localStorage.setItem("ts_layout", layout); }, [layout]);
-  useEffect(() => { localStorage.setItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions]);
-  useEffect(() => { localStorage.setItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts]);
-  useEffect(() => { localStorage.setItem("ts_watchlist_open", String(watchlistOpen)); }, [watchlistOpen]);
-  useEffect(() => { localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); }, [symbolFlags]);
-  useEffect(() => { localStorage.setItem("ts_indicators", JSON.stringify(indicators)); }, [indicators]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_panes", JSON.stringify(panes)); }, [panes, isHydrated]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_layout", layout); }, [layout, isHydrated]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions, isHydrated]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts, isHydrated]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_watchlist_open", String(watchlistOpen)); }, [watchlistOpen, isHydrated]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); }, [symbolFlags, isHydrated]);
+  useEffect(() => { if (isHydrated) localStorage.setItem("ts_indicators", JSON.stringify(indicators)); }, [indicators, isHydrated]);
 
   // ---------- Keyboard Shortcuts ----------
   useEffect(() => {
