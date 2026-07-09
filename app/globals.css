@@ -284,11 +284,6 @@ input::placeholder { color: var(--muted); }
     padding-bottom: 142px !important;
   }
 
-  .loop-controller {
-    top: 60px !important;
-    bottom: auto !important;
-  }
-
   .wl-rows::-webkit-scrollbar,
   .drawing-toolbar::-webkit-scrollbar {
     display: none !important;

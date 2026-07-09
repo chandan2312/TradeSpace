@@ -760,45 +760,6 @@ export default function Dashboard() {
         {checklistOpen && (
           <ChecklistPanel items={checklist} onSave={saveChecklist} onClose={() => setChecklistOpen(false)} />
         )}
-        
-        {/* Loop Controller */}
-        {layout === "1" && loopMenuOpen && (
-          <div className="loop-controller" style={{
-            position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", zIndex: 100,
-            display: "flex", gap: 8, alignItems: "center", background: "var(--panel)", padding: "6px 12px",
-            borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.5)"
-          }}>
-            <select 
-              value={loopColor} 
-              onChange={e => setLoopColor(e.target.value)}
-              style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, marginRight: 4, cursor: "pointer" }}
-            >
-              <option value="red" style={{color: "#000"}}>Red Flags</option>
-              <option value="blue" style={{color: "#000"}}>Blue Flags</option>
-              <option value="green" style={{color: "#000"}}>Green Flags</option>
-              <option value="yellow" style={{color: "#000"}}>Yellow Flags</option>
-            </select>
-            <button className="ghost" onClick={loopPrev} title="Previous" style={{padding: "4px"}}><SkipBack size={16} /></button>
-            <button className={isLooping ? "primary" : "ghost"} onClick={() => setIsLooping(!isLooping)} title={isLooping ? "Pause" : "Play"} style={{padding: "4px 8px"}}>
-              {isLooping ? <Pause size={16} /> : <Play size={16} />}
-            </button>
-            <button className="ghost" onClick={loopNext} title="Next" style={{padding: "4px"}}><SkipForward size={16} /></button>
-            <button className="ghost" onClick={() => { setIsLooping(false); setLoopMenuOpen(false); }} title="Stop" style={{padding: "4px", color: "var(--orange)"}}><Square size={16} /></button>
-            <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
-            <select 
-              value={loopInterval} 
-              onChange={e => setLoopInterval(Number(e.target.value))}
-              style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, cursor: "pointer" }}
-            >
-              <option value={3000} style={{color: "#000"}}>3s</option>
-              <option value={5000} style={{color: "#000"}}>5s</option>
-              <option value={10000} style={{color: "#000"}}>10s</option>
-              <option value={30000} style={{color: "#000"}}>30s</option>
-              <option value={60000} style={{color: "#000"}}>60s</option>
-            </select>
-            <div style={{fontSize: 10, opacity: 0.5, marginLeft: 4}}>({loopSymbols.length} items)</div>
-          </div>
-        )}
 
         {(() => {
           const gridNode = (
@@ -824,18 +785,52 @@ export default function Dashboard() {
                       zIndex: activePaneId === pane.id ? 2 : 1
                     }}
                   >
-                    <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                      <button className="ghost" onClick={() => setChecklistOpen(!checklistOpen)} title="Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
-                        <CheckSquare size={16} />
-                      </button>
-                      <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
-                        {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                      </button>
-                      <div style={{ fontSize: 14, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)", display: "flex", alignItems: "center", gap: 6 }}>
-                        {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+                    {loopMenuOpen && layout === "1" ? (
+                      <div className="loop-controller" style={{ position: "absolute", top: 8, left: 12, right: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center", background: "var(--panel)", padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.5)", overflowX: "auto" }}>
+                        <select 
+                          value={loopColor} 
+                          onChange={e => setLoopColor(e.target.value)}
+                          style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, marginRight: 4, cursor: "pointer" }}
+                        >
+                          <option value="red" style={{color: "#000"}}>Red Flags</option>
+                          <option value="blue" style={{color: "#000"}}>Blue Flags</option>
+                          <option value="green" style={{color: "#000"}}>Green Flags</option>
+                          <option value="yellow" style={{color: "#000"}}>Yellow Flags</option>
+                        </select>
+                        <button className="ghost" onClick={loopPrev} title="Previous" style={{padding: "4px"}}><SkipBack size={16} /></button>
+                        <button className={isLooping ? "primary" : "ghost"} onClick={() => setIsLooping(!isLooping)} title={isLooping ? "Pause" : "Play"} style={{padding: "4px 8px"}}>
+                          {isLooping ? <Pause size={16} /> : <Play size={16} />}
+                        </button>
+                        <button className="ghost" onClick={loopNext} title="Next" style={{padding: "4px"}}><SkipForward size={16} /></button>
+                        <button className="ghost" onClick={() => { setIsLooping(false); setLoopMenuOpen(false); }} title="Stop" style={{padding: "4px", color: "var(--orange)"}}><Square size={16} /></button>
+                        <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
+                        <select 
+                          value={loopInterval} 
+                          onChange={e => setLoopInterval(Number(e.target.value))}
+                          style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, cursor: "pointer" }}
+                        >
+                          <option value={3000} style={{color: "#000"}}>3s</option>
+                          <option value={5000} style={{color: "#000"}}>5s</option>
+                          <option value={10000} style={{color: "#000"}}>10s</option>
+                          <option value={30000} style={{color: "#000"}}>30s</option>
+                          <option value={60000} style={{color: "#000"}}>60s</option>
+                        </select>
+                        <div style={{fontSize: 10, opacity: 0.5, marginLeft: 4, whiteSpace: "nowrap"}}>({loopSymbols.length} items)</div>
                       </div>
-                      <MiniBiasHeader symbol={pane.symbol} symBias={symBias} catBias={catBias} />
-                    </div>
+                    ) : (
+                      <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                        <button className="ghost" onClick={() => setChecklistOpen(!checklistOpen)} title="Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                          <CheckSquare size={16} />
+                        </button>
+                        <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                          {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        </button>
+                        <div style={{ fontSize: 14, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)", display: "flex", alignItems: "center", gap: 6 }}>
+                          {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+                        </div>
+                        <MiniBiasHeader symbol={pane.symbol} symBias={symBias} catBias={catBias} />
+                      </div>
+                    )}
                     <ChartPanel
                       paneId={pane.id}
                       symbol={pane.symbol}
