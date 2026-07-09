@@ -90,8 +90,8 @@ async function main() {
   // ---- Alert engine ---------------------------------------------------
   startPollLoop();
 
-  server.listen(PORT, () => {
-    console.log(`[tradespace] ${useHttps ? "https" : "http"}://localhost:${PORT}  (${dev ? "dev" : "prod"})`);
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`[tradespace] ${useHttps ? "https" : "http"}://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);
   });
 
   // ---- graceful shutdown ----------------------------------------------
