@@ -133,6 +133,12 @@ export default function Dashboard() {
         if (lid) setLoadedLayoutId(lid);
         const be = localStorage.getItem("ts_bias_enabled");
         if (be !== null) setBiasEnabled(be === "true");
+
+        const bc = localStorage.getItem("ts_bars_cache");
+        if (bc) {
+          const parsed = JSON.parse(bc);
+          for (const [k, v] of Object.entries(parsed)) barsCache.current.set(k, v);
+        }
       } catch {}
     };
 

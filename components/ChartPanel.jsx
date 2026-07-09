@@ -306,6 +306,14 @@ export default function ChartPanel({
         }
         const bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
         barsCache.current.set(key, { at: Date.now(), bars });
+        try {
+          // Keep only the last 300 bars in local storage to prevent quota exceeded errors
+          const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
+            acc[k] = { at: v.at, bars: v.bars.slice(-300) };
+            return acc;
+          }, {});
+          localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
+        } catch (e) {}
         apply(bars);
       } catch (err) {
         if (!cancelled && !cached) { setError(err.message); setLoading(false); }
