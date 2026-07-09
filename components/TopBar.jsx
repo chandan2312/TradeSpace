@@ -79,6 +79,11 @@ export default function TopBar({
         >
           <LayoutGrid size={14} /> Layout
         </button>
+        {layout === "1" && (
+          <button className="ghost" onClick={onOpenLoop} title="Start Slideshow Loop" style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <Repeat size={14} /> Loop
+          </button>
+        )}
 
         {showLayoutMenu && (
           <div ref={layoutMenuRef} style={{
@@ -126,11 +131,6 @@ export default function TopBar({
                 </select>
                 <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); }} title="Save Layout" style={{padding: "4px", display: "flex", alignItems: "center"}}><Save size={14} /></button>
               </div>
-              {layout === "1" && (
-                <button className="ghost" onClick={() => { onOpenLoop(); setShowLayoutMenu(false); }} title="Start Slideshow Loop" style={{padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "center"}}>
-                  <Repeat size={14} /> Start Loop Mode
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -205,6 +205,11 @@ export default function TopBar({
             <button className={showLayoutMenu ? "primary" : "ghost"} onClick={() => setShowLayoutMenu(!showLayoutMenu)} style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
               <LayoutGrid size={14} /> Layout
             </button>
+            {layout === "1" && (
+              <button className="ghost" onClick={() => { onOpenLoop(); setMobileMenuOpen(false); }} title="Start Slideshow Loop" style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <Repeat size={14} /> Loop
+              </button>
+            )}
             <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
           </div>
 
