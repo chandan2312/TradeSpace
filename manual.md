@@ -128,12 +128,25 @@ git pull
 npm run build
 
 # 3. Restart the background process to apply the changes
-pm2 restart tradespace
+pm2 restart ecosystem.config.cjs
 ```
 
 ---
 
-## 8. Success!
+## 8. Troubleshooting
+
+### Problem: Live prices are not updating
+**Cause:** You likely started the app using `npm run start` or `next start`. This completely bypasses the custom WebSocket price server.
+**Fix:** 
+1. Close your Command Prompt to kill the broken server.
+2. Open a new Command Prompt in the project folder.
+3. Run `pm2 stop all` to ensure no rogue processes are running.
+4. Run `pm2 start ecosystem.config.cjs`
+5. Run `pm2 save`
+
+---
+
+## 9. Success!
 
 You can now open a browser on your local laptop or mobile phone and navigate to:
 `http://<YOUR_RDP_PUBLIC_IP>:3000`
