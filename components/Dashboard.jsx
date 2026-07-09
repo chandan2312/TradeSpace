@@ -95,8 +95,8 @@ export default function Dashboard() {
 
   const [savedLayouts, setSavedLayouts] = useState([]);
   const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
-  const [checklist, setChecklist] = useState([]);
-  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [activeNotesSymbol, setActiveNotesSymbol] = useState(null);
+  const [notesPanelData, setNotesPanelData] = useState({ checklist: [], notes: "" });
 
   const wsRef = useRef(null);
   const symbolsRef = useRef([]); 
@@ -325,11 +325,6 @@ export default function Dashboard() {
     }
   }, []);
 
-  const loadChecklist = useCallback(async () => {
-    const data = await api("/api/checklist");
-    if (data.ok) setChecklist(data.checklist);
-  }, []);
-
   // bias engine scope: active watchlist ∪ open panes
   const biasSymbols = useMemo(() => {
     const list = watchlists.find((w) => w._id === activeListId);
@@ -349,9 +344,11 @@ export default function Dashboard() {
     setBiasLoading(false);
   }, [biasEnabled, biasSymbols.join(",")]);
 
-  useEffect(() => { 
-    loadAlerts(); loadWatchlists(); loadSavedLayouts(); loadChecklist(); 
-  }, [loadAlerts, loadWatchlists, loadSavedLayouts, loadChecklist]);
+  useEffect(() => {
+    loadAlerts();
+    loadWatchlists();
+    loadSavedLayouts();
+  }, [loadAlerts, loadWatchlists, loadSavedLayouts]);
 
   useEffect(() => {
     loadBias();
@@ -563,12 +560,15 @@ export default function Dashboard() {
     }
   };
 
-  const saveChecklist = async (items) => {
-    const data = await api("/api/checklist", { method: "PUT", body: JSON.stringify({ items }) });
-    if (data.ok) {
-      setChecklist(data.checklist);
-      showToast("Checklist saved");
-    }
+  const openNotesPanel = async (symbol) => {
+    setActiveNotesSymbol(symbol);
+    const data = await api(`/api/symbols/${encodeURIComponent(symbol)}/notes`);
+    if (data.ok) setNotesPanelData({ checklist: data.checklist || [], notes: data.notes || "" });
+  };
+
+  const saveNotesPanel = async ({ checklist, notes }) => {
+    if (!activeNotesSymbol) return;
+    await api(`/api/symbols/${encodeURIComponent(activeNotesSymbol)}/notes`, { method: "PUT", body: JSON.stringify({ checklist, notes }) });
   };
 
   // ---------- alert actions ----------
@@ -765,8 +765,14 @@ export default function Dashboard() {
         onDeleteLayout={deleteLayout}
       />
       <div className="layout-row" style={{position: "relative"}}>
-        {checklistOpen && (
-          <ChecklistPanel items={checklist} onSave={saveChecklist} onClose={() => setChecklistOpen(false)} />
+        {activeNotesSymbol && (
+          <ChecklistPanel 
+            symbol={activeNotesSymbol} 
+            items={notesPanelData.checklist} 
+            notes={notesPanelData.notes} 
+            onSave={saveNotesPanel} 
+            onClose={() => setActiveNotesSymbol(null)} 
+          />
         )}
 
         {(() => {
@@ -830,7 +836,7 @@ export default function Dashboard() {
                       </div>
                     ) : (
                       <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                        <button className="ghost" onClick={() => setChecklistOpen(!checklistOpen)} title="Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                        <button className="ghost" onClick={() => activeNotesSymbol === pane.symbol ? setActiveNotesSymbol(null) : openNotesPanel(pane.symbol)} title="Notes & Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
                           <CheckSquare size={16} />
                         </button>
                         <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>

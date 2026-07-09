@@ -370,3 +370,10 @@ input::placeholder { color: var(--muted); }
     padding-top: env(safe-area-inset-top);
   }
 }
+
+/* Hide TradingView logo */
+#tv-attr-logo, 
+a[href*="tradingview.com"],
+.tv-lightweight-charts-watermark-logo {
+  display: none !important;
+}
