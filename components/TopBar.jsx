@@ -70,7 +70,7 @@ export default function TopBar({
       </button>
 
       <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-        <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
+        <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 12, display: "flex", alignItems: "center", gap: 8 }}>
         <button 
           className={showLayoutMenu ? "primary" : "ghost"} 
           onClick={() => setShowLayoutMenu(!showLayoutMenu)} 
