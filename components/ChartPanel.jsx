@@ -6,7 +6,7 @@ import { runPatterns } from "../lib/patterns/index.js";
 import { DrawingsPrimitive } from "../lib/draw/primitive.js";
 import { useDrawings } from "../lib/draw/useDrawings.js";
 import { useChartSettings } from "../lib/chartSettings.js";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight } from "lucide-react";
 import DrawingToolbar from "./DrawingToolbar.jsx";
 import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
