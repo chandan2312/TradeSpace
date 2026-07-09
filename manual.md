@@ -77,12 +77,17 @@ npm run build
 
 If you just run `npm run start`, the server will shut down as soon as you close the command prompt window. To keep it running permanently in the background, we use a process manager called **PM2**.
 
+> [!WARNING]
+> **CRITICAL FOR LIVE PRICES:** Do NOT run `npm run start` or `next start`. 
+> The standard Next.js start command bypasses our custom WebSocket backend (`server.js`), which means **your prices will not update**. 
+> You **must** start the app using `pm2 start ecosystem.config.cjs` to boot the custom server.
+
 ```bash
 # 1. Install PM2 globally on the Windows server
 npm install -g pm2
 
 # 2. Start the TradeSpace backend using the ecosystem config
-# (This ensures server.js runs with NODE_ENV=production, which starts the WebSocket server)
+# (This runs server.js, booting BOTH Next.js and the WebSocket price server)
 pm2 start ecosystem.config.cjs
 
 # 3. Tell PM2 to save the current process list so it restarts if the server reboots
