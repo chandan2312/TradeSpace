@@ -763,7 +763,7 @@ export default function Dashboard() {
         
         {/* Loop Controller */}
         {layout === "1" && loopMenuOpen && (
-          <div style={{
+          <div className="loop-controller" style={{
             position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", zIndex: 100,
             display: "flex", gap: 8, alignItems: "center", background: "var(--panel)", padding: "6px 12px",
             borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.5)"
