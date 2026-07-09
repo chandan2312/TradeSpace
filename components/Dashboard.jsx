@@ -812,7 +812,10 @@ export default function Dashboard() {
                           <option value={3000} style={{color: "#000"}}>3s</option>
                           <option value={5000} style={{color: "#000"}}>5s</option>
                           <option value={10000} style={{color: "#000"}}>10s</option>
+                          <option value={15000} style={{color: "#000"}}>15s</option>
+                          <option value={20000} style={{color: "#000"}}>20s</option>
                           <option value={30000} style={{color: "#000"}}>30s</option>
+                          <option value={45000} style={{color: "#000"}}>45s</option>
                           <option value={60000} style={{color: "#000"}}>60s</option>
                         </select>
                         <div style={{fontSize: 10, opacity: 0.5, marginLeft: 4, whiteSpace: "nowrap"}}>({loopSymbols.length} items)</div>
