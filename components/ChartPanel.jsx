@@ -336,8 +336,10 @@ export default function ChartPanel({
     const barTime = Math.floor((tick.time / 1000) / sec) * sec;
     const last = entry.bar;
     const isNewBar = barTime > last.time;
+    // To prevent artificial visual gaps caused by polling missing the exact first millisecond tick,
+    // we seamlessly connect the new candle's open to the previous candle's close.
     const nextBar = isNewBar
-      ? { time: barTime, open: price, high: price, low: price, close: price }
+      ? { time: barTime, open: last.close, high: Math.max(last.close, price), low: Math.min(last.close, price), close: price }
       : { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
     lastBarRef.current = { key: entry.key, bar: nextBar };
     seriesRef.current.update(nextBar);
