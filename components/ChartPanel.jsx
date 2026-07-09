@@ -437,7 +437,11 @@ export default function ChartPanel({
   useEffect(() => {
     const close = () => setCtxMenu(null);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    document.addEventListener("touchstart", close, { passive: true });
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("touchstart", close);
+    };
   }, []);
 
   // ---------- drag-to-move an alert price line ----------
@@ -671,7 +675,9 @@ export default function ChartPanel({
       )}
 
       {ctxMenu && (
-        <div style={{
+        <div 
+          onTouchStart={(e) => e.stopPropagation()}
+          style={{
           position: "absolute", left: ctxMenu.x, top: ctxMenu.y, zIndex: 30, minWidth: 220,
           background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,
           boxShadow: "0 8px 28px rgba(0,0,0,.6)", overflow: "hidden",
