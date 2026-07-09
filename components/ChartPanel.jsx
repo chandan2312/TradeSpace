@@ -131,6 +131,7 @@ export default function ChartPanel({
   const [dragging, setDragging] = useState(null);     // {id, price} while actively dragging
   const dragStateRef = useRef(null);
   const logicalRangeRef = useRef(null);
+  const [isScrolledLeft, setIsScrolledLeft] = useState(false);
 
   const fmt = useCallback((p) => Number(p).toFixed(digits), [digits]);
 
@@ -494,9 +495,13 @@ export default function ChartPanel({
   // ---------- Sync Logical Range ----------
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !syncOpts?.time) return;
+    if (!chart) return;
     const timeScale = chart.timeScale();
     const handler = (range) => {
+      const pos = timeScale.scrollPosition();
+      setIsScrolledLeft(pos > 2);
+
+      if (!syncOpts?.time) return;
       const prog = programmaticRangeRef.current;
       if (prog && range && Math.abs(range.from - prog.from) < 0.05 && Math.abs(range.to - prog.to) < 0.05) {
         return; // Ignore programmatic echo
@@ -711,6 +716,29 @@ export default function ChartPanel({
             </div>
           ))}
         </div>
+      )}
+      
+      {isScrolledLeft && (
+        <button
+          className="ghost"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (chartRef.current) {
+              chartRef.current.timeScale().scrollToRealTime();
+              setIsScrolledLeft(false);
+            }
+          }}
+          title="Scroll to Real Time"
+          style={{
+            position: "absolute", bottom: 24, right: 70, zIndex: 10,
+            background: "var(--panel)", border: "1px solid var(--border)",
+            borderRadius: "50%", width: 32, height: 32, display: "flex", 
+            alignItems: "center", justifyContent: "center", padding: 0,
+            cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.4)"
+          }}
+        >
+          <ChevronRight size={18} />
+        </button>
       )}
     </div>
   );
