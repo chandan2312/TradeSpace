@@ -284,6 +284,15 @@ input::placeholder { color: var(--muted); }
     padding-bottom: 142px !important;
   }
 
+  .wl-rows::-webkit-scrollbar,
+  .drawing-toolbar::-webkit-scrollbar {
+    display: none !important;
+  }
+  .wl-rows,
+  .drawing-toolbar {
+    scrollbar-width: none !important;
+  }
+
   .sidebar {
     position: fixed !important;
     bottom: 0 !important;

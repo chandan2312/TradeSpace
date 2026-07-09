@@ -459,6 +459,7 @@ export default function ChartPanel({
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
       const final = dragStateRef.current;
@@ -469,6 +470,7 @@ export default function ChartPanel({
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     document.body.style.userSelect = "none";
     document.body.style.cursor = "ns-resize";
   }, [onMoveAlert]);
@@ -625,7 +627,7 @@ export default function ChartPanel({
           {dragHandle.status === "active" && (
             <div
               onPointerDown={(e) => beginDrag(e, dragHandle.id)}
-              style={{ cursor: "ns-resize", padding: "6px 8px", fontSize: 14 }}
+              style={{ cursor: "ns-resize", padding: "6px 8px", fontSize: 14, touchAction: "none" }}
               title="Drag up/down to move this alert"
             >
               ⇅

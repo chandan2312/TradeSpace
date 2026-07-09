@@ -63,9 +63,11 @@ export default function DrawingToolbar({ api }) {
     const handleUp = () => { dragging.current = false; };
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
     return () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
     };
   }, []);
 
@@ -103,7 +105,7 @@ export default function DrawingToolbar({ api }) {
       <div 
         className="drawing-toolbar-drag"
         onPointerDown={onDragStart}
-        style={{ cursor: "grab", display: "flex", justifyContent: "center", padding: "4px 0", color: "var(--muted)" }}
+        style={{ cursor: "grab", display: "flex", justifyContent: "center", padding: "4px 0", color: "var(--muted)", touchAction: "none" }}
       >
         <GripHorizontal size={14} />
       </div>

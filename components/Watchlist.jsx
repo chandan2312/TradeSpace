@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2 } from "lucide-react";
 
 // Right-sidebar watchlist with multiple named lists (tabs), create/rename/delete,
 // live bid/spread per symbol, click-to-switch, and drag-to-reorder rows.
@@ -16,6 +16,7 @@ export default function Watchlist({
   const [name, setName] = useState("");
   const [drag, setDrag] = useState(null); // symbol being dragged
   const [over, setOver] = useState(null); // symbol currently hovered
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   const activeAlertSymbols = new Set(
     alerts.filter((a) => a.status === "active").map((a) => a.symbol)
@@ -126,21 +127,9 @@ export default function Watchlist({
               </button>
             </>
           )}
-          {list && watchlists.length > 0 && (
-            <button
-              className="ghost danger"
-              onClick={() => {
-                if (confirm(`Delete list “${list.name}”? Its symbols stay in your alerts.`)) onDelete(list._id);
-              }}
-              title="Delete this list"
-              style={{ padding: "4px", display: "flex", alignItems: "center" }}
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
           {list && (
-            <button className="ghost" onClick={onAddSymbol} title="Add symbol to list" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-              <Plus size={14} /> Add
+            <button className="ghost" onClick={() => setEditModalOpen(true)} title="Edit Watchlist" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              <Settings2 size={14} /> Edit
             </button>
           )}
         </div>
@@ -218,6 +207,21 @@ export default function Watchlist({
           />
         ))}
       </div>
+
+      {editModalOpen && list && (
+        <WatchlistEditModal 
+          list={list} 
+          onClose={() => setEditModalOpen(false)} 
+          onAddSymbol={onAddSymbol} 
+          onRemoveSymbol={onRemoveSymbol} 
+          onDeleteList={() => {
+            if (confirm(`Delete list “${list.name}”?`)) {
+              onDelete(list._id);
+              setEditModalOpen(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -290,7 +294,7 @@ function WatchRow({
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
       }}
     >
-      <div className="wl-row-drag muted" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={14} /></div>
+      <div className="wl-row-drag muted hide-mobile" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={14} /></div>
       
       {/* Flag */}
       <div ref={paletteRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
@@ -337,13 +341,75 @@ function WatchRow({
       )}
 
       <button
-        className="ghost danger wl-row-remove"
+        className="ghost danger wl-row-remove hide-mobile"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         title={`Remove ${sym} from list`}
         style={{ padding: "4px", display: "flex", alignItems: "center" }}
       >
         <X size={14} />
       </button>
+    </div>
+  );
+}
+
+function WatchlistEditModal({ list, onClose, onAddSymbol, onRemoveSymbol, onDeleteList }) {
+  const syms = list?.symbols || [];
+
+  const moveUp = async (idx) => {
+    if (idx === 0) return;
+    const fromSym = syms[idx];
+    const toSym = syms[idx - 1];
+    await reorder(list, fromSym, toSym);
+  };
+  const moveDown = async (idx) => {
+    if (idx === syms.length - 1) return;
+    const fromSym = syms[idx];
+    const toSym = syms[idx + 1];
+    await reorder(list, fromSym, toSym);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0,0,0,0.6)", zIndex: 1500,
+      display: "flex", flexDirection: "column", justifyContent: "flex-end"
+    }}>
+      <div style={{
+        background: "var(--bg)", borderTop: "1px solid var(--border)",
+        borderTopLeftRadius: 16, borderTopRightRadius: 16,
+        padding: 16, maxHeight: "80vh", display: "flex", flexDirection: "column"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Edit: {list.name}</div>
+          <button className="ghost" onClick={onClose} style={{ padding: 4 }}><X size={20} /></button>
+        </div>
+
+        <div style={{ overflowY: "auto", flex: 1, marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {syms.map((sym, i) => (
+            <div key={sym} style={{
+              display: "flex", alignItems: "center", padding: "8px 12px",
+              background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)"
+            }}>
+              <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{sym}</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button className="ghost" onClick={() => moveUp(i)} disabled={i === 0} style={{ padding: 6 }}><ArrowUp size={16} /></button>
+                <button className="ghost" onClick={() => moveDown(i)} disabled={i === syms.length - 1} style={{ padding: 6 }}><ArrowDown size={16} /></button>
+                <button className="ghost danger" onClick={() => onRemoveSymbol(list._id, sym)} style={{ padding: 6, marginLeft: 8 }}><Trash2 size={16} /></button>
+              </div>
+            </div>
+          ))}
+          {syms.length === 0 && <div className="muted" style={{ textAlign: "center", padding: 20 }}>List is empty.</div>}
+        </div>
+        
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="ghost danger" onClick={onDeleteList} style={{ padding: "12px", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Trash2 size={18} />
+          </button>
+          <button className="primary" onClick={onAddSymbol} style={{ padding: "12px", flex: 1, fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <Plus size={18} /> Add Symbol
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
