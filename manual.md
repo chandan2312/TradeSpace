@@ -81,9 +81,9 @@ If you just run `npm run start`, the server will shut down as soon as you close 
 # 1. Install PM2 globally on the Windows server
 npm install -g pm2
 
-# 2. Start the TradeSpace backend directly via the Next.js binary
-# (Bypassing npm fixes the "Script not found: run" error on Windows)
-pm2 start node_modules/next/dist/bin/next --name "tradespace" -- start
+# 2. Start the TradeSpace backend using the ecosystem config
+# (This ensures server.js runs with NODE_ENV=production, which starts the WebSocket server)
+pm2 start ecosystem.config.cjs
 
 # 3. Tell PM2 to save the current process list so it restarts if the server reboots
 pm2 save
