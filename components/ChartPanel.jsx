@@ -499,7 +499,7 @@ export default function ChartPanel({
     const timeScale = chart.timeScale();
     const handler = (range) => {
       const pos = timeScale.scrollPosition();
-      setIsScrolledLeft(pos > 2);
+      setIsScrolledLeft(pos > -10);
 
       if (!syncOpts?.time) return;
       const prog = programmaticRangeRef.current;
@@ -718,28 +718,32 @@ export default function ChartPanel({
         </div>
       )}
       
-      {isScrolledLeft && (
-        <button
-          className="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (chartRef.current) {
-              chartRef.current.timeScale().scrollToRealTime();
-              setIsScrolledLeft(false);
-            }
-          }}
-          title="Scroll to Real Time"
-          style={{
-            position: "absolute", bottom: 24, right: 70, zIndex: 10,
-            background: "var(--panel)", border: "1px solid var(--border)",
-            borderRadius: "50%", width: 32, height: 32, display: "flex", 
-            alignItems: "center", justifyContent: "center", padding: 0,
-            cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.4)"
-          }}
-        >
-          <ChevronRight size={18} />
-        </button>
-      )}
+      {/* Always render button, just change opacity/pointerEvents based on isScrolledLeft */}
+      <button
+        className="ghost"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (chartRef.current) {
+            chartRef.current.timeScale().scrollToRealTime();
+            setIsScrolledLeft(false);
+          }
+        }}
+        title="Scroll to Real Time"
+        style={{
+          position: "absolute", bottom: 40, right: 80, zIndex: 9999,
+          background: "var(--accent)", border: "1px solid var(--border)",
+          color: "#fff",
+          borderRadius: "50%", width: 36, height: 36, display: "flex", 
+          alignItems: "center", justifyContent: "center", padding: 0,
+          cursor: isScrolledLeft ? "pointer" : "default", 
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+          opacity: isScrolledLeft ? 1 : 0,
+          pointerEvents: isScrolledLeft ? "auto" : "none",
+          transition: "opacity 0.2s ease"
+        }}
+      >
+        <ChevronRight size={20} strokeWidth={3} />
+      </button>
     </div>
   );
 }
