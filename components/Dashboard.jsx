@@ -795,7 +795,7 @@ export default function Dashboard() {
                       minWidth: 0,
                       minHeight: 0,
                       background: "var(--bg)",
-                      boxShadow: activePaneId === pane.id ? "inset 0 0 0 2px var(--accent)" : "none",
+                      boxShadow: (panes.length > 1 && activePaneId === pane.id) ? "inset 0 0 0 2px var(--accent)" : "none",
                       zIndex: activePaneId === pane.id ? 2 : 1
                     }}
                   >
