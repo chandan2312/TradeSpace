@@ -311,7 +311,6 @@ function WatchRow({
       <div ref={paletteRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
         <button 
           className="ghost" 
-          onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); setShowPalette(!showPalette); }}
           onClick={(e) => { e.stopPropagation(); setShowPalette(!showPalette); }}
           style={{ padding: "8px", margin: "-4px", color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)", opacity: flag ? 1 : 0.2 }}
         >
@@ -319,17 +318,14 @@ function WatchRow({
         </button>
         {showPalette && (
           <div 
-            onTouchStart={(e) => e.stopPropagation()}
-            style={{
-            position: "absolute", top: "100%", left: 0, zIndex: 100,
-            background: "var(--panel)", border: "1px solid var(--border)",
-            display: "flex", gap: 4, padding: 4, borderRadius: 4, boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
-          }}>
-            <button className="ghost" onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onFlag("red"); setShowPalette(false); }} onClick={(e) => { e.stopPropagation(); onFlag("red"); setShowPalette(false); }} style={{color: "#ef5350", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onFlag("blue"); setShowPalette(false); }} onClick={(e) => { e.stopPropagation(); onFlag("blue"); setShowPalette(false); }} style={{color: "#2962ff", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onFlag("green"); setShowPalette(false); }} onClick={(e) => { e.stopPropagation(); onFlag("green"); setShowPalette(false); }} style={{color: "#26a69a", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} onClick={(e) => { e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} style={{color: "#ffeb3b", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onFlag(null); setShowPalette(false); }} onClick={(e) => { e.stopPropagation(); onFlag(null); setShowPalette(false); }} style={{padding: 8}}><X size={14} /></button>
+            className="flag-palette"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("red"); setShowPalette(false); }} style={{color: "#ef5350", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("blue"); setShowPalette(false); }} style={{color: "#2962ff", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("green"); setShowPalette(false); }} style={{color: "#26a69a", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} style={{color: "#ffeb3b", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag(null); setShowPalette(false); }} style={{padding: 8}}><X size={14} /></button>
           </div>
         )}
       </div>
