@@ -862,7 +862,11 @@ export default function Dashboard() {
                             {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                           </button>
                         )}
-
+                        {panes.length > 1 && !fullScreenPaneId && (
+                          <div style={{ fontSize: 14, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)", display: "flex", alignItems: "center", gap: 6 }}>
+                            {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+                          </div>
+                        )}
                         <MiniBiasHeader symbol={pane.symbol} symBias={symBias} catBias={catBias} />
                       </div>
                     )}
