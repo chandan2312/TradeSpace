@@ -266,7 +266,11 @@ function WatchRow({
       if (!paletteRef.current?.contains(e.target)) setShowPalette(false);
     };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("touchstart", close, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
   }, [showPalette]);
 
   const digits = tick?.digits ?? 5;
@@ -300,22 +304,26 @@ function WatchRow({
       <div ref={paletteRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
         <button 
           className="ghost" 
-          onClick={(e) => { e.stopPropagation(); setShowPalette(!showPalette); }}
+          onPointerDown={(e) => { e.stopPropagation(); setShowPalette(!showPalette); }}
+          onClick={(e) => { e.stopPropagation(); }}
           style={{ padding: "4px", color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)", opacity: flag ? 1 : 0.2 }}
         >
           <Flag size={14} fill={flag ? "currentColor" : "none"} strokeWidth={flag ? 0 : 2} />
         </button>
         {showPalette && (
-          <div style={{
+          <div 
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            style={{
             position: "absolute", top: "100%", left: 0, zIndex: 100,
             background: "var(--panel)", border: "1px solid var(--border)",
             display: "flex", gap: 4, padding: 4, borderRadius: 4, boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
           }}>
-            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("red"); setShowPalette(false); }} style={{color: "#ef5350", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("blue"); setShowPalette(false); }} style={{color: "#2962ff", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("green"); setShowPalette(false); }} style={{color: "#26a69a", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} style={{color: "#ffeb3b", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
-            <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag(null); setShowPalette(false); }} style={{padding: 4}}><X size={14} /></button>
+            <button className="ghost" onPointerDown={(e) => { e.stopPropagation(); onFlag("red"); setShowPalette(false); }} onClick={(e)=>e.stopPropagation()} style={{color: "#ef5350", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onPointerDown={(e) => { e.stopPropagation(); onFlag("blue"); setShowPalette(false); }} onClick={(e)=>e.stopPropagation()} style={{color: "#2962ff", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onPointerDown={(e) => { e.stopPropagation(); onFlag("green"); setShowPalette(false); }} onClick={(e)=>e.stopPropagation()} style={{color: "#26a69a", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onPointerDown={(e) => { e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} onClick={(e)=>e.stopPropagation()} style={{color: "#ffeb3b", padding: 4}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
+            <button className="ghost" onPointerDown={(e) => { e.stopPropagation(); onFlag(null); setShowPalette(false); }} onClick={(e)=>e.stopPropagation()} style={{padding: 4}}><X size={14} /></button>
           </div>
         )}
       </div>
