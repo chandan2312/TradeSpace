@@ -536,19 +536,17 @@ export default function ChartPanel({
     const chart = chartRef.current;
     if (!chart) return;
     const handler = (param) => {
-      // 1. Mobile tracker: Touch events don't fire onMouseMove, so we rely on crosshair updates
       const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
       if (isTouch) {
-        if (param.point && seriesRef.current && param.time) {
+        if (param.point && seriesRef.current) {
           const y = param.point.y;
+          const x = param.point.x;
           const price = seriesRef.current.coordinateToPrice(y);
           if (price != null && Number.isFinite(price)) {
-            setHoverBtn({ y, price, time: param.time });
+            const time = chart.timeScale().coordinateToTime(x);
+            setHoverBtn({ y, price, time });
             hoverPriceRef.current = price;
           }
-        } else {
-          setHoverBtn(null);
-          hoverPriceRef.current = null;
         }
       }
 
