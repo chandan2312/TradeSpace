@@ -168,6 +168,7 @@ input::placeholder { color: var(--muted); }
   align-items: center;
   gap: 6px;
   border-top: 1px solid var(--border);
+  position: relative;
 }
 
 .wl-row-drag { display: inline; }
