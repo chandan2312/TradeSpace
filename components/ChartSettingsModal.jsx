@@ -223,8 +223,14 @@ export default function ChartSettingsModal({ onClose }) {
                 </div>
 
                 <h3 style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-muted)", margin: "24px 0 16px" }}>Grid & Lines</h3>
-                <ColorPicker label="Vertical grid" settingKey="gridVertColor" showAlpha settings={settings} handleChange={handleChange} />
-                <ColorPicker label="Horizontal grid" settingKey="gridHorzColor" showAlpha settings={settings} handleChange={handleChange} />
+                <Checkbox label="Vertical Grid Lines" settingKey="gridVertEnabled" settings={settings} handleChange={handleChange} />
+                {settings.gridVertEnabled !== false && (
+                  <ColorPicker label="Vertical grid color" settingKey="gridVertColor" showAlpha settings={settings} handleChange={handleChange} />
+                )}
+                <Checkbox label="Horizontal Grid Lines" settingKey="gridHorzEnabled" settings={settings} handleChange={handleChange} />
+                {settings.gridHorzEnabled !== false && (
+                  <ColorPicker label="Horizontal grid color" settingKey="gridHorzColor" showAlpha settings={settings} handleChange={handleChange} />
+                )}
                 <ColorPicker label="Crosshair" settingKey="crosshairColor" showAlpha settings={settings} handleChange={handleChange} />
                 
                 <h3 style={{ fontSize: 11, textTransform: "uppercase", color: "var(--text-muted)", margin: "24px 0 16px" }}>Scales & Text</h3>

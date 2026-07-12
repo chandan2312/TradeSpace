@@ -161,8 +161,8 @@ export default function ChartPanel({
         fontSize: 10,
       },
       grid: { 
-        vertLines: { color: settings.gridVertColor }, 
-        horzLines: { color: settings.gridHorzColor } 
+        vertLines: { color: settings.gridVertColor, visible: settings.gridVertEnabled !== false }, 
+        horzLines: { color: settings.gridHorzColor, visible: settings.gridHorzEnabled !== false } 
       },
       watermark: {
         visible: settings.watermark,
@@ -199,8 +199,8 @@ export default function ChartPanel({
           fontSize: 10,
         },
         grid: { 
-          vertLines: { color: settings.gridVertColor }, 
-          horzLines: { color: settings.gridHorzColor } 
+          vertLines: { color: settings.gridVertColor, visible: settings.gridVertEnabled !== false }, 
+          horzLines: { color: settings.gridHorzColor, visible: settings.gridHorzEnabled !== false } 
         },
         crosshair: { mode: CrosshairMode.Normal },
         timeScale: { rightOffset: 12, timeVisible: true, secondsVisible: false, borderColor: settings.linesColor },
