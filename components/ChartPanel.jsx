@@ -383,9 +383,6 @@ export default function ChartPanel({
   // while the pointer travels over the price axis — crosshair events stop at
   // the pane edge, which made the button vanish before it could be clicked.
   const onMouseMove = useCallback((ev) => {
-    const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
-    if (isTouch) return;
-
     const series = seriesRef.current;
     const chart = chartRef.current;
     if (!series || !chart || !wrapRef.current || dragStateRef.current) return;
