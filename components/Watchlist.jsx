@@ -308,11 +308,16 @@ function WatchRow({
       <div className="wl-row-drag muted hide-mobile" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={14} /></div>
       
       {/* Flag */}
-      <div ref={paletteRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
+      <div 
+        ref={paletteRef} 
+        style={{ position: "relative", display: "flex", alignItems: "center" }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
         <button 
           className="ghost" 
           onClick={(e) => { e.stopPropagation(); setShowPalette(!showPalette); }}
-          style={{ padding: "4px", color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)", opacity: flag ? 1 : 0.2 }}
+          style={{ padding: "8px", margin: "-4px", color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)", opacity: flag ? 1 : 0.2 }}
         >
           <Flag size={14} fill={flag ? "currentColor" : "none"} strokeWidth={flag ? 0 : 2} />
         </button>
