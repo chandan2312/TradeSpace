@@ -131,6 +131,7 @@ export default function ChartPanel({
   const [dragging, setDragging] = useState(null);     // {id, price} while actively dragging
   const dragStateRef = useRef(null);
 
+  const [chartReady, setChartReady] = useState(false);
   const [isScrolledLeft, setIsScrolledLeft] = useState(false);
 
   const fmt = useCallback((p) => Number(p).toFixed(digits), [digits]);
@@ -238,9 +239,11 @@ export default function ChartPanel({
 
       chartRef.current = chart;
       seriesRef.current = series;
+      setChartReady(true);
     })();
     return () => {
       disposed = true;
+      setChartReady(false);
       chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -519,7 +522,7 @@ export default function ChartPanel({
     };
     timeScale.subscribeVisibleLogicalRangeChange(handler);
     return () => timeScale.unsubscribeVisibleLogicalRangeChange(handler);
-  }, [syncOpts?.time, paneId, setSyncedLogicalRange]);
+  }, [syncOpts?.time, paneId, setSyncedLogicalRange, chartReady]);
 
   useEffect(() => {
     if (!chartRef.current || !syncOpts?.time || !syncedLogicalRange) return;
@@ -572,7 +575,7 @@ export default function ChartPanel({
     };
     chart.subscribeCrosshairMove(handler);
     return () => chart.unsubscribeCrosshairMove(handler);
-  }, [syncOpts?.crosshair, paneId, setSyncedCrosshair]);
+  }, [syncOpts?.crosshair, paneId, setSyncedCrosshair, chartReady]);
 
   useEffect(() => {
     if (!chartRef.current || !syncOpts?.crosshair || !syncedCrosshair || !seriesRef.current) return;
