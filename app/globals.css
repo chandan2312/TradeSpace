@@ -259,7 +259,7 @@ input::placeholder { color: var(--muted); }
 
   .drawing-toolbar {
     position: fixed !important;
-    bottom: 92px !important;
+    bottom: 46px !important;
     left: 0 !important;
     z-index: 101 !important;
     top: auto !important;
