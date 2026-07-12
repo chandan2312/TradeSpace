@@ -10,7 +10,7 @@ import SymbolPalette from "./SymbolPalette";
 import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
-import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown } from "lucide-react";
+import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag } from "lucide-react";
 import BiasPanel from "./BiasPanel";
 import MiniBiasHeader from "./MiniBiasHeader";
 import ChartSettingsModal from "./ChartSettingsModal";
@@ -73,7 +73,7 @@ export default function Dashboard() {
   const [isLooping, setIsLooping] = useState(false);
   const [loopMenuOpen, setLoopMenuOpen] = useState(false);
   const [loopInterval, setLoopInterval] = useState(5000);
-  const [loopColor, setLoopColor] = useState("red");
+  const [loopColors, setLoopColors] = useState(["red"]);
 
   const [alerts, setAlerts] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
@@ -228,8 +228,8 @@ export default function Dashboard() {
 
   // ---------- Loop Mode Logic ----------
   const loopSymbols = useMemo(() => {
-    return Object.keys(symbolFlags).filter(sym => symbolFlags[sym] === loopColor);
-  }, [symbolFlags, loopColor]);
+    return Object.keys(symbolFlags).filter(sym => loopColors.includes(symbolFlags[sym]));
+  }, [symbolFlags, loopColors]);
 
   useEffect(() => {
     if (!isLooping || layout !== "1" || loopSymbols.length === 0) return;
@@ -801,16 +801,34 @@ export default function Dashboard() {
                   >
                     {loopMenuOpen && layout === "1" ? (
                       <div className="loop-controller" style={{ position: "absolute", top: 8, left: 12, right: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center", background: "var(--panel)", padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.5)", overflowX: "auto" }}>
-                        <select 
-                          value={loopColor} 
-                          onChange={e => setLoopColor(e.target.value)}
-                          style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, marginRight: 4, cursor: "pointer" }}
-                        >
-                          <option value="red" style={{color: "#000"}}>Red Flags</option>
-                          <option value="blue" style={{color: "#000"}}>Blue Flags</option>
-                          <option value="green" style={{color: "#000"}}>Green Flags</option>
-                          <option value="yellow" style={{color: "#000"}}>Yellow Flags</option>
-                        </select>
+                        <div style={{ display: "flex", gap: 4, marginRight: 4 }}>
+                          {["red", "blue", "green", "yellow"].map(color => (
+                            <button
+                              key={color}
+                              className="ghost"
+                              onClick={() => {
+                                setLoopColors(prev => 
+                                  prev.includes(color) 
+                                    ? prev.length > 1 ? prev.filter(c => c !== color) : prev
+                                    : [...prev, color]
+                                );
+                              }}
+                              style={{
+                                padding: "4px", 
+                                borderRadius: 4,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: color === "red" ? "#ef5350" : color === "blue" ? "#2962ff" : color === "green" ? "#26a69a" : color === "yellow" ? "#ffeb3b" : "var(--text)",
+                                opacity: loopColors.includes(color) ? 1 : 0.2,
+                                background: loopColors.includes(color) ? "rgba(255,255,255,0.05)" : "transparent"
+                              }}
+                              title={`Toggle ${color} flag`}
+                            >
+                              <Flag size={14} fill={loopColors.includes(color) ? "currentColor" : "none"} strokeWidth={loopColors.includes(color) ? 0 : 2} />
+                            </button>
+                          ))}
+                        </div>
                         <button className="ghost" onClick={loopPrev} title="Previous" style={{padding: "4px"}}><SkipBack size={16} /></button>
                         <button className={isLooping ? "primary" : "ghost"} onClick={() => setIsLooping(!isLooping)} title={isLooping ? "Pause" : "Play"} style={{padding: "4px 8px"}}>
                           {isLooping ? <Pause size={16} /> : <Play size={16} />}
