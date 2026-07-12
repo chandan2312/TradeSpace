@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings } from "lucide-react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2 } from "lucide-react";
 import IndicatorsMenu from "./IndicatorsMenu";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
@@ -14,7 +14,8 @@ export default function TopBar({
   layout, setLayout, syncOpts, setSyncOpts,
   watchlistOpen, setWatchlistOpen,
   savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop,
-  indicators, setIndicators
+  indicators, setIndicators,
+  loadedLayoutId, onUpdateLayout, onRenameLayout, onDeleteLayout
 }) {
   const digits = tick?.digits ?? 5;
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
@@ -116,20 +117,27 @@ export default function TopBar({
 
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <select 
-                  onChange={(e) => {
-                    if (e.target.value) onLoadLayout(e.target.value);
-                    e.target.value = "";
-                    setShowLayoutMenu(false);
-                  }} 
-                  style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "4px", borderRadius: 4, fontSize: 12, outline: "none", cursor: "pointer", flex: 1, marginRight: 8 }}
-                >
-                  <option value="">Load template...</option>
-                  {savedLayouts && savedLayouts.map(l => (
-                    <option key={l._id} value={l._id}>{l.name}</option>
-                  ))}
-                </select>
-                <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); }} title="Save Layout" style={{padding: "4px", display: "flex", alignItems: "center"}}><Save size={14} /></button>
+                <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", fontWeight: 600 }}>Saved Layouts</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {loadedLayoutId && (
+                    <button className="ghost" onClick={() => { onUpdateLayout(loadedLayoutId); setShowLayoutMenu(false); }} title="Save Current" style={{padding: "2px 6px", fontSize: 11}}>Save</button>
+                  )}
+                  <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); }} title="Save As New" style={{padding: "2px 6px", fontSize: 11}}>Save As</button>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 4, padding: 4 }}>
+                {savedLayouts && savedLayouts.length > 0 ? savedLayouts.map(l => (
+                  <div key={l._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px", background: l._id === loadedLayoutId ? "rgba(41,98,255,0.15)" : "transparent", borderRadius: 4 }}>
+                    <div onClick={() => { onLoadLayout(l._id); setShowLayoutMenu(false); }} style={{ cursor: "pointer", flex: 1, fontSize: 12, fontWeight: l._id === loadedLayoutId ? 700 : 400 }}>
+                      {l.name}
+                    </div>
+                    <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onDeleteLayout(l._id); }} style={{ padding: 4 }} title="Delete Layout">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )) : (
+                  <div className="muted" style={{ fontSize: 11, padding: 4, textAlign: "center" }}>No saved layouts</div>
+                )}
               </div>
             </div>
           </div>
@@ -239,21 +247,27 @@ export default function TopBar({
 
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <select 
-                    onChange={(e) => {
-                      if (e.target.value) onLoadLayout(e.target.value);
-                      e.target.value = "";
-                      setShowLayoutMenu(false);
-                      setMobileMenuOpen(false);
-                    }} 
-                    style={{ background: "var(--panel)", color: "var(--text)", border: "1px solid var(--border)", padding: "4px", borderRadius: 4, fontSize: 12, outline: "none", cursor: "pointer", flex: 1, marginRight: 8 }}
-                  >
-                    <option value="">Load template...</option>
-                    {savedLayouts && savedLayouts.map(l => (
-                      <option key={l._id} value={l._id}>{l.name}</option>
-                    ))}
-                  </select>
-                  <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); setMobileMenuOpen(false); }} title="Save Layout" style={{padding: "4px", display: "flex", alignItems: "center"}}><Save size={14} /></button>
+                  <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", fontWeight: 600 }}>Saved Layouts</div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {loadedLayoutId && (
+                      <button className="ghost" onClick={() => { onUpdateLayout(loadedLayoutId); setShowLayoutMenu(false); setMobileMenuOpen(false); }} title="Save Current" style={{padding: "2px 6px", fontSize: 11}}>Save</button>
+                    )}
+                    <button className="ghost" onClick={() => { onOpenSaveLayout(); setShowLayoutMenu(false); setMobileMenuOpen(false); }} title="Save As New" style={{padding: "2px 6px", fontSize: 11}}>Save As</button>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 4, padding: 4 }}>
+                  {savedLayouts && savedLayouts.length > 0 ? savedLayouts.map(l => (
+                    <div key={l._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px", background: l._id === loadedLayoutId ? "rgba(41,98,255,0.15)" : "transparent", borderRadius: 4 }}>
+                      <div onClick={() => { onLoadLayout(l._id); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{ cursor: "pointer", flex: 1, fontSize: 12, fontWeight: l._id === loadedLayoutId ? 700 : 400 }}>
+                        {l.name}
+                      </div>
+                      <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onDeleteLayout(l._id); }} style={{ padding: 4 }} title="Delete Layout">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )) : (
+                    <div className="muted" style={{ fontSize: 11, padding: 4, textAlign: "center" }}>No saved layouts</div>
+                  )}
                 </div>
               </div>
             </div>

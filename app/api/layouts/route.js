@@ -23,7 +23,28 @@ export async function POST(req) {
       drawings: body.drawings || "{}",
       createdAt: new Date(),
     };
-    await layoutsCol.insertOne(doc);
+    await layoutsCol.updateOne({ name: body.name }, { $set: doc }, { upsert: true });
+    const layouts = await layoutsCol.find({}).sort({ createdAt: 1 }).toArray();
+    return NextResponse.json({ ok: true, layouts });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const name = searchParams.get("name");
+    const { layoutsCol } = await getCols();
+    
+    if (id) {
+      const { ObjectId } = require("mongodb");
+      await layoutsCol.deleteOne({ _id: new ObjectId(id) });
+    } else if (name) {
+      await layoutsCol.deleteOne({ name });
+    }
+    
     const layouts = await layoutsCol.find({}).sort({ createdAt: 1 }).toArray();
     return NextResponse.json({ ok: true, layouts });
   } catch (err) {
