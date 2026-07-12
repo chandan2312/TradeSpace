@@ -407,3 +407,15 @@ a[href*="tradingview.com"],
   }
 }
 
+.scroll-right-btn {
+  position: absolute;
+  bottom: 24px;
+  right: 70px;
+  z-index: 10;
+}
+@media (max-width: 768px) {
+  .scroll-right-btn {
+    right: auto !important;
+    left: 12px !important;
+  }
+}

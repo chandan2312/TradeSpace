@@ -750,7 +750,7 @@ export default function ChartPanel({
       
       {isScrolledLeft && (
         <button
-          className="ghost"
+          className="ghost scroll-right-btn"
           onClick={(e) => {
             e.stopPropagation();
             if (chartRef.current) {
@@ -760,7 +760,6 @@ export default function ChartPanel({
           }}
           title="Scroll to Real Time"
           style={{
-            position: "absolute", bottom: 24, right: 70, zIndex: 10,
             background: "var(--accent)", border: "1px solid var(--border)",
             color: "#fff",
             borderRadius: "50%", width: 32, height: 32, display: "flex", 
