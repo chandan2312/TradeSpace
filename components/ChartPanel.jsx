@@ -387,6 +387,9 @@ export default function ChartPanel({
   // while the pointer travels over the price axis — crosshair events stop at
   // the pane edge, which made the button vanish before it could be clicked.
   const onMouseMove = useCallback((ev) => {
+    const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+    if (isTouch) return;
+
     const series = seriesRef.current;
     const chart = chartRef.current;
     if (!series || !chart || !wrapRef.current || dragStateRef.current) return;
@@ -535,11 +538,29 @@ export default function ChartPanel({
 
   const programmaticCrosshairRef = useRef(null);
 
-  // ---------- Sync Crosshair ----------
+  // ---------- Sync & Mobile Crosshair ----------
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !syncOpts?.crosshair) return;
+    if (!chart) return;
     const handler = (param) => {
+      // 1. Mobile tracker: Touch events don't fire onMouseMove, so we rely on crosshair updates
+      const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+      if (isTouch) {
+        if (param.point && seriesRef.current && param.time) {
+          const y = param.point.y;
+          const price = seriesRef.current.coordinateToPrice(y);
+          if (price != null && Number.isFinite(price)) {
+            setHoverBtn({ y, price, time: param.time });
+            hoverPriceRef.current = price;
+          }
+        } else {
+          setHoverBtn(null);
+          hoverPriceRef.current = null;
+        }
+      }
+
+      // 2. Sync logic
+      if (!syncOpts?.crosshair) return;
       const prog = programmaticCrosshairRef.current;
       if (prog && prog.time === param.time) {
         return; // Ignore echo
@@ -597,7 +618,12 @@ export default function ChartPanel({
       onPointerUp={ph.onPointerUp}
       onContextMenu={mergedContext}
       onMouseMove={onMouseMove}
-      onMouseLeave={() => { setHoverBtn(null); setDragHandle(null); }}
+      onMouseLeave={() => { 
+        const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+        if (!isTouch) {
+          setHoverBtn(null); setDragHandle(null); 
+        }
+      }}
     >
       <div ref={wrapRef} style={{ position: "absolute", inset: 0 }} />
 
