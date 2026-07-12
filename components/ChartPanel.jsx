@@ -130,7 +130,7 @@ export default function ChartPanel({
   const [dragHandle, setDragHandle] = useState(null); // {id, y, price} when pointer near a line
   const [dragging, setDragging] = useState(null);     // {id, price} while actively dragging
   const dragStateRef = useRef(null);
-  const logicalRangeRef = useRef(null);
+
   const [isScrolledLeft, setIsScrolledLeft] = useState(false);
 
   const fmt = useCallback((p) => Number(p).toFixed(digits), [digits]);
@@ -254,9 +254,6 @@ export default function ChartPanel({
 
     const apply = (bars) => {
       if (cancelled || !seriesRef.current) return;
-      
-      const currentRange = chartRef.current?.timeScale().getVisibleLogicalRange();
-      if (currentRange) logicalRangeRef.current = currentRange;
 
       seriesRef.current.setData(bars);
       lastBarRef.current = { key, bar: bars[bars.length - 1] };
@@ -266,14 +263,10 @@ export default function ChartPanel({
       // must re-fit both axes or it renders outside the visible range
       chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
       
-      if (logicalRangeRef.current) {
-        chartRef.current?.timeScale().setVisibleLogicalRange(logicalRangeRef.current);
-      } else {
-        const visibleBars = 120;
-        const to = bars.length - 1 + 12;
-        const from = Math.max(0, bars.length - visibleBars);
-        chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
-      }
+      const visibleBars = 120;
+      const to = bars.length - 1 + 12;
+      const from = Math.max(0, bars.length - visibleBars);
+      chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
 
       const est = Math.max(
         ...bars.slice(-50).map((b) => (String(b.close).split(".")[1] || "").length)
