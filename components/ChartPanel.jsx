@@ -602,7 +602,7 @@ export default function ChartPanel({
 
   return (
     <div
-      style={{ flex: 1, position: "relative", minWidth: 0,
+      style={{ flex: 1, position: "relative", minWidth: 0, touchAction: "none",
         cursor: draw.cursorFor(draw.activeTool, draw.hover) || (dragHandle ? "ns-resize" : "default") }}
       onPointerDown={ph.onPointerDown}
       onPointerMove={(ev) => { ph.onPointerMove(ev); }}

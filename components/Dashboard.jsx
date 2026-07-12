@@ -925,6 +925,7 @@ export default function Dashboard() {
         })()}
         {watchlistOpen && (
           <aside className="sidebar">
+            <div id="mobile-drawing-portal"></div>
             <Watchlist
               watchlists={watchlists}
               activeListId={activeListId}

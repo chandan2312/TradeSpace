@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 import { MousePointer2, TrendingUp, Minus, Square, GitCompareArrows, Ruler,
   Lock, Unlock, Trash2, Undo2, Redo2, Settings, GripHorizontal, Type, Magnet, Camera } from "lucide-react";
@@ -87,7 +88,15 @@ export default function DrawingToolbar({ api }) {
     }
   };
 
-  return (
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const content = (
     <div 
       className="drawing-toolbar"
       ref={toolbarRef}
@@ -244,4 +253,13 @@ export default function DrawingToolbar({ api }) {
       )}
     </div>
   );
+
+  if (isMobile) {
+    const portalDest = typeof document !== 'undefined' ? document.getElementById("mobile-drawing-portal") : null;
+    if (portalDest) {
+      return createPortal(content, portalDest);
+    }
+  }
+
+  return content;
 }
