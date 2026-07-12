@@ -18,7 +18,11 @@ export default function DrawingContextMenu({ api }) {
       setCtxMenu(null);
     };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("touchstart", close, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
   }, [ctxMenu, setCtxMenu]);
 
   if (!ctxMenu || !selected) return null;
@@ -28,6 +32,8 @@ export default function DrawingContextMenu({ api }) {
     const [h, setH] = useState(false);
     return (
       <div
+        onTouchStart={(e) => { e.stopPropagation(); }}
+        onPointerDown={(e) => { e.stopPropagation(); }}
         onMouseDown={(e) => { e.stopPropagation(); }}
         onClick={(e) => { e.stopPropagation(); onClick(); setCtxMenu(null); }}
         onMouseEnter={() => setH(true)}
@@ -49,6 +55,7 @@ export default function DrawingContextMenu({ api }) {
       ref={menuRef}
       onMouseDown={stop}
       onPointerDown={stop}
+      onTouchStart={stop}
       style={{
         position: "absolute", left: ctxMenu.x, top: ctxMenu.y, zIndex: 50, minWidth: 180,
         background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,

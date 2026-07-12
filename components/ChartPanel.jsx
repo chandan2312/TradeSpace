@@ -428,6 +428,8 @@ export default function ChartPanel({
       return ay != null && Math.abs(ay - y) < 10;
     });
 
+    if (nearAlerts.length === 0) return;
+
     setCtxMenu({
       x: Math.min(ev.clientX - rect.left, rect.width - 240),
       y: Math.min(y, rect.height - 40 - nearAlerts.length * 36),
@@ -435,6 +437,20 @@ export default function ChartPanel({
       nearAlerts,
     });
   }, [alerts]);
+
+  const ctxMenuRef = useRef(null);
+  useEffect(() => {
+    const close = (e) => {
+      if (ctxMenuRef.current && ctxMenuRef.current.contains(e.target)) return;
+      setCtxMenu(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, []);
 
   // ---------- maintain crosshair while hovering the add button ----------
   useEffect(() => {
@@ -444,16 +460,6 @@ export default function ChartPanel({
       chartRef.current?.clearCrosshairPosition();
     }
   }, [isHoveringBtn, hoverBtn]);
-
-  useEffect(() => {
-    const close = () => setCtxMenu(null);
-    document.addEventListener("click", close);
-    document.addEventListener("touchstart", close, { passive: true });
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("touchstart", close);
-    };
-  }, []);
 
   // ---------- drag-to-move an alert price line ----------
   const beginDrag = useCallback((e, id) => {
@@ -695,7 +701,10 @@ export default function ChartPanel({
 
       {ctxMenu && (
         <div 
+          ref={ctxMenuRef}
           onTouchStart={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           style={{
           position: "absolute", left: ctxMenu.x, top: ctxMenu.y, zIndex: 30, minWidth: 220,
           background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,
