@@ -124,6 +124,11 @@ function AlertRow({ a, current, onJump, onDelete, onRearm }) {
         </button>
         <span className="num" style={{ fontWeight: 600, fontSize: 12 }}>{a.price}</span>
         <span className="muted" style={{ fontSize: 11 }}>{a.condition}</span>
+        {a.chain && a.chain.length > 1 && (
+          <span className="muted" style={{ fontSize: 10, background: "var(--border)", padding: "1px 4px", borderRadius: 4 }}>
+            🔗 {(a.currentStep || 0) + 1}/{a.chain.length}
+          </span>
+        )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
           {triggered && (
             <button

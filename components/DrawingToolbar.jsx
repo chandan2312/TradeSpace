@@ -18,6 +18,8 @@ const ICONS = {
   text: Type,
 };
 
+let globalToolbarPos = null;
+
 // Vertical drawing-tools icon bar pinned to the left edge of a chart pane.
 // Only the active pane shows it to avoid clutter across a multi-pane grid.
 export default function DrawingToolbar({ api }) {
@@ -46,7 +48,13 @@ export default function DrawingToolbar({ api }) {
   const showStyleRow = !!activeTool || !!selected;
   const currentColor = selected ? selected.color : drawStyle.color;
 
-  const [pos, setPos] = useState(null);
+  const [pos, setPosState] = useState(globalToolbarPos);
+  
+  const setPos = (newPos) => {
+    globalToolbarPos = newPos;
+    setPosState(newPos);
+  };
+
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
   const toolbarRef = useRef(null);
@@ -81,10 +89,10 @@ export default function DrawingToolbar({ api }) {
       dragStart.current = {
         x: e.clientX,
         y: e.clientY,
-        startX: el.offsetLeft,
-        startY: el.offsetTop,
+        startX: el.getBoundingClientRect().left,
+        startY: el.getBoundingClientRect().top,
       };
-      if (!pos) setPos({ x: el.offsetLeft, y: el.offsetTop });
+      if (!pos) setPos({ x: el.getBoundingClientRect().left, y: el.getBoundingClientRect().top });
     }
   };
 
@@ -103,11 +111,11 @@ export default function DrawingToolbar({ api }) {
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       style={{
-      position: "absolute", 
+      position: "fixed", 
       left: pos ? pos.x : 8, 
       top: pos ? pos.y : "50%", 
       transform: pos ? "none" : "translateY(-50%)",
-      zIndex: 40, display: "flex", flexDirection: "column", gap: 2,
+      zIndex: 1000, display: "flex", flexDirection: "column", gap: 2,
       background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,
       padding: 4, boxShadow: "0 4px 14px rgba(0,0,0,.5)",
     }}>
@@ -259,6 +267,8 @@ export default function DrawingToolbar({ api }) {
     if (portalDest) {
       return createPortal(content, portalDest);
     }
+  } else if (typeof document !== 'undefined') {
+    return createPortal(content, document.body);
   }
 
   return content;

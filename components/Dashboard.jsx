@@ -10,11 +10,13 @@ import SymbolPalette from "./SymbolPalette";
 import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
-import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag } from "lucide-react";
+import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag, LayoutGrid } from "lucide-react";
 import BiasPanel from "./BiasPanel";
 import MiniBiasHeader from "./MiniBiasHeader";
 import ChartSettingsModal from "./ChartSettingsModal";
+import CorrelatedPairsModal from "./CorrelatedPairsModal";
 import { useChartSettings } from "../lib/chartSettings";
+import { LAYOUT_CONFIG } from "../lib/layouts";
 
 const api = async (path, opts) => {
   const res = await fetch(path, {
@@ -80,10 +82,18 @@ export default function Dashboard() {
   const [activeListId, setActiveListId] = useState(null);
   const watchlistsRef = useRef(watchlists);
   const activeListIdRef = useRef(activeListId);
+  const [watchlistLayouts, setWatchlistLayouts] = useState({});
+  const watchlistLayoutsRef = useRef({});
+  const layoutStateRef = useRef({ panes, layout, activePaneId });
+
   useEffect(() => {
     watchlistsRef.current = watchlists;
     activeListIdRef.current = activeListId;
   }, [watchlists, activeListId]);
+  
+  useEffect(() => { 
+    layoutStateRef.current = { panes, layout, activePaneId }; 
+  }, [panes, layout, activePaneId]);
   const [ticks, setTicks] = useState({}); // SYM -> {bid, ask, digits, dir}
   const [connected, setConnected] = useState(false);
   const [palette, setPalette] = useState(null); // null | "switch" | "add"
@@ -91,6 +101,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
   const [marketBiasOpen, setMarketBiasOpen] = useState(false);
+  const [correlatedOpen, setCorrelatedOpen] = useState(false);
   const [biasEnabled, setBiasEnabled] = useState(false); // default off to save RAM on RDP
 
   const [savedLayouts, setSavedLayouts] = useState([]);
@@ -106,6 +117,7 @@ export default function Dashboard() {
   const [syncedLogicalRange, setSyncedLogicalRange] = useState(null);
   const [syncedCrosshair, setSyncedCrosshair] = useState(null);
   const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
+  const [joinChainAlertId, setJoinChainAlertId] = useState(null);
   const [settings] = useChartSettings();
 
   // ---------- boot: restore prefs ----------
@@ -139,11 +151,41 @@ export default function Dashboard() {
           const parsed = JSON.parse(bc);
           for (const [k, v] of Object.entries(parsed)) barsCache.current.set(k, v);
         }
+        
+        const wl = localStorage.getItem("ts_watchlist_layouts");
+        if (wl) {
+           const parsed = JSON.parse(wl);
+           setWatchlistLayouts(parsed);
+           watchlistLayoutsRef.current = parsed;
+        }
       } catch {}
     };
 
     syncFromStorage();
     setIsHydrated(true);
+
+    fetch("/api/settings").then(r => r.json()).then(d => {
+      if (d.ok && d.settings) {
+        if (d.settings.flags) {
+          setSymbolFlags(d.settings.flags);
+          localStorage.setItem("ts_symbol_flags", JSON.stringify(d.settings.flags));
+        }
+        if (d.settings.indicators) {
+          setIndicators(d.settings.indicators);
+          localStorage.setItem("ts_indicators", JSON.stringify(d.settings.indicators));
+        }
+        if (typeof d.settings.biasEnabled === "boolean") {
+          setBiasEnabled(d.settings.biasEnabled);
+          localStorage.setItem("ts_bias_enabled", String(d.settings.biasEnabled));
+        }
+        if (d.settings.watchlistLayouts) {
+          setWatchlistLayouts(d.settings.watchlistLayouts);
+          watchlistLayoutsRef.current = d.settings.watchlistLayouts;
+          localStorage.setItem("ts_watchlist_layouts", JSON.stringify(d.settings.watchlistLayouts));
+        }
+      }
+    }).catch(console.error);
+
     window.addEventListener("storage", syncFromStorage);
 
     if ("Notification" in window && Notification.permission === "default") {
@@ -211,8 +253,43 @@ export default function Dashboard() {
   useEffect(() => { if (isHydrated) localStorage.setItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions, isHydrated]);
   useEffect(() => { if (isHydrated) localStorage.setItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts, isHydrated]);
   useEffect(() => { if (isHydrated) localStorage.setItem("ts_watchlist_open", String(watchlistOpen)); }, [watchlistOpen, isHydrated]);
-  useEffect(() => { if (isHydrated) localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); }, [symbolFlags, isHydrated]);
-  useEffect(() => { if (isHydrated) localStorage.setItem("ts_indicators", JSON.stringify(indicators)); }, [indicators, isHydrated]);
+  
+  useEffect(() => { 
+    if (isHydrated) {
+      localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); 
+      fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ flags: symbolFlags }) }).catch(()=>{});
+    }
+  }, [symbolFlags, isHydrated]);
+
+  useEffect(() => { 
+    if (isHydrated) {
+      localStorage.setItem("ts_indicators", JSON.stringify(indicators)); 
+      fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ indicators }) }).catch(()=>{});
+    }
+  }, [indicators, isHydrated]);
+
+  // Continuously sync current layout state to the active list profile
+  useEffect(() => {
+    if (!isHydrated || !activeListId) return;
+    const stored = watchlistLayoutsRef.current[activeListId];
+    const isSame = stored && 
+                   JSON.stringify(stored.panes) === JSON.stringify(panes) && 
+                   stored.layout === layout && 
+                   stored.activePaneId === activePaneId;
+    
+    if (!isSame) {
+      const currentLayout = { panes, layout, activePaneId };
+      const nextLayouts = { ...watchlistLayoutsRef.current, [activeListId]: currentLayout };
+      watchlistLayoutsRef.current = nextLayouts;
+      setWatchlistLayouts(nextLayouts);
+      localStorage.setItem("ts_watchlist_layouts", JSON.stringify(nextLayouts));
+      
+      clearTimeout(window._wlSyncTimer);
+      window._wlSyncTimer = setTimeout(() => {
+        fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ watchlistLayouts: nextLayouts }) }).catch(()=>{});
+      }, 2000);
+    }
+  }, [panes, layout, activePaneId, activeListId, isHydrated]);
 
   // ---------- Keyboard Shortcuts ----------
   useEffect(() => {
@@ -420,7 +497,15 @@ export default function Dashboard() {
     } else if (syncOpts.symbol) {
       setPanes(prev => prev.map(p => ({ ...p, symbol: newSym })));
     } else {
-      setPanes(prev => prev.map(p => p.id === activePaneId ? { ...p, symbol: newSym } : p));
+      const existingPane = panes.find(p => p.symbol === newSym);
+      if (existingPane) {
+        setActivePaneId(existingPane.id);
+        setTimeout(() => {
+          document.getElementById(`pane-${existingPane.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 50);
+      } else {
+        setPanes(prev => prev.map(p => p.id === activePaneId ? { ...p, symbol: newSym } : p));
+      }
     }
   };
 
@@ -456,9 +541,24 @@ export default function Dashboard() {
     }
   };
 
+  const handleDoubleJump = (sym) => {
+    if (layout === "1") return;
+    const pane = panes.find(p => p.symbol === sym);
+    if (pane) {
+      toggleFullscreen(pane.id);
+    }
+  };
+
   const toggleFullscreen = (id) => {
     if (fullScreenPaneId) {
-      if (preFullScreenPanes) setPanes(preFullScreenPanes);
+      if (preFullScreenPanes) {
+        const currentFsPane = panes.find(p => p.id === fullScreenPaneId);
+        if (currentFsPane) {
+          setPanes(preFullScreenPanes.map(p => p.id === fullScreenPaneId ? { ...p, symbol: currentFsPane.symbol, tf: currentFsPane.tf } : p));
+        } else {
+          setPanes(preFullScreenPanes);
+        }
+      }
       setFullScreenPaneId(null);
       setPreFullScreenPanes(null);
     } else {
@@ -469,12 +569,8 @@ export default function Dashboard() {
   };
 
   const changeLayout = (newLayout) => {
-    let required = 1;
-    if (newLayout === "2v" || newLayout === "2h") required = 2;
-    if (newLayout === "4") required = 4;
-    if (newLayout === "6") required = 6;
-    if (newLayout === "8") required = 8;
-    
+    const required = LAYOUT_CONFIG[newLayout]?.count || 1;
+
     setPanes(prev => {
       const next = [...prev];
       while (next.length < required) {
@@ -566,6 +662,65 @@ export default function Dashboard() {
     if (data.ok) setNotesPanelData({ checklist: data.checklist || [], notes: data.notes || "" });
   };
 
+  const handleGridify = (symbols, chosenLayout, newSyncOpts) => {
+    if (!symbols || !symbols.length) return;
+    const count = Math.min(symbols.length, 8);
+    let newLayout = chosenLayout;
+    if (!newLayout) {
+      if (count === 2) newLayout = "2h";
+      else if (count === 3) newLayout = "3v";
+      else if (count === 4) newLayout = "4";
+      else if (count === 5) newLayout = "5a";
+      else if (count === 6) newLayout = "6";
+      else if (count === 7 || count === 8) newLayout = "8";
+      else newLayout = "1";
+    }
+
+    if (newSyncOpts) {
+      setSyncOpts(newSyncOpts);
+    }
+
+    const required = LAYOUT_CONFIG[newLayout]?.count || count;
+
+    const currentTf = panes.find(p => p.id === activePaneId)?.tf || "M15";
+
+    setPanes(() => {
+      const next = [];
+      for (let i = 0; i < required; i++) {
+        next.push({
+          id: i + 1,
+          symbol: symbols[i] || symbols[0],
+          tf: currentTf
+        });
+      }
+      return next;
+    });
+    setLayout(newLayout);
+    setActivePaneId(1);
+    if (fullScreenPaneId) toggleFullscreen(fullScreenPaneId);
+  };
+
+  const handleWatchlistChange = (newListId) => {
+    // 1. Force save current layout to outgoing listId immediately just in case
+    if (activeListIdRef.current) {
+      const currentLayout = layoutStateRef.current;
+      const nextLayouts = { ...watchlistLayoutsRef.current, [activeListIdRef.current]: currentLayout };
+      watchlistLayoutsRef.current = nextLayouts;
+      setWatchlistLayouts(nextLayouts);
+      localStorage.setItem("ts_watchlist_layouts", JSON.stringify(nextLayouts));
+    }
+
+    // 2. Load new layout for incoming listId if it exists
+    const saved = watchlistLayoutsRef.current[newListId];
+    if (saved) {
+      if (saved.panes) setPanes(saved.panes);
+      if (saved.layout) setLayout(saved.layout);
+      if (saved.activePaneId) setActivePaneId(saved.activePaneId);
+      setFullScreenPaneId(null);
+    }
+    setActiveListId(newListId);
+  };
+
   const saveNotesPanel = async ({ checklist, notes }) => {
     if (!activeNotesSymbol) return;
     await api(`/api/symbols/${encodeURIComponent(activeNotesSymbol)}/notes`, { method: "PUT", body: JSON.stringify({ checklist, notes }) });
@@ -583,8 +738,76 @@ export default function Dashboard() {
     setAlertDraft(null);
   }, [loadAlerts, showToast]);
 
-  const deleteAlert = useCallback(async (id) => {
-    await api(`/api/alerts/${id}`, { method: "DELETE" });
+  const addAlertLayer = useCallback(async (id, price) => {
+    const target = alerts.find(a => a._id === id);
+    if (!target) return;
+    
+    let chainId = target.chainId;
+    let newOrder = 2;
+
+    // If it's a standalone alert, promote it to Chain Order 1 first
+    if (!chainId) {
+      const symbolAlerts = alerts.filter(a => a.symbol === target.symbol && a.chainId);
+      const existingIds = new Set(symbolAlerts.map(a => a.chainId));
+      let nextChar = 'A';
+      for (let i = 0; i < 26; i++) {
+         const char = String.fromCharCode(65 + i);
+         if (!existingIds.has(char)) { nextChar = char; break; }
+      }
+      chainId = nextChar;
+      await api(`/api/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ chainId, chainOrder: 1 }) });
+    } else {
+      // Find the highest order in this chain to append
+      const chainNodes = alerts.filter(a => a.chainId === chainId);
+      newOrder = Math.max(...chainNodes.map(n => n.chainOrder)) + 1;
+    }
+
+    const currentPrice = ticks[target.symbol]?.bid;
+    let cond = "cross";
+    if (Number.isFinite(currentPrice)) {
+       cond = price > currentPrice ? "above" : "below";
+    }
+
+    const data = await api("/api/alerts", { 
+       method: "POST", 
+       body: JSON.stringify({ 
+         symbol: target.symbol, 
+         price, 
+         condition: cond, 
+         chainId, 
+         chainOrder: newOrder,
+         status: "pending_chain" 
+       }) 
+    });
+
+    if (data.ok) {
+      showToast(`Added link ${chainId}${newOrder}`);
+      loadAlerts();
+    } else {
+      showToast(`Failed to add link: ${data.error}`);
+    }
+  }, [alerts, ticks, loadAlerts, showToast]);
+
+  const createChainAlert = useCallback(async (id) => {
+    const target = alerts.find(a => a._id === id);
+    if (!target) return;
+    const symbolAlerts = alerts.filter(a => a.symbol === target.symbol && a.chainId);
+    const existingIds = new Set(symbolAlerts.map(a => a.chainId));
+    let nextChar = 'A';
+    for (let i = 0; i < 26; i++) {
+       const char = String.fromCharCode(65 + i);
+       if (!existingIds.has(char)) { nextChar = char; break; }
+    }
+    const data = await api(`/api/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ chainId: nextChar, chainOrder: 1 }) });
+    if (data.ok) loadAlerts();
+  }, [alerts, loadAlerts]);
+
+  const joinChainAlert = useCallback((id) => {
+    setJoinChainAlertId(id);
+  }, []);
+
+  const deleteAlert = useCallback(async (id, deleteChain = false) => {
+    await api(`/api/alerts/${id}${deleteChain ? '?deleteChain=true' : ''}`, { method: "DELETE" });
     loadAlerts();
   }, [loadAlerts]);
 
@@ -677,10 +900,9 @@ export default function Dashboard() {
     transition: isDragging ? "none" : "grid-template-columns 0.2s, grid-template-rows 0.2s"
   };
   
-  if (fullScreenPaneId) {
-    gridStyle.gridTemplateColumns = "100%";
-    gridStyle.gridTemplateRows = "100%";
-  } else if (layout === "1") {
+  const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+
+  if (fullScreenPaneId || isMobile) {
     gridStyle.gridTemplateColumns = "100%";
     gridStyle.gridTemplateRows = "100%";
   } else if (layout === "2v") {
@@ -692,12 +914,10 @@ export default function Dashboard() {
   } else if (layout === "4") {
     gridStyle.gridTemplateColumns = `${cX}% ${100 - cX}%`;
     gridStyle.gridTemplateRows = `${cY}% ${100 - cY}%`;
-  } else if (layout === "6") {
-    gridStyle.gridTemplateColumns = "1fr 1fr 1fr";
-    gridStyle.gridTemplateRows = "1fr 1fr";
-  } else if (layout === "8") {
-    gridStyle.gridTemplateColumns = "1fr 1fr 1fr 1fr";
-    gridStyle.gridTemplateRows = "1fr 1fr";
+  } else {
+    const config = LAYOUT_CONFIG[layout] || LAYOUT_CONFIG["1"];
+    gridStyle.gridTemplateColumns = `repeat(${config.cols}, 1fr)`;
+    gridStyle.gridTemplateRows = `repeat(${config.rows}, 1fr)`;
   }
 
   // Define splitters
@@ -743,6 +963,7 @@ export default function Dashboard() {
           const next = !biasEnabled;
           setBiasEnabled(next);
           localStorage.setItem("ts_bias_enabled", next);
+          fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ biasEnabled: next }) }).catch(()=>{});
         }}
         activeAlertCount={alerts.filter((a) => a.status === "active").length}
         onOpenPip={openPip}
@@ -763,6 +984,7 @@ export default function Dashboard() {
         onUpdateLayout={updateLayout}
         onRenameLayout={renameLayout}
         onDeleteLayout={deleteLayout}
+        onOpenCorrelated={() => setCorrelatedOpen(true)}
       />
       <div className="layout-row" style={{position: "relative"}}>
         {activeNotesSymbol && (
@@ -777,11 +999,22 @@ export default function Dashboard() {
 
         {(() => {
           const gridNode = (
-            <div className={`responsive-chart-grid ${layout === "1" ? "single-chart" : ""}`} style={{ ...gridStyle, height: pipWindow ? "100vh" : gridStyle.height }}>
-              {panes.map((pane) => {
+            <div className={`responsive-chart-grid ${layout === "1" || fullScreenPaneId ? "single-chart" : ""}`} style={{ ...gridStyle, height: pipWindow ? "100vh" : gridStyle.height }}>
+              {panes.map((pane, idx) => {
                 if (fullScreenPaneId && pane.id !== fullScreenPaneId) return null;
                 const symBias = biasData?.symbols?.find((s) => s.symbol === pane.symbol);
                 const catBias = biasData?.categories?.find((c) => c.members.includes(pane.symbol));
+                
+                const layoutConfig = LAYOUT_CONFIG[layout];
+                let spanStyle = {};
+                if (!isMobile && !fullScreenPaneId && layoutConfig?.spans && layoutConfig.spans[idx]) {
+                  const [cStart, rStart, cEnd, rEnd] = layoutConfig.spans[idx];
+                  spanStyle = {
+                    gridColumn: `${cStart} / span ${cEnd - cStart}`,
+                    gridRow: `${rStart} / span ${rEnd - rStart}`
+                  };
+                }
+
                 return (
                   <div 
                     id={`pane-${pane.id}`}
@@ -796,7 +1029,8 @@ export default function Dashboard() {
                       minHeight: 0,
                       background: "var(--bg)",
                       boxShadow: (panes.length > 1 && activePaneId === pane.id) ? "inset 0 0 0 2px var(--accent)" : "none",
-                      zIndex: activePaneId === pane.id ? 2 : 1
+                      zIndex: activePaneId === pane.id ? 2 : 1,
+                      ...spanStyle
                     }}
                   >
                     {loopMenuOpen && layout === "1" ? (
@@ -867,7 +1101,9 @@ export default function Dashboard() {
                             {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
                           </div>
                         )}
-                        <MiniBiasHeader symbol={pane.symbol} symBias={symBias} catBias={catBias} />
+                        <button className="ghost" onClick={() => { setActivePaneId(pane.id); setCorrelatedOpen(true); }} title="View Correlated Pairs" style={{ padding: "4px 8px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                          <LayoutGrid size={14} color="var(--accent)" /> <span className="hide-mobile">Correlated</span>
+                        </button>
                       </div>
                     )}
                     <ChartPanel
@@ -875,12 +1111,15 @@ export default function Dashboard() {
                       symbol={pane.symbol}
                       tf={pane.tf}
                       tick={ticks[pane.symbol]}
-                      alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered"))}
+                      alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered" || a.status === "pending_chain"))}
                       barsCache={barsCache}
                       onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
+                      onAddAlertLayer={addAlertLayer}
                       onDeleteAlert={deleteAlert}
                       onMoveAlert={moveAlert}
                       onRearmAlert={rearmAlert}
+                      onCreateChainAlert={createChainAlert}
+                      onJoinChainAlert={joinChainAlert}
                       indicators={indicators}
                       onAutoAlert={handleAutoAlert}
                       onOpenSettings={() => setChartSettingsOpen(true)}
@@ -929,7 +1168,7 @@ export default function Dashboard() {
             <Watchlist
               watchlists={watchlists}
               activeListId={activeListId}
-              setActiveListId={setActiveListId}
+              setActiveListId={handleWatchlistChange}
               symbol={symbol}
               setSymbol={changeSymbol}
               ticks={ticks}
@@ -943,6 +1182,8 @@ export default function Dashboard() {
               setSymbolFlags={setSymbolFlags}
               onNavUp={layout !== "1" ? handleNavUp : null}
               onNavDown={layout !== "1" ? handleNavDown : null}
+              onGridify={handleGridify}
+              onDoubleJump={handleDoubleJump}
             />
           </aside>
         )}
@@ -995,11 +1236,20 @@ export default function Dashboard() {
           symbols={biasSymbols}
           onJump={(s) => { setMarketBiasOpen(false); changeSymbol(s); }}
           onClose={() => setMarketBiasOpen(false)}
+          onOpenCorrelated={() => { setMarketBiasOpen(false); setCorrelatedOpen(true); }}
         />
       )}
 
       {chartSettingsOpen && (
         <ChartSettingsModal onClose={() => setChartSettingsOpen(false)} />
+      )}
+
+      {correlatedOpen && (
+        <CorrelatedPairsModal
+          symbol={panes.find(p => p.id === activePaneId)?.symbol || "EURUSD"}
+          indicators={indicators}
+          onClose={() => setCorrelatedOpen(false)}
+        />
       )}
 
       {toast && (
@@ -1012,6 +1262,91 @@ export default function Dashboard() {
           {toast}
         </div>
       )}
+      {joinChainAlertId && (
+        <JoinChainModal
+          alerts={alerts}
+          targetId={joinChainAlertId}
+          onClose={() => setJoinChainAlertId(null)}
+          onJoin={async (chainId, order) => {
+            const data = await api(`/api/alerts/${joinChainAlertId}`, { method: "PATCH", body: JSON.stringify({ chainId, chainOrder: order }) });
+            if (data.ok) loadAlerts();
+            setJoinChainAlertId(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function JoinChainModal({ alerts, targetId, onClose, onJoin }) {
+  const targetAlert = alerts.find(a => a._id === targetId);
+  if (!targetAlert) return null;
+
+  const symbolAlerts = alerts.filter(a => a.symbol === targetAlert.symbol && a.chainId);
+  const chains = {};
+  for (const a of symbolAlerts) {
+    if (!chains[a.chainId]) chains[a.chainId] = [];
+    chains[a.chainId].push(a);
+  }
+  Object.values(chains).forEach(arr => arr.sort((a,b) => a.chainOrder - b.chainOrder));
+  
+  const [selectedChain, setSelectedChain] = useState(Object.keys(chains)[0] || null);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center"
+    }} onClick={onClose}>
+      <div style={{
+        background: "var(--panel)", padding: 24, borderRadius: 12, border: "1px solid var(--border)",
+        width: 340, boxShadow: "0 20px 40px rgba(0,0,0,0.5)"
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0, marginBottom: 16 }}>Join Chain Group</h3>
+        
+        {Object.keys(chains).length === 0 ? (
+           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No active chains for {targetAlert.symbol}.</p>
+        ) : (
+           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+             <select 
+                value={selectedChain} 
+                onChange={(e) => setSelectedChain(e.target.value)}
+                style={{ padding: "8px 12px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 6 }}
+             >
+                {Object.keys(chains).map(c => <option key={c} value={c}>Chain {c}</option>)}
+             </select>
+
+             {selectedChain && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
+                  <label style={{ fontSize: 13, color: "var(--text-muted)" }}>Select Position to Insert:</label>
+                  {chains[selectedChain].map((a) => (
+                    <button 
+                       key={a._id}
+                       onClick={() => onJoin(selectedChain, a.chainOrder)}
+                       style={{ 
+                         textAlign: "left", padding: "8px 12px", background: "var(--accent-soft)", 
+                         border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text)",
+                         transition: "background 0.2s"
+                       }}
+                       onMouseEnter={e => e.currentTarget.style.background = "var(--accent)"}
+                       onMouseLeave={e => e.currentTarget.style.background = "var(--accent-soft)"}
+                    >
+                       Insert at {a.chainOrder} (Pushes {a.chainOrder} down)
+                    </button>
+                  ))}
+                  <button 
+                     onClick={() => onJoin(selectedChain, chains[selectedChain].length + 1)}
+                     style={{ 
+                       textAlign: "left", padding: "8px 12px", background: "var(--orange)", 
+                       border: "none", borderRadius: 6, cursor: "pointer", color: "#1a1206", fontWeight: "bold"
+                     }}
+                  >
+                     Append to End (Position {chains[selectedChain].length + 1})
+                  </button>
+                </div>
+             )}
+           </div>
+        )}
+      </div>
     </div>
   );
 }

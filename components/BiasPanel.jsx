@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { RefreshCw, AlertTriangle, Maximize2, Loader2 } from "lucide-react";
+import { RefreshCw, AlertTriangle, Maximize2, Loader2, LayoutGrid } from "lucide-react";
 
 // Intraday bias panel (sidebar, below the watchlist).
 // Diagrams: risk-sentiment gauge, FX currency-strength bars, per-symbol
@@ -19,7 +19,7 @@ const PHASE = {
 const scoreColor = (s) =>
   s > 15 ? "var(--green)" : s < -15 ? "var(--red)" : "var(--muted)";
 
-export default function BiasPanel({ enabled = true, symbols, onJump, onClose }) {
+export default function BiasPanel({ enabled = true, symbols, onJump, onClose, onOpenCorrelated }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("ALL");
@@ -91,6 +91,11 @@ export default function BiasPanel({ enabled = true, symbols, onJump, onClose }) 
           <span className="muted" style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6 }}>
             Market Bias {data?.session ? ` · ${data.session}` : ""}
           </span>
+          {onOpenCorrelated && (
+            <button className="ghost" onClick={onOpenCorrelated} title="Cross-reference correlated pairs" style={{ padding: "2px 8px", fontSize: 11, display: "flex", alignItems: "center", gap: 4, background: "rgba(41,98,255,0.15)", color: "var(--accent)", border: "1px solid rgba(41,98,255,0.3)", borderRadius: 4 }}>
+              <LayoutGrid size={12} /> Correlated
+            </button>
+          )}
           <button
             className="ghost"
             onClick={load}

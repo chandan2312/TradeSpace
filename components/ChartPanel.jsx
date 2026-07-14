@@ -37,6 +37,16 @@ class AlertsPrimitive {
     this._requestUpdate?.();
   }
 
+  autoscaleInfo() {
+    if (!this._dragging) return null;
+    return {
+      priceRange: {
+        minValue: this._dragging.price,
+        maxValue: this._dragging.price,
+      }
+    };
+  }
+
   _draw(target) {
     const chart = this._chart;
     const series = this._series;
@@ -49,63 +59,120 @@ class AlertsPrimitive {
       const Y = (p) => series.priceToCoordinate(p);
       const W = mediaSize.width;
 
-      const drawRay = (price, condition, isTriggered) => {
-        let found = false;
-        let startIdx = 0;
+      const getChainColor = (id) => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
+        return `hsl(${Math.abs(hash) % 360}, 85%, 60%)`;
+      };
+
+      // Calculate coordinates for all alerts
+      const renderNodes = this._alerts.map((a) => {
+        const livePrice = this._dragging?.id === a._id ? this._dragging.price : a.price;
+        const y = Y(livePrice);
+        
+        let startIdx = 0, found = false;
         for (let i = bars.length - 1; i >= 0; i--) {
           const b = bars[i];
-          if (b.low <= price && b.high >= price) {
-            startIdx = i;
-            found = true;
-            break;
-          }
+          if (b.low <= livePrice && b.high >= livePrice) { startIdx = i; found = true; break; }
         }
-        if (!found) {
-          startIdx = Math.max(0, bars.length - 1 - 25);
+        if (!found) startIdx = Math.max(0, bars.length - 1 - 25);
+        const x = X(startIdx);
+        
+        let color = "rgba(255, 152, 0, 0.75)";
+        if (a.status === "triggered") color = "rgba(239, 83, 80, 0.75)";
+        else if (a.chainId) color = getChainColor(a.chainId);
+        
+        return { ...a, x, y, livePrice, color };
+      }).filter(n => n.x != null && n.y != null);
+
+      // Group by chainId to draw vertical links
+      const chains = {};
+      for (const n of renderNodes) {
+        if (n.chainId) {
+          if (!chains[n.chainId]) chains[n.chainId] = [];
+          chains[n.chainId].push(n);
         }
+      }
+
+      // Draw vertical arrows for chains
+      for (const [chainId, nodes] of Object.entries(chains)) {
+        if (nodes.length < 2) continue;
+        nodes.sort((a, b) => a.chainOrder - b.chainOrder);
+        const color = getChainColor(chainId);
         
-        const x1 = X(startIdx);
-        const y1 = Y(price);
-        if (x1 == null || y1 == null) return;
-        
-        const color = isTriggered ? "rgba(239, 83, 80, 0.75)" : "rgba(255, 152, 0, 0.75)";
+        // Find left-most x to draw the vertical link
+        const minX = Math.max(0, Math.min(...nodes.map(n => n.x)) - 10);
         
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        
+        for (let i = 0; i < nodes.length - 1; i++) {
+          const curr = nodes[i];
+          const next = nodes[i+1];
+          ctx.beginPath();
+          ctx.moveTo(minX, curr.y);
+          ctx.lineTo(minX, next.y);
+          ctx.stroke();
+          
+          // Draw arrowhead pointing to the next node
+          ctx.beginPath();
+          const dir = next.y > curr.y ? -1 : 1;
+          ctx.moveTo(minX - 4, next.y + dir * 6);
+          ctx.lineTo(minX, next.y);
+          ctx.lineTo(minX + 4, next.y + dir * 6);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      // Draw individual horizontal lines and badges
+      for (const n of renderNodes) {
+        ctx.strokeStyle = n.color;
+        ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
-        ctx.moveTo(Math.max(x1, 0), y1);
-        ctx.lineTo(W, y1);
+        ctx.moveTo(Math.max(n.x, 0), n.y);
+        ctx.lineTo(W, n.y);
         ctx.stroke();
         ctx.setLineDash([]);
         
+        // Chain Order Number Badge on left side
+        if (n.chainId) {
+          ctx.fillStyle = n.color;
+          ctx.font = "bold 10px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const bx = Math.max(n.x, 0) - 10;
+          const label = `${n.chainId}${n.chainOrder}`;
+          const w = ctx.measureText(label).width + 8;
+          ctx.fillRect(bx - w/2, n.y - 8, w, 16);
+          ctx.fillStyle = "#1a1206"; // dark text
+          ctx.fillText(label, bx, n.y);
+        }
+        
+        // Bell icon on the right side
         ctx.save();
-        // position the 12x12 bell right above the line, near the right edge
-        ctx.translate(W - 16, y1 - 14);
+        ctx.translate(W - 16, n.y - 14);
         ctx.scale(0.5, 0.5);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3; // 1.5px visual
+        ctx.strokeStyle = n.color;
+        ctx.lineWidth = 3;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         const bell = new Path2D("M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0");
         ctx.stroke(bell);
-        if (isTriggered) {
+        if (n.status === "triggered") {
           const slash = new Path2D("M 3 3 L 21 21");
           ctx.stroke(slash);
         }
         ctx.restore();
-      };
-
-      for (const a of this._alerts) {
-        const livePrice = this._dragging?.id === a._id ? this._dragging.price : a.price;
-        drawRay(livePrice, a.condition, a.status === "triggered");
       }
     });
   }
 }
 
 export default function ChartPanel({
-  symbol, tf, tick, alerts, barsCache, onAddAlert, onDeleteAlert, onMoveAlert, onRearmAlert, indicators, onAutoAlert,
+  symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
   syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
   isActive = true, onOpenSettings
 }) {
@@ -128,7 +195,10 @@ export default function ChartPanel({
   const [isHoveringBtn, setIsHoveringBtn] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);   // {x, y, price, nearAlerts:[]}
   const [dragHandle, setDragHandle] = useState(null); // {id, y, price} when pointer near a line
+  const [lockedAlertId, setLockedAlertId] = useState(null);
   const [dragging, setDragging] = useState(null);     // {id, price} while actively dragging
+  const [layerSpawnAlertId, setLayerSpawnAlertId] = useState(null); // alert id currently spanning a new layer
+  const [spawnY, setSpawnY] = useState(null); // mouse Y for layer ghost line
   const dragStateRef = useRef(null);
 
   const [chartReady, setChartReady] = useState(false);
@@ -139,6 +209,47 @@ export default function ChartPanel({
   // keep latest alerts accessible to the stable mousemove handler
   const alertsRef = useRef(alerts);
   useEffect(() => { alertsRef.current = alerts; }, [alerts]);
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const touchStartPos = useRef(null);
+  const onScrollerPointerDown = (e) => {
+    touchStartPos.current = { x: e.clientX, y: e.clientY };
+  };
+  const onScrollerPointerUp = (e) => {
+    if (!touchStartPos.current) return;
+    const dx = e.clientX - touchStartPos.current.x;
+    const dy = e.clientY - touchStartPos.current.y;
+    touchStartPos.current = null;
+    
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      e.target.style.pointerEvents = "none";
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (el) {
+        el.dispatchEvent(new PointerEvent("pointerdown", {
+          bubbles: true, cancelable: true,
+          clientX: e.clientX, clientY: e.clientY,
+          button: 0, buttons: 1, pointerType: "touch"
+        }));
+        setTimeout(() => {
+          if (el.isConnected) {
+            el.dispatchEvent(new PointerEvent("pointerup", {
+              bubbles: true, cancelable: true,
+              clientX: e.clientX, clientY: e.clientY,
+              button: 0, buttons: 0, pointerType: "touch"
+            }));
+          }
+        }, 50);
+      }
+      e.target.style.pointerEvents = "auto";
+    }
+  };
 
   // ---------- drawing tools ----------
   const draw = useDrawings({ chartRef, seriesRef, wrapRef, symbol, tf, barsRef, isActive, primRef: drawPrimRef });
@@ -196,7 +307,7 @@ export default function ChartPanel({
             ? { type: "solid", color: settings.bgColor } 
             : { type: "gradient", topColor: settings.bgGradientTop, bottomColor: settings.bgGradientBottom },
           textColor: settings.textColor,
-          fontSize: 10,
+          fontSize: (typeof window !== "undefined" && window.innerWidth <= 768) ? 9 : 10,
         },
         grid: { 
           vertLines: { color: settings.gridVertColor, visible: settings.gridVertEnabled !== false }, 
@@ -266,8 +377,10 @@ export default function ChartPanel({
       // must re-fit both axes or it renders outside the visible range
       chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
       
-      const visibleBars = 120;
-      const to = bars.length - 1 + 12;
+      const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+      const visibleBars = isMobile ? 60 : 80;
+      const rightOffset = isMobile ? 8 : 12;
+      const to = bars.length - 1 + rightOffset;
       const from = Math.max(0, bars.length - visibleBars);
       chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
 
@@ -400,14 +513,24 @@ export default function ChartPanel({
     const time = chart.timeScale().coordinateToTime(x);
     setHoverBtn({ y, price, time });
 
-    // proximity test for drag handle (within 7px of an alert line)
+    // proximity test for drag handle
     let hit = null;
-    for (const a of alertsRef.current) {
-      const ay = series.priceToCoordinate(a.price);
-      if (ay != null && Math.abs(ay - y) < 7) { hit = { id: a._id, y: ay, price: a.price, status: a.status }; break; }
+    const isYAxisArea = rect.width - x < 80;
+    const hitRadius = isMobile ? 15 : 7;
+    
+    if (isYAxisArea) {
+      for (const a of alertsRef.current) {
+        const ay = series.priceToCoordinate(a.price);
+        if (ay != null && Math.abs(ay - y) < hitRadius) { 
+          hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 }; 
+          break; 
+        }
+      }
     }
-    setDragHandle(hit);
-  }, []);
+    if (!lockedAlertId) {
+      setDragHandle(hit);
+    }
+  }, [isMobile, lockedAlertId]);
 
   // ---------- right-click: add alert / delete nearby alert ----------
   const onContextMenu = useCallback((ev) => {
@@ -466,12 +589,22 @@ export default function ChartPanel({
     if (!series || !wrap) return;
     const rect = wrap.getBoundingClientRect();
 
+    const alert = alertsRef.current.find(a => a._id === id);
+    if (!alert) return;
+
+    const initialPrice = alert.price;
+    setDragging({ id, price: initialPrice });
+    dragStateRef.current = { id, price: initialPrice };
+
     const onMove = (ev) => {
       const y = ev.clientY - rect.top;
       const price = series.coordinateToPrice(y);
-      if (price == null || !Number.isFinite(price) || price <= 0) return;
+      if (price == null || !Number.isFinite(price)) return;
       dragStateRef.current = { id, price };
-      setDragging({ id, price });
+      
+      if (alertsPrimRef.current) {
+        alertsPrimRef.current.update(alertsRef.current, dragStateRef.current, barsRef.current);
+      }
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -491,6 +624,55 @@ export default function ChartPanel({
     document.body.style.userSelect = "none";
     document.body.style.cursor = "ns-resize";
   }, [onMoveAlert]);
+
+  // Sync dragHandle position during chart panning/zooming
+  useEffect(() => {
+    // Only run if either dragHandle is active OR dragging is active
+    if (!dragHandle && !dragStateRef.current) return;
+    if (!seriesRef.current || !chartRef.current) return;
+    
+    let rafId;
+    const updatePos = () => {
+      if (seriesRef.current && chartRef.current) {
+        const activePrice = dragStateRef.current ? dragStateRef.current.price : (dragHandle ? dragHandle.price : null);
+        if (activePrice !== null) {
+          const y = seriesRef.current.priceToCoordinate(activePrice);
+          if (y !== null) {
+            const badge = document.getElementById(`drag-handle-badge-${paneId}`);
+            const icon = document.getElementById(`drag-handle-icon-${paneId}`);
+            const liveBadge = document.getElementById(`live-price-badge-${paneId}`);
+            const liveText = document.getElementById(`live-price-text-${paneId}`);
+            
+            if (badge) badge.style.top = `${y}px`;
+            if (liveBadge) liveBadge.style.top = `${y}px`;
+            if (liveText) liveText.innerText = isMobile ? Number(activePrice).toFixed(digits) : `⇅ ${Number(activePrice).toFixed(digits)}`;
+
+            if (icon) {
+              icon.style.top = `${y}px`;
+              let iconX = "50%";
+              if (!isMobile && barsRef.current?.length > 0) {
+                const bars = barsRef.current;
+                let startIdx = 0, found = false;
+                for (let i = bars.length - 1; i >= 0; i--) {
+                  const b = bars[i];
+                  if (b.low <= activePrice && b.high >= activePrice) { startIdx = i; found = true; break; }
+                }
+                if (!found) startIdx = Math.max(0, bars.length - 1 - 25);
+                const px = chartRef.current.timeScale().logicalToCoordinate(startIdx);
+                if (px !== null && px > 60) {
+                  iconX = `${px}px`;
+                }
+              }
+              icon.style.left = iconX;
+            }
+          }
+        }
+      }
+      rafId = requestAnimationFrame(updatePos);
+    };
+    rafId = requestAnimationFrame(updatePos);
+    return () => cancelAnimationFrame(rafId);
+  }, [dragHandle, dragging, paneId, isMobile, digits]);
 
   const programmaticRangeRef = useRef(null);
 
@@ -599,13 +781,60 @@ export default function ChartPanel({
     if (ev.defaultPrevented) return; // drawing consumed it
     onContextMenu(ev);
   };
+  const mergedPointerDown = (ev) => {
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+
+    if (lockedAlertId) {
+      setLockedAlertId(null);
+      setDragHandle(null);
+    } else {
+      const isYAxisArea = rect.width - x < 80;
+      if (isYAxisArea && seriesRef.current) {
+        let hit = null;
+        for (const a of alertsRef.current) {
+          const ay = seriesRef.current.priceToCoordinate(a.price);
+          if (ay != null && Math.abs(ay - y) < (isMobile ? 15 : 7)) { 
+            hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 }; 
+            break; 
+          }
+        }
+        if (hit) {
+          setDragHandle(hit);
+          setLockedAlertId(hit.id);
+          ev.stopPropagation();
+          return;
+        }
+      }
+    }
+
+    if (layerSpawnAlertId && seriesRef.current) {
+       const price = seriesRef.current.coordinateToPrice(y);
+       if (price !== null) {
+          onAddAlertLayer(layerSpawnAlertId, price);
+          setLayerSpawnAlertId(null);
+       }
+       ev.stopPropagation();
+       ev.preventDefault();
+       return;
+    }
+    ph.onPointerDown(ev);
+  };
+  const mergedPointerMove = (ev) => {
+    if (layerSpawnAlertId) {
+       const rect = ev.currentTarget.getBoundingClientRect();
+       setSpawnY(ev.clientY - rect.top);
+    }
+    ph.onPointerMove(ev);
+  };
 
   return (
     <div
-      style={{ flex: 1, position: "relative", minWidth: 0, touchAction: "none",
-        cursor: draw.cursorFor(draw.activeTool, draw.hover) || (dragHandle ? "ns-resize" : "default") }}
-      onPointerDown={ph.onPointerDown}
-      onPointerMove={(ev) => { ph.onPointerMove(ev); }}
+      style={{ flex: 1, position: "relative", minWidth: 0,
+        cursor: layerSpawnAlertId ? "crosshair" : (draw.cursorFor(draw.activeTool, draw.hover) || (dragHandle ? "ns-resize" : "default")) }}
+      onPointerDown={mergedPointerDown}
+      onPointerMove={mergedPointerMove}
       onPointerUp={ph.onPointerUp}
       onContextMenu={mergedContext}
       onMouseMove={onMouseMove}
@@ -616,7 +845,24 @@ export default function ChartPanel({
         }
       }}
     >
-      <div ref={wrapRef} style={{ position: "absolute", inset: 0 }} />
+      <div ref={wrapRef} style={{ position: "absolute", inset: 0, touchAction: "none" }} />
+
+      {/* Mobile left-edge scroller */}
+      {isMobile && (
+        <div 
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: "20%",
+            zIndex: 10,
+            touchAction: "pan-y",
+          }}
+          onPointerDown={onScrollerPointerDown}
+          onPointerUp={onScrollerPointerUp}
+        />
+      )}
 
       {isActive && !loading && !error && (
         <DrawingToolbar api={draw} />
@@ -658,52 +904,88 @@ export default function ChartPanel({
         </button>
       )}
 
-      {/* alert badge on the price axis when pointer is near an alert line */}
+      {/* layer spawn ghost line */}
+      {layerSpawnAlertId && spawnY !== null && (
+         <div
+           style={{
+             position: "absolute", left: 0, right: 0, top: spawnY,
+             borderTop: "1px dashed var(--orange)", zIndex: 20, pointerEvents: "none", opacity: 0.6
+           }}
+         />
+      )}
+
+      {/* alert badge / edit mode buttons (Universal for Mobile & Desktop) */}
       {dragHandle && !loading && !dragging && (
-        <div
-          style={{
-            position: "absolute", right: 0, top: dragHandle.y, transform: "translateY(-50%)",
-            zIndex: 25, display: "flex", alignItems: "center",
-            background: dragHandle.status === "triggered" ? "rgba(239, 83, 80, 0.9)" : "var(--orange)", 
-            color: "#1a1206", fontWeight: 700,
-            borderRadius: "4px 0 0 4px",
-            boxShadow: "0 2px 8px rgba(0,0,0,.4)", overflow: "hidden",
-          }}
-        >
+        <>
+          {/* 1. Y-Axis Badge (Price + Renew + Delete) */}
+          <div
+            id={`drag-handle-badge-${paneId}`}
+            draggable={false}
+            onDragStart={(e) => e.preventDefault()}
+            style={{
+              position: "absolute", right: 0, top: dragHandle.y, transform: "translateY(-50%)",
+              zIndex: 25, display: "flex", alignItems: "center",
+              background: dragHandle.status === "triggered" ? "rgba(239, 83, 80, 0.9)" : "var(--orange)",
+              color: "#1a1206", fontWeight: 700, borderRadius: "4px 0 0 4px",
+              boxShadow: "0 2px 8px rgba(0,0,0,.4)", overflow: "hidden",
+              userSelect: "none", WebkitUserSelect: "none"
+            }}
+          >
+            <div style={{ padding: "4px 8px", fontSize: 10 }}>
+              {fmt(dragHandle.price)}
+            </div>
+            
+            {dragHandle.status === "triggered" && (
+              <button
+                onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onRearmAlert(dragHandle.id); }}
+                style={{ background: "rgba(0,0,0,0.1)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+                title="Renew (re-arm) alert"
+              >
+                ↻
+              </button>
+            )}
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onDeleteAlert(dragHandle.id); }}
+              style={{ background: "rgba(0,0,0,0.15)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+              title="Delete alert"
+            >
+              ✕
+            </button>
+          </div>
+          
+          {/* 2. Drag Handle Icon (Centered on both mobile and desktop) */}
           {dragHandle.status === "active" && (
             <div
+              id={`drag-handle-icon-${paneId}`}
+              draggable={false}
+              onDragStart={(e) => e.preventDefault()}
               onPointerDown={(e) => beginDrag(e, dragHandle.id)}
-              style={{ cursor: "ns-resize", padding: "6px 8px", fontSize: 14, touchAction: "none" }}
+              style={{
+                position: "absolute", 
+                left: "50%", 
+                top: dragHandle.y, 
+                transform: "translate(-50%, -50%)",
+                zIndex: 25, cursor: "ns-resize", touchAction: "none",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 28, height: 28, borderRadius: "50%",
+                background: "rgba(255, 152, 0, 0.2)",
+                border: "1px solid var(--orange)",
+                color: "var(--orange)", fontSize: 16,
+                boxShadow: "0 2px 8px rgba(0,0,0,.2)",
+                userSelect: "none", WebkitUserSelect: "none"
+              }}
               title="Drag up/down to move this alert"
             >
               ⇅
             </div>
           )}
-          <div style={{ padding: "6px 8px", fontSize: 12, whiteSpace: "nowrap", borderLeft: "1px solid rgba(0,0,0,0.1)" }}>
-            {fmt(dragHandle.price)}
-          </div>
-          {dragHandle.status === "triggered" && (
-            <button
-              onClick={() => onRearmAlert(dragHandle.id)}
-              style={{ background: "rgba(0,0,0,0.1)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "6px 12px", cursor: "pointer", fontSize: 14 }}
-              title="Renew (re-arm) alert"
-            >
-              ↻
-            </button>
-          )}
-          <button
-            onClick={() => onDeleteAlert(dragHandle.id)}
-            style={{ background: "rgba(0,0,0,0.15)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "6px 12px", cursor: "pointer", fontSize: 14 }}
-            title="Delete alert"
-          >
-            ✕
-          </button>
-        </div>
+        </>
       )}
 
       {/* live price badge while actively dragging */}
       {dragging && (
         <div
+          id={`live-price-badge-${paneId}`}
           style={{
             position: "absolute", right: 0, top: seriesRef.current?.priceToCoordinate(dragging.price) ?? 0,
             transform: "translateY(-50%)", zIndex: 26, padding: "4px 10px", fontSize: 13,
@@ -712,7 +994,9 @@ export default function ChartPanel({
             boxShadow: "0 4px 14px rgba(255,152,0,.5)",
           }}
         >
-          ⇅ {fmt(dragging.price)}
+          <span id={`live-price-text-${paneId}`}>
+            {isMobile ? fmt(dragging.price) : `⇅ ${fmt(dragging.price)}`}
+          </span>
         </div>
       )}
 
@@ -735,14 +1019,35 @@ export default function ChartPanel({
           </MenuItem>
           {ctxMenu.nearAlerts.map((a) => (
             <div key={a._id}>
-              <MenuItem danger onClick={() => { onDeleteAlert(a._id); setCtxMenu(null); }}>
-                🗑 Delete alert {a.condition} <b className="num">{fmt(a.price)}</b>
-              </MenuItem>
+              {!a.chainId ? (
+                <MenuItem danger onClick={() => { onDeleteAlert(a._id); setCtxMenu(null); }}>
+                  🗑 Delete alert {a.condition} <b className="num">{fmt(a.price)}</b>
+                </MenuItem>
+              ) : (
+                <>
+                  {a.chainOrder === 1 && (
+                    <MenuItem danger onClick={() => { onDeleteAlert(a._id, true); setCtxMenu(null); }}>
+                      🗑 Delete Entire Chain {a.chainId}
+                    </MenuItem>
+                  )}
+                  <MenuItem danger onClick={() => { onDeleteAlert(a._id, false); setCtxMenu(null); }}>
+                    🗑 Delete Link {a.chainId}{a.chainOrder} (Shifts others up)
+                  </MenuItem>
+                </>
+              )}
               {a.status === "triggered" && (
                 <MenuItem onClick={() => { onRearmAlert(a._id); setCtxMenu(null); }}>
                   ↻ Renew alert {a.condition} <b className="num">{fmt(a.price)}</b>
                 </MenuItem>
               )}
+              {!a.chainId && (
+                <MenuItem onClick={() => { onCreateChainAlert && onCreateChainAlert(a._id); setCtxMenu(null); }}>
+                  🔗 Create Chain Group
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => { onJoinChainAlert && onJoinChainAlert(a._id); setCtxMenu(null); }}>
+                🔗 {a.chainId ? "Move / Join another Chain" : "Join Chain Group..."}
+              </MenuItem>
             </div>
           ))}
         </div>

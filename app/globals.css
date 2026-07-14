@@ -287,13 +287,17 @@ input::placeholder { color: var(--muted); }
     overflow-y: auto !important;
     overflow-x: hidden !important;
     padding-bottom: 142px !important;
+    scrollbar-width: none;
   }
 
+  .layout-row::-webkit-scrollbar,
   .wl-rows::-webkit-scrollbar,
+  .watchlist-tabs::-webkit-scrollbar,
   .drawing-toolbar::-webkit-scrollbar {
     display: none !important;
   }
   .wl-rows,
+  .watchlist-tabs,
   .drawing-toolbar {
     scrollbar-width: none !important;
   }

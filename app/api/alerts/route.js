@@ -13,24 +13,30 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const { symbol, price, condition = "cross", note = "" } = await req.json();
-  if (!symbol || !Number.isFinite(Number(price))) {
-    return json({ ok: false, error: "symbol and numeric price required" }, 400);
+  const body = await req.json();
+  const { symbol, note = "" } = body;
+  
+  if (!symbol) {
+    return json({ ok: false, error: "symbol required" }, 400);
   }
-  if (!["cross", "above", "below"].includes(condition)) {
-    return json({ ok: false, error: "condition must be cross|above|below" }, 400);
+
+  if (!Number.isFinite(Number(body.price)) || !["cross", "above", "below"].includes(body.condition)) {
+    return json({ ok: false, error: "valid price and condition required" }, 400);
   }
 
   const { alertsCol } = await getCols();
   const alert = {
     symbol: String(symbol).toUpperCase(),
-    price: Number(price),
-    condition,
+    price: Number(body.price),
+    condition: body.condition,
     note: String(note).slice(0, 200),
-    status: "active",
+    chainId: body.chainId || null,
+    chainOrder: Number.isFinite(Number(body.chainOrder)) ? Number(body.chainOrder) : 0,
+    status: body.status === "pending_chain" ? "pending_chain" : "active",
     createdAt: new Date(),
     triggeredAt: null,
   };
+
   const { insertedId } = await alertsCol.insertOne(alert);
   alert._id = insertedId;
   broadcast({ type: "alerts_changed" });

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2 } from "lucide-react";
+import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
@@ -15,7 +16,8 @@ export default function TopBar({
   watchlistOpen, setWatchlistOpen,
   savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop,
   indicators, setIndicators,
-  loadedLayoutId, onUpdateLayout, onRenameLayout, onDeleteLayout
+  loadedLayoutId, onUpdateLayout, onRenameLayout, onDeleteLayout,
+  onOpenCorrelated
 }) {
   const digits = tick?.digits ?? 5;
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
@@ -51,6 +53,10 @@ export default function TopBar({
       <button className="primary symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
         style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
         <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
+      </button>
+
+      <button className="ghost" onClick={onOpenCorrelated} title="View Correlated Pairs" style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+        <LayoutGrid size={14} /> <span className="hide-mobile">Correlated</span>
       </button>
 
       <div className="tf-container" style={{ display: "flex", gap: 4 }}>
@@ -90,18 +96,30 @@ export default function TopBar({
           <div ref={layoutMenuRef} style={{
             position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 100,
             background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.5)", padding: 12, width: 220,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.5)", padding: 12, width: 280,
             display: "flex", flexDirection: "column", gap: 12
           }}>
             <div>
-              <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4, textTransform: "uppercase", fontWeight: 600 }}>Grid</div>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                <button className={layout === "1" ? "primary" : "ghost"} onClick={() => setLayout("1")} style={{padding: "2px 6px"}}>1</button>
-                <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => setLayout("2v")} style={{padding: "2px 6px"}}>2v</button>
-                <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => setLayout("2h")} style={{padding: "2px 6px"}}>2h</button>
-                <button className={layout === "4" ? "primary" : "ghost"} onClick={() => setLayout("4")} style={{padding: "2px 6px"}}>4</button>
-                <button className={layout === "6" ? "primary" : "ghost"} onClick={() => setLayout("6")} style={{padding: "2px 6px"}}>6</button>
-                <button className={layout === "8" ? "primary" : "ghost"} onClick={() => setLayout("8")} style={{padding: "2px 6px"}}>8</button>
+              <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 8, textTransform: "uppercase", fontWeight: 600 }}>Grid</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[
+                  ["1"],
+                  ["2v", "2h"],
+                  ["3v", "3h", "3a", "3b", "3c", "3d"],
+                  ["4", "4h", "4v", "4c", "4d"],
+                  ["5a", "5b"],
+                  ["6", "6h", "6v"],
+                  ["8", "8v"]
+                ].map((row, rIdx) => (
+                  <div key={rIdx} style={{ display: "flex", gap: 8, alignItems: "center", borderBottom: rIdx < 6 ? "1px solid var(--border)" : "none", paddingBottom: rIdx < 6 ? 6 : 0 }}>
+                    <div className="muted" style={{ width: 14, fontSize: 10, textAlign: "center", fontWeight: "bold" }}>{row[0].replace(/[^0-9]/g, '')}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                      {row.map(l => (
+                         <LayoutIcon key={l} layoutId={l} isActive={layout === l} onClick={() => setLayout(l)} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -224,14 +242,35 @@ export default function TopBar({
           {showLayoutMenu && (
             <div ref={mobileLayoutMenuRef} style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4, textTransform: "uppercase", fontWeight: 600 }}>Grid</div>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  <button className={layout === "1" ? "primary" : "ghost"} onClick={() => { setLayout("1"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>1</button>
-                  <button className={layout === "2v" ? "primary" : "ghost"} onClick={() => { setLayout("2v"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2v</button>
-                  <button className={layout === "2h" ? "primary" : "ghost"} onClick={() => { setLayout("2h"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>2h</button>
-                  <button className={layout === "4" ? "primary" : "ghost"} onClick={() => { setLayout("4"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>4</button>
-                  <button className={layout === "6" ? "primary" : "ghost"} onClick={() => { setLayout("6"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>6</button>
-                  <button className={layout === "8" ? "primary" : "ghost"} onClick={() => { setLayout("8"); setShowLayoutMenu(false); setMobileMenuOpen(false); }} style={{padding: "2px 6px"}}>8</button>
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 8, textTransform: "uppercase", fontWeight: 600 }}>Grid</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[
+                    ["1"],
+                    ["2v", "2h"],
+                    ["3v", "3h", "3a", "3b", "3c", "3d"],
+                    ["4", "4h", "4v", "4c", "4d"],
+                    ["5a", "5b"],
+                    ["6", "6h", "6v"],
+                    ["8", "8v"]
+                  ].map((row, rIdx) => (
+                    <div key={rIdx} style={{ display: "flex", gap: 8, alignItems: "center", borderBottom: rIdx < 6 ? "1px solid var(--border)" : "none", paddingBottom: rIdx < 6 ? 6 : 0 }}>
+                      <div className="muted" style={{ width: 14, fontSize: 10, textAlign: "center", fontWeight: "bold" }}>{row[0].replace(/[^0-9]/g, '')}</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                        {row.map(l => (
+                           <LayoutIcon 
+                             key={l} 
+                             layoutId={l} 
+                             isActive={layout === l} 
+                             onClick={() => { 
+                               setLayout(l); 
+                               setShowLayoutMenu(false); 
+                               setMobileMenuOpen(false); 
+                             }} 
+                           />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

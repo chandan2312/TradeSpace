@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2 } from "lucide-react";
+import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid } from "lucide-react";
+import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 
 // Right-sidebar watchlist with multiple named lists (tabs), create/rename/delete,
 // live bid/spread per symbol, click-to-switch, and drag-to-reorder rows.
@@ -9,14 +10,38 @@ export default function Watchlist({
   watchlists, activeListId, setActiveListId,
   symbol, setSymbol, ticks, alerts,
   onCreate, onRename, onDelete, onAddSymbol, onRemoveSymbol,
-  symbolFlags, setSymbolFlags, onNavUp, onNavDown
+  symbolFlags, setSymbolFlags, onNavUp, onNavDown, onGridify,
+  onDoubleJump
 }) {
-  const list = watchlists.find((w) => w._id === activeListId) || null;
+  const flagColors = ["red", "blue", "green", "yellow"];
+  const virtualWatchlists = [];
+  if (symbolFlags) {
+    flagColors.forEach(color => {
+      const symbolsWithFlag = Object.keys(symbolFlags).filter(sym => symbolFlags[sym] === color);
+      if (symbolsWithFlag.length > 0) {
+        virtualWatchlists.push({
+          _id: `flag-${color}`,
+          name: color.charAt(0).toUpperCase() + color.slice(1),
+          symbols: symbolsWithFlag.sort(),
+          isVirtual: true,
+          color: color
+        });
+      }
+    });
+  }
+
+  const allWatchlists = [...watchlists, ...virtualWatchlists];
+  const list = allWatchlists.find((w) => w._id === activeListId) || null;
   const [editing, setEditing] = useState(null); // list id being renamed, or "new"
   const [name, setName] = useState("");
   const [drag, setDrag] = useState(null); // symbol being dragged
   const [over, setOver] = useState(null); // symbol currently hovered
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [gridifyOpen, setGridifyOpen] = useState(false);
+  const [gridifySelection, setGridifySelection] = useState([]);
+  const [gridifyFlags, setGridifyFlags] = useState([]);
+  const [selectedGridifyLayout, setSelectedGridifyLayout] = useState(null);
+  const [gridifySync, setGridifySync] = useState({ symbol: false, tf: true, time: true, crosshair: true });
 
   const activeAlertSymbols = new Set(
     alerts.filter((a) => a.status === "active").map((a) => a.symbol)
@@ -55,6 +80,60 @@ export default function Watchlist({
     });
   }, [list?.symbols]);
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (!list || !list.symbols || list.symbols.length === 0) return;
+        
+        const idx = list.symbols.indexOf(symbol);
+        if (idx === -1) return; // If current symbol isn't in active list, don't do anything
+        
+        let nextIdx = idx;
+        if (e.key === "ArrowDown") {
+          nextIdx = idx < list.symbols.length - 1 ? idx + 1 : 0;
+        } else if (e.key === "ArrowUp") {
+          nextIdx = idx > 0 ? idx - 1 : list.symbols.length - 1;
+        }
+        
+        if (nextIdx !== idx) {
+          e.preventDefault();
+          const nextSym = list.symbols[nextIdx];
+          setSymbol(nextSym);
+          if (typeof window !== "undefined" && window.innerWidth <= 768) {
+             document.body.classList.remove("sidebar-open");
+          }
+        }
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [list, symbol, setSymbol]);
+
+  const handleGridClick = () => {
+    if (!list || !list.symbols || !list.symbols.length) return;
+    if (list.isVirtual) {
+      setGridifyFlags([list.color]);
+    } else {
+      setGridifyFlags([]);
+    }
+    setGridifySelection(list.symbols.slice(0, 8)); // select first 8 by default
+    setSelectedGridifyLayout(null);
+    setGridifyOpen(true);
+  };
+
+  let gridifyPool = list?.symbols || [];
+  if (gridifyFlags.length > 0) {
+    const pool = [];
+    gridifyFlags.forEach(color => {
+      const vList = virtualWatchlists.find(v => v.color === color);
+      if (vList) pool.push(...vList.symbols);
+    });
+    gridifyPool = [...new Set(pool)].sort();
+  }
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, width: "100%" }}>
       {/* Tabs row */}
@@ -63,12 +142,12 @@ export default function Watchlist({
         display: "flex", alignItems: "center",
         borderBottom: "1px solid var(--border)",
       }}>
-        <div style={{
+        <div className="watchlist-tabs" style={{
           flex: 1, display: "flex", alignItems: "center", gap: 4, padding: "6px 8px",
           overflowX: "auto", minWidth: 0
         }}>
-        {watchlists.map((w) => (
-          editing === w._id ? (
+        {allWatchlists.map((w) => (
+          editing === w._id && !w.isVirtual ? (
             <NameEditor
               key={w._id}
               value={name}
@@ -77,18 +156,39 @@ export default function Watchlist({
               onCancel={() => { setEditing(null); setName(""); }}
             />
           ) : (
-            <button
-              key={w._id}
-              onClick={() => setActiveListId(w._id)}
-              onDoubleClick={() => startRename(w)}
-              className={w._id === activeListId ? "primary" : "ghost"}
-              title={`${w.name} (${(w.symbols || []).length}) — double-click to rename`}
-              style={{
-                fontSize: 11, padding: "3px 9px", whiteSpace: "nowrap",
-                display: "flex", alignItems: "center", gap: 5,
-              }}
-            >
-              {w.name}
+              <button
+                key={w._id}
+                onClick={() => setActiveListId(w._id)}
+                onDoubleClick={() => !w.isVirtual && startRename(w)}
+                className={w._id === activeListId && !w.isVirtual ? "primary" : "ghost"}
+                title={w.isVirtual ? `${w.name} Flag (${w.symbols.length})` : `${w.name} (${(w.symbols || []).length}) — double-click to rename`}
+                style={{
+                  fontSize: 11, padding: "3px 9px", whiteSpace: "nowrap",
+                  display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                  ...(w.isVirtual ? { 
+                    background: w.color === "red" ? "rgba(239, 83, 80, 0.2)" : 
+                                w.color === "blue" ? "rgba(41, 98, 255, 0.2)" : 
+                                w.color === "green" ? "rgba(38, 166, 154, 0.2)" : 
+                                w.color === "yellow" ? "rgba(255, 235, 59, 0.2)" : "inherit",
+                    border: w._id === activeListId ? `1px solid ${
+                                w.color === "red" ? "#ef5350" : 
+                                w.color === "blue" ? "#2962ff" : 
+                                w.color === "green" ? "#26a69a" : 
+                                w.color === "yellow" ? "#ffeb3b" : "inherit"
+                    }` : "1px solid transparent"
+                  } : {})
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {w.isVirtual ? (
+                    <div style={{
+                      width: 10, height: 10, borderRadius: "50%",
+                      background: w.color === "red" ? "#ef5350" : w.color === "blue" ? "#2962ff" : w.color === "green" ? "#26a69a" : w.color === "yellow" ? "#ffeb3b" : "inherit"
+                    }} />
+                  ) : (
+                    w.name
+                  )}
+                </div>
               <span style={{ opacity: 0.55 }}>{(w.symbols || []).length}</span>
             </button>
           )
@@ -102,7 +202,7 @@ export default function Watchlist({
             placeholder="List name…"
           />
         ) : (
-          <button className="ghost" onClick={startCreate} title="New watchlist" style={{ padding: "3px 7px" }}>＋</button>
+          <button className="ghost" onClick={startCreate} title="New watchlist" style={{ padding: "3px 7px", flexShrink: 0 }}>＋</button>
         )}
 
         </div>
@@ -127,9 +227,14 @@ export default function Watchlist({
               </button>
             </>
           )}
-          {list && (
+          {list && !list.isVirtual && (
             <button className="ghost" onClick={() => setEditModalOpen(true)} title="Edit Watchlist" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
               <Settings2 size={14} /> Edit
+            </button>
+          )}
+          {list && (list.symbols || []).length > 0 && (
+            <button className="ghost" onClick={handleGridClick} title="Grid View" style={{ padding: "4px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--brand)" }}>
+              <LayoutGrid size={14} />
             </button>
           )}
         </div>
@@ -144,7 +249,7 @@ export default function Watchlist({
           {list ? `${list.name} · ${(list.symbols || []).length}` : "No list"}
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-          {list && watchlists.length > 0 && (
+          {list && !list.isVirtual && watchlists.length > 0 && (
             <button
               className="ghost danger"
               onClick={() => {
@@ -156,9 +261,14 @@ export default function Watchlist({
               <Trash2 size={14} />
             </button>
           )}
-          {list && (
+          {list && !list.isVirtual && (
             <button className="ghost" onClick={onAddSymbol} title="Add symbol to list" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
               <Plus size={14} /> Add
+            </button>
+          )}
+          {list && (list.symbols || []).length > 0 && (
+            <button className="ghost" onClick={handleGridClick} title="Grid View" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, color: "var(--brand)" }}>
+              <LayoutGrid size={14} /> Grid
             </button>
           )}
         </div>
@@ -186,10 +296,21 @@ export default function Watchlist({
             current={sym === symbol}
             hasAlert={activeAlertSymbols.has(sym)}
             onJump={() => setSymbol(sym)}
-            onRemove={() => onRemoveSymbol(list._id, sym)}
+            onDoubleClick={() => { if (onDoubleJump) onDoubleJump(sym); }}
+            onRemove={() => {
+              if (list.isVirtual) {
+                setSymbolFlags(p => {
+                  const next = { ...p };
+                  delete next[sym];
+                  return next;
+                });
+              } else {
+                onRemoveSymbol(list._id, sym);
+              }
+            }}
             dragging={drag === sym}
             dropTarget={over === sym && drag && drag !== sym}
-            onDragStart={() => setDrag(sym)}
+            onDragStart={!list.isVirtual ? () => setDrag(sym) : undefined}
             onDragOver={(e) => { e.preventDefault(); setOver(sym); }}
             onDragLeave={() => setOver((o) => (o === sym ? null : o))}
             onDrop={() => {
@@ -222,6 +343,143 @@ export default function Watchlist({
           }}
         />
       )}
+
+      {gridifyOpen && list && (
+        <div className="modal-overlay" onClick={() => setGridifyOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: 400, maxWidth: "90%", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, margin: 0 }}>Grid Layout Selection</h2>
+              <button className="ghost" onClick={() => setGridifyOpen(false)} style={{ padding: 4 }}><X size={18} /></button>
+            </div>
+            <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+              Select up to 8 symbols to display in the grid view.
+            </p>
+
+            {gridifyFlags.length > 0 && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                {["red", "blue", "green", "yellow"].map(color => {
+                  const isActive = gridifyFlags.includes(color);
+                  const hasSymbols = virtualWatchlists.some(v => v.color === color && v.symbols.length > 0);
+                  if (!hasSymbols && !isActive) return null;
+                  return (
+                    <button
+                      key={color}
+                      className={isActive ? "primary" : "ghost"}
+                      style={{ padding: "4px 10px", fontSize: 11, borderRadius: 16, display: "flex", alignItems: "center", gap: 6, opacity: isActive ? 1 : 0.6 }}
+                      onClick={() => {
+                        setGridifyFlags(prev => {
+                          const next = prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color];
+                          if (next.length === 0) return [color]; // Don't allow empty selection, just force one to stay active
+                          
+                          const newPool = [];
+                          next.forEach(c => {
+                             const v = virtualWatchlists.find(x => x.color === c);
+                             if (v) newPool.push(...v.symbols);
+                          });
+                          const uniquePool = [...new Set(newPool)].sort();
+                          
+                          const newSelection = gridifySelection.filter(s => uniquePool.includes(s));
+                          for (const sym of uniquePool) {
+                             if (newSelection.length >= 8) break;
+                             if (!newSelection.includes(sym)) newSelection.push(sym);
+                          }
+                          setGridifySelection(newSelection);
+                          return next;
+                        });
+                      }}
+                    >
+                      <Flag size={12} fill={isActive ? "currentColor" : "none"} style={{ color: color === "red" ? "#ef5350" : color === "blue" ? "#2962ff" : color === "green" ? "#26a69a" : color === "yellow" ? "#ffeb3b" : "inherit" }} />
+                      {color.charAt(0).toUpperCase() + color.slice(1)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24, maxHeight: 300, overflowY: "auto", paddingBottom: 10 }}>
+              {gridifyPool.map(sym => {
+                const isSelected = gridifySelection.includes(sym);
+                return (
+                  <button 
+                    key={sym}
+                    className={isSelected ? "primary" : "ghost"}
+                    style={{ fontSize: 12, padding: "6px 12px", borderRadius: 16, border: isSelected ? "none" : "1px solid var(--border)" }}
+                    onClick={() => {
+                      setGridifySelection(prev => {
+                        if (prev.includes(sym)) return prev.filter(s => s !== sym);
+                        if (prev.length >= 8) return prev;
+                        return [...prev, sym];
+                      });
+                    }}
+                  >
+                    {sym}
+                  </button>
+                );
+              })}
+            </div>
+
+            {gridifySelection.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, marginBottom: 8, fontWeight: 600, opacity: 0.8 }}>Choose Layout Style:</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {(() => {
+                    const count = Math.min(gridifySelection.length, 8);
+                    const targetCount = count === 7 ? 8 : count;
+                    const availableLayouts = Object.keys(LAYOUT_CONFIG).filter(k => LAYOUT_CONFIG[k].count === targetCount);
+                    return availableLayouts.map(lId => (
+                      <LayoutIcon 
+                        key={lId} 
+                        layoutId={lId} 
+                        isActive={(selectedGridifyLayout || availableLayouts[0]) === lId} 
+                        onClick={() => setSelectedGridifyLayout(lId)} 
+                      />
+                    ));
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {gridifySelection.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 12, marginBottom: 8, fontWeight: 600, opacity: 0.8 }}>Sync Options:</div>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  {["crosshair", "time", "tf", "symbol"].map(opt => (
+                    <label key={opt} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={gridifySync[opt]} 
+                        onChange={(e) => setGridifySync(p => ({ ...p, [opt]: e.target.checked }))} 
+                      />
+                      <span style={{ textTransform: "capitalize" }}>{opt === "tf" ? "Timeframe" : opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button className="ghost" onClick={() => setGridifyOpen(false)} style={{ padding: "6px 16px" }}>Cancel</button>
+              <button 
+                className="primary" 
+                style={{ padding: "6px 16px", borderRadius: 4 }}
+                onClick={() => {
+                  if (onGridify) {
+                     const count = Math.min(gridifySelection.length, 8);
+                     const targetCount = count === 7 ? 8 : count;
+                     const availableLayouts = Object.keys(LAYOUT_CONFIG).filter(k => LAYOUT_CONFIG[k].count === targetCount);
+                     const layoutToUse = selectedGridifyLayout && availableLayouts.includes(selectedGridifyLayout) ? selectedGridifyLayout : availableLayouts[0];
+                     onGridify(gridifySelection, layoutToUse, gridifySync);
+                  }
+                  setGridifyOpen(false);
+                }}
+                disabled={gridifySelection.length === 0}
+              >
+                Create Grid ({gridifySelection.length}/8)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -246,7 +504,7 @@ async function reorder(list, fromSym, toSym) {
 }
 
 function WatchRow({
-  sym, tick, dailyOpen, current, hasAlert, onJump, onRemove,
+  sym, tick, dailyOpen, current, hasAlert, onJump, onDoubleClick, onRemove,
   dragging, dropTarget, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
   flag, onFlag
 }) {
@@ -284,6 +542,21 @@ function WatchRow({
   const bid = tick?.bid;
   const spreadPips = tick?.bid && tick?.ask ? (tick.ask - tick.bid) * Math.pow(10, digits === 3 || digits === 5 ? digits - 1 : 0) : null;
   const dir = tick?.dir;
+  let bgColor = "transparent";
+  if (dropTarget) {
+    bgColor = "var(--accent-soft)";
+  } else if (current) {
+    if (flag === "red") bgColor = "rgba(239, 83, 80, 0.15)";
+    else if (flag === "blue") bgColor = "rgba(41, 98, 255, 0.15)";
+    else if (flag === "green") bgColor = "rgba(38, 166, 154, 0.15)";
+    else if (flag === "yellow") bgColor = "rgba(255, 235, 59, 0.15)";
+    else bgColor = "rgba(41,98,255,.08)";
+  } else if (flag) {
+    if (flag === "red") bgColor = "rgba(239, 83, 80, 0.06)";
+    else if (flag === "blue") bgColor = "rgba(41, 98, 255, 0.06)";
+    else if (flag === "green") bgColor = "rgba(38, 166, 154, 0.06)";
+    else if (flag === "yellow") bgColor = "rgba(255, 235, 59, 0.06)";
+  }
 
   return (
     <div
@@ -296,12 +569,11 @@ function WatchRow({
       onDrop={isDraggable ? onDrop : undefined}
       onDragEnd={isDraggable ? onDragEnd : undefined}
       onClick={onJump}
+      onDoubleClick={onDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setShowPalette(true); }}
       title={current ? "Current chart" : `Switch to ${sym}`}
       style={{
-        background: dropTarget
-          ? "var(--accent-soft)"
-          : current ? "rgba(41,98,255,.08)" : "transparent",
+        background: bgColor,
         opacity: dragging ? 0.4 : 1,
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
       }}
