@@ -29,6 +29,7 @@ export async function POST(req) {
     symbol: String(symbol).toUpperCase(),
     price: Number(body.price),
     condition: body.condition,
+    rating: body.rating || null,
     note: String(note).slice(0, 200),
     chainId: body.chainId || null,
     chainOrder: Number.isFinite(Number(body.chainOrder)) ? Number(body.chainOrder) : 0,

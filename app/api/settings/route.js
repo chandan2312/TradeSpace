@@ -7,7 +7,15 @@ export async function GET() {
   try {
     const { settingsCol } = await getCols();
     const doc = await settingsCol.findOne({ _id: SETTINGS_DOC_ID });
-    return json({ ok: true, settings: doc?.settings || {} });
+    let settings = doc?.settings || {};
+
+    // Auto-clear flags if they belong to a previous day
+    const today = new Date().toDateString();
+    if (settings.flags_date && settings.flags_date !== today) {
+      settings.flags = {};
+    }
+
+    return json({ ok: true, settings });
   } catch (err) {
     return json({ ok: false, error: err.message }, 500);
   }
@@ -26,6 +34,9 @@ export async function PATCH(req) {
     const setQuery = {};
     for (const [k, v] of Object.entries(updates)) {
       setQuery[`settings.${k}`] = v;
+      if (k === "flags") {
+        setQuery[`settings.flags_date`] = new Date().toDateString();
+      }
     }
     setQuery["updatedAt"] = new Date();
 

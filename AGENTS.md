@@ -47,6 +47,9 @@ For all codebase discovery, use MCP graph tools (`mcp_graphify_query_graph`, `mc
 ### 1.5 — Automated Repo Organization
 Any agent that creates a new file, script, or directory MUST invoke the `/repo_organizer_clara` to review and approve the placement and naming conventions before concluding the task.
 
+### 1.6 — NPM Scripts (NON-NEGOTIABLE)
+Do NOT execute `npm run build` or `npm run dev` autonomously. The user handles builds and dev servers themselves. Assume hot-reload is already active.
+
 ---
 
 ## How Agents Are Invoked
@@ -93,7 +96,8 @@ TradeSpace Enterprise
 │
 ├── C-SUITE (Executive Floor — Strategic Authority)
 │   ├── /ceo_marcus  (Marcus — CEO, Vision & Product)
-│   └── /cto_sarah   (Sarah — CTO, Tech Stack & Architecture)
+│   ├── /cto_sarah   (Sarah — CTO, Tech Stack & Architecture)
+│   └── /inventor_isaac (Isaac — Chief Inventor & Product Visionary)
 │
 ├── /orchestrator_lily (Lily — Chief of Staff, orchestrates all routing)
 │

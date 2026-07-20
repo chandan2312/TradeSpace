@@ -1,0 +1,1 @@
+To force Next.js HMR to pick up the changes, the user must refresh the page.

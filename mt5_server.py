@@ -201,12 +201,13 @@ def handle_rates(payload):
     if tf_const is None:
         return {"ok": False, "status": "bad-request", "message": f"unsupported timeframe {tf_name}"}
     count = max(1, min(int(payload.get("count") or 500), 5000))
+    offset = max(0, int(payload.get("offset") or 0))
 
     rates = None
     for attempt in (
-        lambda: mt5.copy_rates_from_pos(symbol, tf_const, 0, count),
+        lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
         # Fallback: fetch using a time far in the future to ensure we get the latest bars
-        lambda: mt5.copy_rates_from(symbol, tf_const, int(datetime.now().timestamp()) + 86400, count),
+        lambda: mt5.copy_rates_from(symbol, tf_const, int(datetime.now().timestamp()) + 86400, count) if offset == 0 else None,
     ):
         try:
             rates = attempt()
@@ -243,14 +244,195 @@ def handle_rates(payload):
     }
 
 
+def handle_bulk_rates(payload):
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+    symbols = payload.get("symbols") or payload.get("syms") or []
+    if isinstance(symbols, str):
+        symbols = [symbols]
+    symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
+    if not symbols:
+        return {"ok": False, "status": "bad-request", "message": "symbols required"}
+    tf_name = str(payload.get("timeframe") or payload.get("tf") or "D1").strip().upper()
+    tf_const = TF_MAP.get(tf_name)
+    if tf_const is None:
+        return {"ok": False, "status": "bad-request", "message": f"unsupported timeframe {tf_name}"}
+    count = max(1, min(int(payload.get("count") or 2), 500))
+
+    results = {}
+    for app_symbol in dict.fromkeys(symbols):
+        symbol = resolve_symbol(app_symbol)
+        if not symbol:
+            continue
+        rates = None
+        for attempt in (
+            lambda: mt5.copy_rates_from_pos(symbol, tf_const, 0, count),
+            lambda: mt5.copy_rates_from(symbol, tf_const, int(datetime.now().timestamp()) + 86400, count),
+        ):
+            try:
+                rates = attempt()
+            except Exception:
+                rates = None
+            if rates is not None and len(rates) > 0:
+                break
+        
+        if rates is None or len(rates) == 0:
+            continue
+        
+        bars = []
+        for row in rates:
+            try:
+                bars.append({
+                    "t": int(row["time"]) * 1000,
+                    "o": float(row["open"]),
+                    "h": float(row["high"]),
+                    "l": float(row["low"]),
+                    "c": float(row["close"]),
+                })
+            except Exception:
+                continue
+        bars.sort(key=lambda b: b["t"])
+        results[app_symbol] = bars
+
+    return {
+        "ok": True,
+        "status": "bulk-rates",
+        "timeframe": tf_name,
+        "count": count,
+        "data": results,
+    }
+
+
+def handle_order(payload):
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+    
+    action = str(payload.get("action") or "").strip().lower()
+    symbol = str(payload.get("symbol") or "").strip().upper()
+    volume = float(payload.get("volume") or 0.01)
+    sl = float(payload.get("sl") or 0.0)
+    tp = float(payload.get("tp") or 0.0)
+    
+    if not action or not symbol:
+        return {"ok": False, "status": "bad-request", "message": "action and symbol required"}
+        
+    mt5_symbol = resolve_symbol(symbol)
+    if not mt5_symbol:
+        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {symbol}"}
+        
+    mt5.symbol_select(mt5_symbol, True)
+    tick = mt5.symbol_info_tick(mt5_symbol)
+    sym_info = mt5.symbol_info(mt5_symbol)
+    
+    if not tick or not sym_info:
+        return {"ok": False, "status": "no-tick", "message": f"could not get tick/info for {mt5_symbol}"}
+        
+    order_type = mt5.ORDER_TYPE_BUY if action == "buy" else mt5.ORDER_TYPE_SELL if action == "sell" else None
+    if order_type is None:
+        return {"ok": False, "status": "bad-request", "message": "action must be buy or sell"}
+        
+    price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
+    
+    # Determine filling mode
+    filling = mt5.ORDER_FILLING_IOC
+    if sym_info.filling_mode & mt5.SYMBOL_FILLING_FOK:
+        filling = mt5.ORDER_FILLING_FOK
+    elif sym_info.filling_mode & mt5.SYMBOL_FILLING_IOC:
+        filling = mt5.ORDER_FILLING_IOC
+        
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": mt5_symbol,
+        "volume": volume,
+        "type": order_type,
+        "price": price,
+        "sl": sl,
+        "tp": tp,
+        "deviation": 20,
+        "magic": 231223,
+        "comment": "TradeSpace Algo",
+        "type_time": mt5.ORDER_TIME_GTC,
+        "type_filling": filling,
+    }
+    
+    result = mt5.order_send(request)
+    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
+        err_msg = result.comment if result else "unknown error"
+        retcode = result.retcode if result else "none"
+        return {
+            "ok": False, 
+            "status": "order-failed", 
+            "message": f"Order failed: {err_msg} ({retcode})"
+        }
+        
+    return {
+        "ok": True, 
+        "status": "order-filled", 
+        "ticket": result.order,
+        "price": result.price,
+        "volume": result.volume
+    }
+
+
+def handle_modify(payload):
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+        
+    ticket = int(payload.get("ticket") or 0)
+    sl = float(payload.get("sl") or 0.0)
+    tp = float(payload.get("tp") or 0.0)
+    
+    if not ticket:
+        return {"ok": False, "status": "bad-request", "message": "ticket required"}
+        
+    position = mt5.positions_get(ticket=ticket)
+    if not position or len(position) == 0:
+        return {"ok": False, "status": "position-missing", "message": f"position {ticket} not found"}
+        
+    pos = position[0]
+    
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "symbol": pos.symbol,
+        "position": ticket,
+        "sl": sl if sl > 0 else pos.sl,
+        "tp": tp if tp > 0 else pos.tp,
+        "magic": pos.magic,
+    }
+    
+    result = mt5.order_send(request)
+    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
+        err_msg = result.comment if result else "unknown error"
+        retcode = result.retcode if result else "none"
+        return {
+            "ok": False, 
+            "status": "modify-failed", 
+            "message": f"Modify failed: {err_msg} ({retcode})"
+        }
+        
+    return {
+        "ok": True, 
+        "status": "modified", 
+        "ticket": ticket,
+        "sl": sl,
+        "tp": tp
+    }
+
+
 ROUTES = {
     ("GET",  "/health"): handle_health,
     ("POST", "/health"): handle_health,
     ("POST", "/tick"):    handle_tick,
     ("POST", "/ticks"):   handle_ticks,
     ("POST", "/rates"):   handle_rates,
+    ("POST", "/bulk-rates"): handle_bulk_rates,
     ("POST", "/symbols"): handle_symbols,
     ("GET",  "/symbols"): handle_symbols,
+    ("POST", "/order"):   handle_order,
+    ("POST", "/modify"):  handle_modify,
 }
 
 

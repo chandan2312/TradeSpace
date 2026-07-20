@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid } from "lucide-react";
+import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid, Zap, ChevronDown } from "lucide-react";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 
 // Right-sidebar watchlist with multiple named lists (tabs), create/rename/delete,
@@ -11,10 +11,11 @@ export default function Watchlist({
   symbol, setSymbol, ticks, alerts,
   onCreate, onRename, onDelete, onAddSymbol, onRemoveSymbol,
   symbolFlags, setSymbolFlags, onNavUp, onNavDown, onGridify,
-  onDoubleJump
+  onDoubleJump, biasData, onSelectAutoList
 }) {
   const flagColors = ["red", "blue", "green", "yellow"];
   const virtualWatchlists = [];
+  
   if (symbolFlags) {
     flagColors.forEach(color => {
       const symbolsWithFlag = Object.keys(symbolFlags).filter(sym => symbolFlags[sym] === color);
@@ -30,7 +31,96 @@ export default function Watchlist({
     });
   }
 
+  // Auto Watchlists based on Bias Engine
+  if (biasData?.symbols) {
+    const uptrend = [];
+    const downtrend = [];
+    const sideways = [];
+    const reversals = [];
+    const setups = [];
+    const sweeps = [];
+    const retracing = [];
+
+    biasData.symbols.forEach((r) => {
+      // 1. Textbook Setups
+      if (r.setup) setups.push(r.symbol);
+      
+      // 2. Liquidity Sweeps (if factors mention a sweep/hunt)
+      const hasSweep = r.factors && r.factors.some(f => f.label?.includes("swept") || f.note?.includes("hunt") || f.lens === "reversal");
+      if (hasSweep) sweeps.push(r.symbol);
+
+      // 3. Reversal Watch (from engine phase)
+      if (r.phase === "reversal-watch") reversals.push(r.symbol);
+
+      // 4. Trend & Pullbacks based on H4 & H1 combined
+      const h4 = r.layers?.H4?.dir;
+      const h1 = r.layers?.H1?.dir;
+
+      if (h4 === 1 && h1 === 1) {
+        uptrend.push(r.symbol);
+      } else if (h4 === -1 && h1 === -1) {
+        downtrend.push(r.symbol);
+      } else if ((h4 === 1 && h1 === -1) || (h4 === -1 && h1 === 1)) {
+        retracing.push(r.symbol);
+      } else if (!r.setup && r.phase === "chop") {
+        sideways.push(r.symbol);
+      }
+    });
+
+    if (setups.length > 0) virtualWatchlists.push({ _id: "auto-setup", name: "⚡ Setups", symbols: setups.sort(), isVirtual: true, type: "auto", style: { color: "var(--orange)", background: "rgba(255, 152, 0, 0.15)" } });
+    if (sweeps.length > 0) virtualWatchlists.push({ _id: "auto-sweeps", name: "🧹 Sweeps", symbols: sweeps.sort(), isVirtual: true, type: "auto", style: { color: "#e040fb", background: "rgba(224, 64, 251, 0.15)" } });
+    if (uptrend.length > 0) virtualWatchlists.push({ _id: "auto-uptrend", name: "📈 Uptrend", symbols: uptrend.sort(), isVirtual: true, type: "auto", style: { color: "var(--green)", background: "rgba(76, 175, 80, 0.15)" } });
+    if (downtrend.length > 0) virtualWatchlists.push({ _id: "auto-downtrend", name: "📉 Downtrend", symbols: downtrend.sort(), isVirtual: true, type: "auto", style: { color: "var(--red)", background: "rgba(244, 67, 54, 0.15)" } });
+    if (retracing.length > 0) virtualWatchlists.push({ _id: "auto-retracing", name: "↩️ Retracing", symbols: retracing.sort(), isVirtual: true, type: "auto", style: { color: "var(--accent)", background: "rgba(41, 98, 255, 0.15)" } });
+    if (reversals.length > 0) virtualWatchlists.push({ _id: "auto-reversal", name: "🔄 Reversals", symbols: reversals.sort(), isVirtual: true, type: "auto", style: { color: "var(--orange)", background: "rgba(255, 152, 0, 0.15)" } });
+    if (sideways.length > 0) virtualWatchlists.push({ _id: "auto-sideways", name: "➖ Chop", symbols: sideways.sort(), isVirtual: true, type: "auto", style: { color: "var(--muted)", background: "var(--panel-2)" } });
+  }
+
+  // Rated Alerts Watchlists
+  if (alerts && alerts.length > 0) {
+    const stars3 = [];
+    const stars2 = [];
+    const stars1 = [];
+    
+    // Sort alerts descending by most recent
+    const ratedAlerts = [...alerts].filter(a => a.rating && a.status === "triggered").sort((a, b) => {
+      const ta = new Date(a.triggeredAt || a.updatedAt || a.createdAt).getTime();
+      const tb = new Date(b.triggeredAt || b.updatedAt || b.createdAt).getTime();
+      return tb - ta;
+    });
+    
+    ratedAlerts.forEach(a => {
+       if (a.rating === 3 && !stars3.includes(a.symbol) && stars3.length < 10) stars3.push(a.symbol);
+       if (a.rating === 2 && !stars2.includes(a.symbol) && stars2.length < 10) stars2.push(a.symbol);
+       if (a.rating === 1 && !stars1.includes(a.symbol) && stars1.length < 10) stars1.push(a.symbol);
+    });
+
+    if (stars3.length > 0) virtualWatchlists.push({ _id: "auto-3star", name: "3★", symbols: stars3, isVirtual: true, type: "auto", style: { color: "var(--orange)", background: "rgba(255, 152, 0, 0.15)" } });
+    if (stars2.length > 0) virtualWatchlists.push({ _id: "auto-2star", name: "2★", symbols: stars2, isVirtual: true, type: "auto", style: { color: "var(--orange)", background: "rgba(255, 152, 0, 0.15)" } });
+    if (stars1.length > 0) virtualWatchlists.push({ _id: "auto-1star", name: "1★", symbols: stars1, isVirtual: true, type: "auto", style: { color: "var(--orange)", background: "rgba(255, 152, 0, 0.15)" } });
+  }
+
+  // Category Watchlists
+  virtualWatchlists.push(
+    { _id: "cat-usd", name: "💵 USD Majors", symbols: ["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDJPY", "USDCHF", "USDCAD"], isVirtual: true, type: "auto" },
+    { _id: "cat-jpy", name: "💴 JPY Crosses", symbols: ["EURJPY", "GBPJPY", "AUDJPY", "NZDJPY", "CADJPY", "CHFJPY"], isVirtual: true, type: "auto" },
+    { _id: "cat-eur", name: "💶 EUR Crosses", symbols: ["EURGBP", "EURAUD", "EURNZD", "EURCAD", "EURCHF"], isVirtual: true, type: "auto" },
+    { _id: "cat-gbp", name: "💷 GBP Crosses", symbols: ["GBPAUD", "GBPNZD", "GBPCAD", "GBPCHF"], isVirtual: true, type: "auto" },
+    { _id: "cat-aud", name: "🦘 AUD Crosses", symbols: ["AUDUSD", "AUDJPY", "EURAUD", "GBPAUD", "AUDCAD", "AUDCHF", "AUDNZD"], isVirtual: true, type: "auto" },
+    { _id: "cat-nzd", name: "🥝 NZD Crosses", symbols: ["NZDUSD", "NZDJPY", "EURNZD", "GBPNZD", "AUDNZD", "NZDCAD", "NZDCHF"], isVirtual: true, type: "auto" },
+    { _id: "cat-cad", name: "🍁 CAD Crosses", symbols: ["USDCAD", "CADJPY", "EURCAD", "GBPCAD", "AUDCAD", "NZDCAD", "CADCHF"], isVirtual: true, type: "auto" },
+    { _id: "cat-chf", name: "🏔️ CHF Crosses", symbols: ["USDCHF", "CHFJPY", "EURCHF", "GBPCHF", "AUDCHF", "NZDCHF", "CADCHF"], isVirtual: true, type: "auto" },
+    { _id: "cat-idx", name: "📊 Indices", symbols: ["US30", "SPX500", "NAS100", "GER40", "UK100", "JPN225", "AUS200"], isVirtual: true, type: "auto" },
+    { _id: "cat-mtl", name: "🥇 Metals & Energy", symbols: ["XAUUSD", "XAGUSD", "USOIL", "UKOIL"], isVirtual: true, type: "auto" },
+    { _id: "cat-cry", name: "₿ Crypto", symbols: ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD"], isVirtual: true, type: "auto" }
+  );
+
   const allWatchlists = [...watchlists, ...virtualWatchlists];
+  const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+  
+  const mainLists = allWatchlists.filter(w => w.type !== "auto" || (isMobile && w._id.includes("star")));
+  const autoLists = allWatchlists.filter(w => w.type === "auto" && !(isMobile && w._id.includes("star")));
+
   const list = allWatchlists.find((w) => w._id === activeListId) || null;
   const [editing, setEditing] = useState(null); // list id being renamed, or "new"
   const [name, setName] = useState("");
@@ -38,6 +128,7 @@ export default function Watchlist({
   const [over, setOver] = useState(null); // symbol currently hovered
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [gridifyOpen, setGridifyOpen] = useState(false);
+  const [autoMenuOpen, setAutoMenuOpen] = useState(false);
   const [gridifySelection, setGridifySelection] = useState([]);
   const [gridifyFlags, setGridifyFlags] = useState([]);
   const [selectedGridifyLayout, setSelectedGridifyLayout] = useState(null);
@@ -146,7 +237,7 @@ export default function Watchlist({
           flex: 1, display: "flex", alignItems: "center", gap: 4, padding: "6px 8px",
           overflowX: "auto", minWidth: 0
         }}>
-        {allWatchlists.map((w) => (
+        {mainLists.map((w) => (
           editing === w._id && !w.isVirtual ? (
             <NameEditor
               key={w._id}
@@ -180,7 +271,7 @@ export default function Watchlist({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {w.isVirtual ? (
+                  {w.isVirtual && w.color ? (
                     <div style={{
                       width: 10, height: 10, borderRadius: "50%",
                       background: w.color === "red" ? "#ef5350" : w.color === "blue" ? "#2962ff" : w.color === "green" ? "#26a69a" : w.color === "yellow" ? "#ffeb3b" : "inherit"
@@ -206,6 +297,147 @@ export default function Watchlist({
         )}
 
         </div>
+
+        {/* Auto Watchlist Dropdown (pinned right on desktop & mobile) */}
+        {autoLists.length > 0 && (
+          <div style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center", paddingLeft: 4 }}>
+            <button 
+              className="ghost"
+              onClick={() => setAutoMenuOpen(!autoMenuOpen)}
+              title="Auto-Generated Watchlists"
+              style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", fontSize: 11, fontWeight: 600,
+                color: autoLists.some(w => w._id === activeListId) ? "var(--accent)" : "var(--muted)",
+                background: autoLists.some(w => w._id === activeListId) ? "rgba(41, 98, 255, 0.15)" : "transparent",
+                borderRadius: 4
+              }}
+            >
+              <Zap size={14} style={{ fill: autoLists.some(w => w._id === activeListId) ? "var(--accent)" : "none" }} />
+              <ChevronDown size={14} />
+            </button>
+            {autoMenuOpen && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setAutoMenuOpen(false)} />
+                <div
+                  style={{
+                    position: "absolute", right: 0,
+                    ...(typeof window !== "undefined" && window.innerWidth <= 768
+                       ? { bottom: "100%", marginBottom: 4 }
+                       : { top: "100%", marginTop: 4 }),
+                    background: "var(--panel)", border: "1px solid var(--border-hi)",
+                    borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                    zIndex: 100, minWidth: 160, display: "flex", flexDirection: "column", padding: 4
+                  }}
+                >
+                  {autoLists.filter(w => w._id.includes("star")).length > 0 && (
+                    <div className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px 6px" }}>Priority Rated</div>
+                  )}
+                  {autoLists.filter(w => w._id.includes("star")).map(w => (
+                    <button
+                      key={w._id}
+                      className="ghost"
+                      onClick={() => { 
+                        setActiveListId(w._id); 
+                        setAutoMenuOpen(false); 
+                        onSelectAutoList?.();
+                      }}
+                      style={{
+                        textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center",
+                        borderRadius: 4,
+                        color: w._id === activeListId ? "var(--accent)" : "inherit",
+                        background: w._id === activeListId ? "rgba(41, 98, 255, 0.15)" : "transparent"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={w.style ? { 
+                          background: w.style.background, color: w.style.color, 
+                          padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600 
+                        } : {}}>{w.name}</span>
+                      </div>
+                      <span style={{ opacity: 0.5 }}>{w.symbols.length}</span>
+                    </button>
+                  ))}
+
+                  {autoLists.filter(w => !w._id.startsWith("cat-") && !w._id.includes("star")).length > 0 && (
+                    <div className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, padding: "10px 8px 6px", borderTop: autoLists.filter(x => x._id.includes("star")).length > 0 ? "1px solid var(--border)" : "none", marginTop: autoLists.filter(x => x._id.includes("star")).length > 0 ? 4 : 0 }}>Bias Engine Matches</div>
+                  )}
+                  {autoLists.filter(w => !w._id.startsWith("cat-") && !w._id.includes("star")).map(w => (
+                    <button
+                      key={w._id}
+                      className="ghost"
+                      onClick={() => { 
+                        setActiveListId(w._id); 
+                        setAutoMenuOpen(false); 
+                        onSelectAutoList?.();
+                      }}
+                      style={{
+                        textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center",
+                        borderRadius: 4,
+                        color: w._id === activeListId ? "var(--accent)" : "inherit",
+                        background: w._id === activeListId ? "rgba(41, 98, 255, 0.15)" : "transparent"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={w.style ? { 
+                          background: w.style.background, color: w.style.color, 
+                          padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600 
+                        } : {}}>{w.name}</span>
+                      </div>
+                      <span style={{ opacity: 0.5 }}>{w.symbols.length}</span>
+                    </button>
+                  ))}
+                  
+                  {autoLists.filter(w => w._id.startsWith("cat-")).length > 0 && (
+                    <div className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, padding: "10px 8px 6px", borderTop: "1px solid var(--border)", marginTop: 4 }}>Categories</div>
+                  )}
+                  {autoLists.filter(w => w._id.startsWith("cat-")).map(w => (
+                    <button
+                      key={w._id}
+                      className="ghost"
+                      onClick={() => { 
+                        setActiveListId(w._id); 
+                        setAutoMenuOpen(false); 
+                        onSelectAutoList?.();
+                      }}
+                      style={{
+                        textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center",
+                        borderRadius: 4,
+                        color: w._id === activeListId ? "var(--accent)" : "inherit",
+                        background: w._id === activeListId ? "rgba(41, 98, 255, 0.15)" : "transparent"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 500 }}>{w.name}</span>
+                      </div>
+                      <span style={{ opacity: 0.5 }}>{w.symbols.length}</span>
+                    </button>
+                  ))}
+                  
+                  {Object.keys(symbolFlags).length > 0 && (
+                    <>
+                      <div style={{ height: 1, background: "var(--border)", margin: "8px 0" }} />
+                      <button
+                        className="ghost"
+                        onClick={() => {
+                          if (confirm("Clear all flags?")) {
+                            setSymbolFlags({});
+                            setAutoMenuOpen(false);
+                          }
+                        }}
+                        style={{
+                          textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "center", alignItems: "center",
+                          borderRadius: 4, color: "var(--red)", fontWeight: 500
+                        }}
+                      >
+                        Clear All Flags ({Object.keys(symbolFlags).length})
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Mobile-only action buttons pinned to the right */}
         <div className="hide-desktop" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", background: "var(--panel)" }}>
@@ -542,7 +774,7 @@ function WatchRow({
   const bid = tick?.bid;
   const spreadPips = tick?.bid && tick?.ask ? (tick.ask - tick.bid) * Math.pow(10, digits === 3 || digits === 5 ? digits - 1 : 0) : null;
   const dir = tick?.dir;
-  let bgColor = "transparent";
+  let bgColor = "var(--bg)"; // Darker background to make rows/pills stand out more
   if (dropTarget) {
     bgColor = "var(--accent-soft)";
   } else if (current) {

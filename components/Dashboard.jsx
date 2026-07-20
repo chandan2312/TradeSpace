@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Toaster, toast as sonnerToast } from "sonner";
 import TopBar from "./TopBar";
 import ChartPanel from "./ChartPanel";
 import Watchlist from "./Watchlist";
@@ -15,8 +15,23 @@ import BiasPanel from "./BiasPanel";
 import MiniBiasHeader from "./MiniBiasHeader";
 import ChartSettingsModal from "./ChartSettingsModal";
 import CorrelatedPairsModal from "./CorrelatedPairsModal";
+import CurrencyStrengthMeter from "./CurrencyStrengthMeter";
 import { useChartSettings } from "../lib/chartSettings";
 import { LAYOUT_CONFIG } from "../lib/layouts";
+import { sanitizeDrawings } from "../lib/draw/core.js";
+
+// Strip un-anchored (pre-time-model) drawings from a stored {symbol:[...]} blob
+// so loading an old layout can't reintroduce drawings that won't place on TF.
+function sanitizeDrawingsBlob(str) {
+  try {
+    const all = JSON.parse(str || "{}");
+    for (const k of Object.keys(all)) {
+      if (k.includes(":")) { delete all[k]; continue; } // legacy per-TF keys
+      all[k] = sanitizeDrawings(all[k]);
+    }
+    return JSON.stringify(all);
+  } catch { return "{}"; }
+}
 
 const api = async (path, opts) => {
   const res = await fetch(path, {
@@ -98,10 +113,11 @@ export default function Dashboard() {
   const [connected, setConnected] = useState(false);
   const [palette, setPalette] = useState(null); // null | "switch" | "add"
   const [alertDraft, setAlertDraft] = useState(null); // {price} | null
-  const [toast, setToast] = useState(null);
+  const [error, setError] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
   const [marketBiasOpen, setMarketBiasOpen] = useState(false);
   const [correlatedOpen, setCorrelatedOpen] = useState(false);
+  const [strengthOpen, setStrengthOpen] = useState(false);
   const [biasEnabled, setBiasEnabled] = useState(false); // default off to save RAM on RDP
 
   const [savedLayouts, setSavedLayouts] = useState([]);
@@ -350,15 +366,30 @@ export default function Dashboard() {
     }
   }, [panes]);
 
-  const showToast = useCallback((text) => {
-    setToast(text);
-    clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  const showToast = useCallback((text, type = "default") => {
+    if (type === "success") sonnerToast.success(text);
+    else if (type === "error") sonnerToast.error(text);
+    else if (text.includes("🔔")) sonnerToast(text, { style: { background: "var(--panel)", border: "1px solid var(--accent)", color: "#fff", padding: "12px 16px", borderRadius: "12px", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" } });
+    else sonnerToast(text);
   }, []);
 
   const loadAlerts = useCallback(async () => {
     const data = await api("/api/alerts");
-    if (data.ok) setAlerts(data.alerts);
+    if (data.ok) {
+      const yesterday = Date.now() - 24 * 3600000;
+      const sevenDaysAgo = Date.now() - 7 * 24 * 3600000;
+      const filtered = data.alerts.filter(a => {
+        if (a.status === "triggered") {
+           const time = new Date(a.triggeredAt || a.updatedAt || a.createdAt).getTime();
+           if (a.rating === 2 || a.rating === 3) {
+             return time > sevenDaysAgo;
+           }
+           return time > yesterday;
+        }
+        return true;
+      });
+      setAlerts(filtered);
+    }
   }, []);
 
   const loadWatchlists = useCallback(async () => {
@@ -402,11 +433,14 @@ export default function Dashboard() {
     }
   }, []);
 
-  // bias engine scope: active watchlist ∪ open panes
+  // bias engine scope: all symbols in all watchlists ∪ open panes
   const biasSymbols = useMemo(() => {
-    const list = watchlists.find((w) => w._id === activeListId);
-    return [...new Set([...(list?.symbols || []), ...panes.map((p) => p.symbol)])].sort();
-  }, [watchlists, activeListId, panes]);
+    let allSyms = panes.map(p => p.symbol);
+    watchlists.forEach(w => {
+      if (w.symbols) allSyms.push(...w.symbols);
+    });
+    return [...new Set(allSyms)].sort();
+  }, [watchlists, panes]);
 
   const loadBias = useCallback(async () => {
     if (!biasEnabled || !biasSymbols.length) {
@@ -614,7 +648,7 @@ export default function Dashboard() {
     if (l.gridFractions) setGridFractions(l.gridFractions);
     if (l.syncOpts) setSyncOpts(l.syncOpts);
     if (l.drawings) {
-      localStorage.setItem("ts_drawings", l.drawings);
+      localStorage.setItem("ts_drawings", sanitizeDrawingsBlob(l.drawings));
       window.dispatchEvent(new Event("storage"));
     }
     setActivePaneId(l.panes[0]?.id || 1);
@@ -816,6 +850,11 @@ export default function Dashboard() {
     loadAlerts();
   }, [loadAlerts]);
 
+  const rateAlert = useCallback(async (id, rating) => {
+    await api(`/api/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ rating }) });
+    loadAlerts();
+  }, [loadAlerts]);
+
   const moveAlert = useCallback(async (id, price) => {
     setAlerts((prev) => prev.map((a) => (a._id === id ? { ...a, price } : a)));
     const data = await api(`/api/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ price }) });
@@ -985,6 +1024,7 @@ export default function Dashboard() {
         onRenameLayout={renameLayout}
         onDeleteLayout={deleteLayout}
         onOpenCorrelated={() => setCorrelatedOpen(true)}
+        onOpenStrength={() => setStrengthOpen(true)}
       />
       <div className="layout-row" style={{position: "relative"}}>
         {activeNotesSymbol && (
@@ -1001,7 +1041,7 @@ export default function Dashboard() {
           const gridNode = (
             <div className={`responsive-chart-grid ${layout === "1" || fullScreenPaneId ? "single-chart" : ""}`} style={{ ...gridStyle, height: pipWindow ? "100vh" : gridStyle.height }}>
               {panes.map((pane, idx) => {
-                if (fullScreenPaneId && pane.id !== fullScreenPaneId) return null;
+                const isHiddenByFullscreen = fullScreenPaneId && pane.id !== fullScreenPaneId;
                 const symBias = biasData?.symbols?.find((s) => s.symbol === pane.symbol);
                 const catBias = biasData?.categories?.find((c) => c.members.includes(pane.symbol));
                 
@@ -1023,7 +1063,7 @@ export default function Dashboard() {
                     onDoubleClick={() => toggleFullscreen(pane.id)}
                     style={{
                       position: "relative",
-                      display: "flex",
+                      display: isHiddenByFullscreen ? "none" : "flex",
                       flexDirection: "column",
                       minWidth: 0,
                       minHeight: 0,
@@ -1118,6 +1158,7 @@ export default function Dashboard() {
                       onDeleteAlert={deleteAlert}
                       onMoveAlert={moveAlert}
                       onRearmAlert={rearmAlert}
+                      onRateAlert={rateAlert}
                       onCreateChainAlert={createChainAlert}
                       onJoinChainAlert={joinChainAlert}
                       indicators={indicators}
@@ -1131,6 +1172,7 @@ export default function Dashboard() {
                       setSyncedLogicalRange={setSyncedLogicalRange}
                       syncedCrosshair={syncedCrosshair}
                       setSyncedCrosshair={setSyncedCrosshair}
+                      biasData={biasData}
                     />
                   </div>
                 );
@@ -1184,6 +1226,14 @@ export default function Dashboard() {
               onNavDown={layout !== "1" ? handleNavDown : null}
               onGridify={handleGridify}
               onDoubleJump={handleDoubleJump}
+              biasData={biasData}
+              onSelectAutoList={() => {
+                if (layout !== "1") {
+                  setLayout("1");
+                  setPanes((prev) => [prev.find((p) => p.id === activePaneId) || prev[0]]);
+                  setGridFractions({ col: 50, row: 50 });
+                }
+              }}
             />
           </aside>
         )}
@@ -1252,16 +1302,23 @@ export default function Dashboard() {
         />
       )}
 
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)",
-          background: "var(--accent)", color: "#fff", padding: "10px 18px",
-          borderRadius: 8, zIndex: 90, boxShadow: "0 6px 24px rgba(0,0,0,.5)",
-          animation: "toast-in 160ms ease-out",
-        }}>
-          {toast}
+      {strengthOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", justifyContent: "center", alignItems: "center", background: "rgba(0,0,0,0.5)" }}>
+          <div style={{ position: "absolute", inset: 0 }} onClick={() => setStrengthOpen(false)} />
+          <div style={{ position: "relative", zIndex: 111, width: 400, maxWidth: "90vw" }}>
+            <CurrencyStrengthMeter 
+              onSelectSuggested={(sym) => {
+                setLayout("1");
+                setPanes([{ id: 1, symbol: sym, tf: panes[0]?.tf || "H1" }]);
+                setActivePaneId(1);
+                setStrengthOpen(false);
+              }}
+            />
+          </div>
         </div>
       )}
+
+
       {joinChainAlertId && (
         <JoinChainModal
           alerts={alerts}
@@ -1347,6 +1404,8 @@ function JoinChainModal({ alerts, targetId, onClose, onJoin }) {
            </div>
         )}
       </div>
+
+      <Toaster position={isMobile ? "top-center" : "bottom-right"} richColors expand={true} theme="dark" toastOptions={{ style: { background: "var(--panel)", border: "1px solid var(--border)", color: "var(--fg)", fontSize: "14px" } }} />
     </div>
   );
 }

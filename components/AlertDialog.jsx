@@ -23,12 +23,18 @@ export default function AlertDialog({ symbol, draft, marketPrice, onCancel, onSa
 
   const [price, setPrice] = useState(initial);
   const [condition, setCondition] = useState(draft?.condition || "cross");
+  const [rating, setRating] = useState(draft?.rating || null);
 
   const [note, setNote] = useState(draft?.note || "");
   const [busy, setBusy] = useState(false);
   const priceRef = useRef(null);
 
-  useEffect(() => { priceRef.current?.focus(); priceRef.current?.select(); }, []);
+  useEffect(() => { 
+    if (typeof window !== "undefined" && window.innerWidth > 768) {
+      priceRef.current?.focus(); 
+      priceRef.current?.select(); 
+    }
+  }, []);
 
   useEffect(() => {
     if (draft?.condition || price !== "") return;
@@ -42,7 +48,7 @@ export default function AlertDialog({ symbol, draft, marketPrice, onCancel, onSa
     const rawPrice = Number(price);
     if (!Number.isFinite(rawPrice)) return;
     setBusy(true);
-    await onSave({ symbol, price: rawPrice, condition, note: note.trim() });
+    await onSave({ symbol, price: rawPrice, condition, rating, note: note.trim() });
     setBusy(false);
   };
 
@@ -133,6 +139,39 @@ export default function AlertDialog({ symbol, draft, marketPrice, onCancel, onSa
                     style={{ flex: 1, padding: "7px 4px", fontSize: 12 }}
                   >
                     {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "var(--panel-2)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Priority Rating:</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => setRating(null)}
+                  style={{
+                    background: rating === null ? "var(--panel-2)" : "transparent",
+                    color: "var(--text-muted)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 4, padding: "4px 8px", fontSize: 13, cursor: "pointer",
+                    outline: "none"
+                  }}
+                >
+                  None
+                </button>
+                {[1, 2, 3].map(star => (
+                  <button
+                    key={star}
+                    onClick={() => setRating(r => r === star ? null : star)}
+                    style={{
+                      background: rating >= star ? "var(--orange)" : "transparent",
+                      color: rating >= star ? "#1a1206" : "var(--text)",
+                      border: "1px solid var(--orange)",
+                      borderRadius: 4, padding: "4px 8px", fontSize: 13, cursor: "pointer",
+                      outline: "none"
+                    }}
+                  >
+                    {star}★
                   </button>
                 ))}
               </div>

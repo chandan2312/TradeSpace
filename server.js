@@ -15,6 +15,8 @@ import { WebSocketServer } from "ws";
 import { getCols, mongo } from "./lib/mongo.js";
 import { setWss } from "./lib/realtime.js";
 import { startPollLoop } from "./lib/alert-engine.js";
+import { startAlgoLoop } from "./lib/algo/engine.js";
+import { startExecutorLoop } from "./lib/executor/engine.js";
 
 const dev = process.env.NODE_ENV !== "production";
 const PORT = Number(process.env.PORT || 3000);
@@ -89,6 +91,12 @@ async function main() {
 
   // ---- Alert engine ---------------------------------------------------
   startPollLoop();
+
+  // ---- Currency-algo paper-trade engine (monitor rides the tick stream) ---
+  startAlgoLoop();
+
+  // ---- Executor engine (executes user-placed setups; rides the tick stream) ---
+  startExecutorLoop();
 
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`[tradespace] ${useHttps ? "https" : "http"}://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);

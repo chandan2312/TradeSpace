@@ -14,6 +14,7 @@ export async function PATCH(req, { params }) {
   if (body?.note !== undefined) update.note = String(body.note).slice(0, 200);
   if (body?.chainId !== undefined) update.chainId = body.chainId;
   if (Number.isFinite(Number(body?.chainOrder))) update.chainOrder = Number(body.chainOrder);
+  if (body?.rating !== undefined) update.rating = body.rating;
   const { alertsCol } = await getCols();
 
   if (body?.status === "active" || body?.status === "pending_chain") {

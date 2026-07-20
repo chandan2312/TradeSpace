@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PatternsPrimitive } from "../lib/patterns/primitive.js";
 import { runPatterns } from "../lib/patterns/index.js";
 import { DrawingsPrimitive } from "../lib/draw/primitive.js";
@@ -10,6 +10,7 @@ import { Loader2, ChevronRight } from "lucide-react";
 import DrawingToolbar from "./DrawingToolbar.jsx";
 import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
+import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
@@ -75,7 +76,7 @@ class AlertsPrimitive {
           const b = bars[i];
           if (b.low <= livePrice && b.high >= livePrice) { startIdx = i; found = true; break; }
         }
-        if (!found) startIdx = Math.max(0, bars.length - 1 - 25);
+        if (!found) startIdx = bars.length - 1; // Start from newest bar if no touch found
         const x = X(startIdx);
         
         let color = "rgba(255, 152, 0, 0.75)";
@@ -128,14 +129,54 @@ class AlertsPrimitive {
 
       // Draw individual horizontal lines and badges
       for (const n of renderNodes) {
-        ctx.strokeStyle = n.color;
+        let lineColor = n.color;
+        let lineDash = [4, 4];
+        
+        if (n.rating) {
+          if (n.rating === 3) lineDash = [];
+          else if (n.rating === 2) lineDash = [8, 4];
+          else if (n.rating === 1) lineDash = [4, 4];
+          
+          if (n.status !== "triggered") {
+            lineColor = "#ffb300";
+          } else {
+            lineColor = "rgba(239, 83, 80, 0.4)";
+          }
+        }
+
+        const startX = Math.max(n.x, 0);
+
+        // Extended faint line to the left of the touch for priority alerts
+        if (n.rating >= 2 && startX > 0) {
+          ctx.strokeStyle = "rgba(128, 128, 128, 0.4)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 4]); // faint dotted
+          ctx.beginPath();
+          ctx.moveTo(0, n.y);
+          ctx.lineTo(startX, n.y);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = lineColor;
         ctx.lineWidth = 1;
-        ctx.setLineDash([4, 4]);
+        ctx.setLineDash(lineDash);
         ctx.beginPath();
-        ctx.moveTo(Math.max(n.x, 0), n.y);
+        ctx.moveTo(startX, n.y);
         ctx.lineTo(W, n.y);
         ctx.stroke();
         ctx.setLineDash([]);
+        
+        // Star Rating on the left edge (shifted right to avoid vertical toolbar on desktop)
+        if (n.rating) {
+          const leftPad = (typeof window !== "undefined" && window.innerWidth <= 768) ? 8 : 52;
+          ctx.fillStyle = lineColor;
+          ctx.font = "9px sans-serif";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          let stars = "";
+          for(let i=0; i<n.rating; i++) stars += "★";
+          ctx.fillText(stars, leftPad, n.y);
+        }
         
         // Chain Order Number Badge on left side
         if (n.chainId) {
@@ -172,9 +213,9 @@ class AlertsPrimitive {
 }
 
 export default function ChartPanel({
-  symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
+  symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
   syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
-  isActive = true, onOpenSettings
+  isActive = true, onOpenSettings, biasData
 }) {
   const wrapRef = useRef(null);
   const chartRef = useRef(null);
@@ -198,6 +239,7 @@ export default function ChartPanel({
   const [lockedAlertId, setLockedAlertId] = useState(null);
   const [dragging, setDragging] = useState(null);     // {id, price} while actively dragging
   const [layerSpawnAlertId, setLayerSpawnAlertId] = useState(null); // alert id currently spanning a new layer
+  const [zoomMenuOpen, setZoomMenuOpen] = useState(false);
   const [spawnY, setSpawnY] = useState(null); // mouse Y for layer ghost line
   const dragStateRef = useRef(null);
 
@@ -252,10 +294,43 @@ export default function ChartPanel({
   };
 
   // ---------- drawing tools ----------
-  const draw = useDrawings({ chartRef, seriesRef, wrapRef, symbol, tf, barsRef, isActive, primRef: drawPrimRef });
+  const draw = useDrawings({ chartRef, seriesRef, wrapRef, symbol, tf, barsRef, isActive, primRef: drawPrimRef, dataVersion });
 
   // ---------- global settings ----------
   const [settings] = useChartSettings();
+
+  const loadingFact = useMemo(() => {
+    if (!loading) return null;
+    
+    if (biasData?.symbols) {
+      const symData = biasData.symbols.find(s => s.symbol === symbol);
+      if (symData) {
+        if (symData.setup) return `⚡ ${symbol} has an active Setup!`;
+        if (symData.phase === "uptrend") return `${symbol} is in a 📈 Uptrend`;
+        if (symData.phase === "downtrend") return `${symbol} is in a 📉 Downtrend`;
+        if (symData.phase === "chop") return `${symbol} is currently chopping ➖`;
+        if (symData.phase === "reversal-watch") return `Watching ${symbol} for reversals 🔄`;
+        if (symData.factors && symData.factors.length > 0) return `Fact: ${symData.factors[0].label}`;
+      }
+    }
+
+    const tips = [
+      "Liquidity rests above old highs and below old lows.",
+      "A sweep without displacement is just a sweep.",
+      "Higher timeframe structure supersedes lower timeframe noise.",
+      "Wait for the M15 MSS to confirm a reversal.",
+      "Session timings dictate volatility and sweeps.",
+      "Don't trade the chop. Wait for expansion.",
+      "Are you trading the Asian session or London?",
+      "Stop losses go where the setup is invalidated.",
+      "Patience pays more than frequency."
+    ];
+    let hash = 0;
+    for (let i = 0; i < symbol.length; i++) hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+    // add time so it rotates every hour for the same symbol
+    hash += new Date().getHours();
+    return tips[Math.abs(hash) % tips.length];
+  }, [loading, symbol, biasData]);
 
   // Apply settings whenever they change
   useEffect(() => {
@@ -393,20 +468,22 @@ export default function ChartPanel({
     };
 
     const cached = barsCache.current.get(key);
-    if (cached?.bars?.length) apply(cached.bars);
-    else {
-      // no cache for this series yet — stop ticks from mutating the old one
-      lastBarRef.current = null;
-      setLoading(true);
-    }
+    
+    // Zeroized logic: ALWAYS clear the chart and wait for the fresh API fetch to prevent ANY tick gaps.
+    // We only use the cache as a strict fallback if the API fails.
+    lastBarRef.current = null;
+    barsRef.current = [];
+    setLoading(true);
+    if (seriesRef.current) seriesRef.current.setData([]);
+    if (patternsRef.current) patternsRef.current.setDrawings([]);
 
     (async () => {
       // wait for the chart to exist (first mount races the dynamic import)
       for (let i = 0; i < 100 && !seriesRef.current; i++) await new Promise((r) => setTimeout(r, 50));
       try {
         let count = 600;
-        if (["M1", "M5", "M15"].includes(tf)) count = 1200;
-        else if (["H1", "H4", "D1"].includes(tf)) count = 900;
+        if (["M1", "M5", "M15"].includes(tf)) count = 800;
+        else if (["H1", "H4", "D1"].includes(tf)) count = 600;
         const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=${count}`, { cache: "no-store" });
         const data = await res.json();
         if (cancelled) return;
@@ -414,12 +491,13 @@ export default function ChartPanel({
           if (!cached) { setError(data.message || data.error || `No data for ${symbol}`); setLoading(false); }
           return;
         }
-        const bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+        let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+        bars = bars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
         barsCache.current.set(key, { at: Date.now(), bars });
         try {
-          // Keep only the last 300 bars in local storage to prevent quota exceeded errors
+          // Keep only the last 800 bars in local storage to prevent quota exceeded errors
           const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
-            acc[k] = { at: v.at, bars: v.bars.slice(-300) };
+            acc[k] = { at: v.at, bars: v.bars.slice(-800) };
             return acc;
           }, {});
           localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
@@ -454,10 +532,19 @@ export default function ChartPanel({
     const barTime = Math.floor((tick.time / 1000) / sec) * sec;
     const last = entry.bar;
     const isNewBar = barTime > last.time;
+    const gap = barTime - last.time;
+    const isNextConsecutive = gap === sec;
     // To prevent artificial visual gaps caused by polling missing the exact first millisecond tick,
-    // we seamlessly connect the new candle's open to the previous candle's close.
+    // we seamlessly connect the new candle's open to the previous candle's close ONLY if it's the immediate next bar.
+    // If there's a large gap (e.g. stale cache or weekend), we open at the true tick price.
     const nextBar = isNewBar
-      ? { time: barTime, open: last.close, high: Math.max(last.close, price), low: Math.min(last.close, price), close: price }
+      ? { 
+          time: barTime, 
+          open: isNextConsecutive ? last.close : price, 
+          high: isNextConsecutive ? Math.max(last.close, price) : price, 
+          low: isNextConsecutive ? Math.min(last.close, price) : price, 
+          close: price 
+        }
       : { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
     lastBarRef.current = { key: entry.key, bar: nextBar };
     seriesRef.current.update(nextBar);
@@ -510,12 +597,15 @@ export default function ChartPanel({
       return;
     }
     hoverPriceRef.current = price;
-    const time = chart.timeScale().coordinateToTime(x);
-    setHoverBtn({ y, price, time });
+    const isYAxisArea = rect.width - x < 80;
+    let time = chart.timeScale().coordinateToTime(x);
+    if (!time && barsRef.current.length > 0) {
+      time = barsRef.current[barsRef.current.length - 1].time;
+    }
+    setHoverBtn({ y, price, time, isYAxisArea });
 
     // proximity test for drag handle
     let hit = null;
-    const isYAxisArea = rect.width - x < 80;
     const hitRadius = isMobile ? 15 : 7;
     
     if (isYAxisArea) {
@@ -571,12 +661,15 @@ export default function ChartPanel({
     };
   }, []);
 
-  // ---------- maintain crosshair while hovering the add button ----------
+  // ---------- maintain crosshair while hovering the add button or Y axis ----------
+  const wasForcingCrosshairRef = useRef(false);
   useEffect(() => {
-    if (isHoveringBtn && hoverBtn && chartRef.current && seriesRef.current && hoverBtn.time) {
+    if ((isHoveringBtn || hoverBtn?.isYAxisArea) && hoverBtn && chartRef.current && seriesRef.current && hoverBtn.time) {
       chartRef.current.setCrosshairPosition(hoverBtn.price, hoverBtn.time, seriesRef.current);
-    } else {
+      wasForcingCrosshairRef.current = true;
+    } else if (wasForcingCrosshairRef.current) {
       chartRef.current?.clearCrosshairPosition();
+      wasForcingCrosshairRef.current = false;
     }
   }, [isHoveringBtn, hoverBtn]);
 
@@ -598,12 +691,24 @@ export default function ChartPanel({
 
     const onMove = (ev) => {
       const y = ev.clientY - rect.top;
+      const x = ev.clientX - rect.left;
       const price = series.coordinateToPrice(y);
       if (price == null || !Number.isFinite(price)) return;
       dragStateRef.current = { id, price };
       
       if (alertsPrimRef.current) {
         alertsPrimRef.current.update(alertsRef.current, dragStateRef.current, barsRef.current);
+      }
+
+      // Force crosshair to follow drag
+      if (chartRef.current && seriesRef.current) {
+        let time = chartRef.current.timeScale().coordinateToTime(x);
+        if (!time && barsRef.current.length > 0) {
+          time = barsRef.current[barsRef.current.length - 1].time;
+        }
+        if (time) {
+          chartRef.current.setCrosshairPosition(price, time, seriesRef.current);
+        }
       }
     };
     const onUp = () => {
@@ -612,6 +717,7 @@ export default function ChartPanel({
       window.removeEventListener("pointercancel", onUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
+      chartRef.current?.clearCrosshairPosition();
       const final = dragStateRef.current;
       dragStateRef.current = null;
       setDragging(null);
@@ -675,6 +781,7 @@ export default function ChartPanel({
   }, [dragHandle, dragging, paneId, isMobile, digits]);
 
   const programmaticRangeRef = useRef(null);
+  const isFetchingHistory = useRef(false);
 
   // ---------- Sync Logical Range ----------
   useEffect(() => {
@@ -686,6 +793,43 @@ export default function ChartPanel({
         const totalBars = barsRef.current?.length || 0;
         if (totalBars > 0) {
           setIsScrolledLeft(range.to < totalBars + 5);
+          
+          if (range.from < 50 && !isFetchingHistory.current && totalBars < 5000) {
+            isFetchingHistory.current = true;
+            (async () => {
+              try {
+                const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=500&offset=${totalBars}`);
+                const data = await res.json();
+                if (data.ok && data.bars?.length) {
+                  let newBars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+                  // Filter out completely anomalous MT5 glitches (0 prices or 100x spikes)
+                  newBars = newBars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+
+                  // MT5 might return the current bars if offset is too far, ensure we don't overlap time
+                  const oldestExistingTime = barsRef.current[0].time;
+                  const filteredNewBars = newBars.filter(b => b.time < oldestExistingTime);
+                  
+                  if (filteredNewBars.length > 0) {
+                    const combined = [...filteredNewBars, ...barsRef.current];
+                    barsRef.current = combined;
+                    // Preserve the scroll position by shifting logical indices
+                    const currentRange = chart.timeScale().getVisibleLogicalRange();
+                    seriesRef.current.setData(combined);
+                    if (currentRange) {
+                       chart.timeScale().setVisibleLogicalRange({
+                         from: currentRange.from + filteredNewBars.length,
+                         to: currentRange.to + filteredNewBars.length
+                       });
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error("lazy load failed", e);
+              } finally {
+                isFetchingHistory.current = false;
+              }
+            })();
+          }
         }
       }
 
@@ -755,6 +899,34 @@ export default function ChartPanel({
     chart.subscribeCrosshairMove(handler);
     return () => chart.unsubscribeCrosshairMove(handler);
   }, [syncOpts?.crosshair, paneId, setSyncedCrosshair, chartReady]);
+
+  // ---------- Click to Edit Alert ----------
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !chartReady) return;
+    
+    const handler = (param) => {
+      if (!param.point || !seriesRef.current) return;
+      
+      const y = param.point.y;
+      let hit = null;
+      for (const a of alertsRef.current) {
+        const ay = seriesRef.current.priceToCoordinate(a.price);
+        const threshold = (typeof window !== "undefined" && window.innerWidth <= 768) ? 20 : 10;
+        if (ay != null && Math.abs(ay - y) < threshold) { 
+          hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 }; 
+          break; 
+        }
+      }
+      if (hit) {
+        setDragHandle(hit);
+        setLockedAlertId(hit.id);
+      }
+    };
+    chart.subscribeClick(handler);
+    return () => chart.unsubscribeClick(handler);
+  }, [chartReady]);
+
 
   useEffect(() => {
     if (!chartRef.current || !syncOpts?.crosshair || !syncedCrosshair || !seriesRef.current) return;
@@ -873,11 +1045,20 @@ export default function ChartPanel({
       {isActive && !loading && !error && (
         <DrawingSettings api={draw} />
       )}
+      {isActive && !loading && !error && (
+        <MiniDrawingToolbar api={draw} />
+      )}
 
       {loading && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg)", zIndex: 10 }}>
-          <Loader2 size={36} className="spin" style={{ color: "var(--accent)", marginBottom: 12 }} />
-          <div className="muted" style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Loading {symbol} {tf}</div>
+        <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+          <div className="skeleton-pulse" style={{ padding: "8px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", color: "var(--muted)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}>
+            Syncing {symbol}...
+          </div>
+          {loadingFact && (
+            <div className="skeleton-pulse" style={{ fontSize: 13, color: "var(--accent)", maxWidth: "80%", textAlign: "center", fontStyle: "italic", opacity: 0.8 }}>
+              {loadingFact}
+            </div>
+          )}
         </div>
       )}
 
@@ -1040,6 +1221,38 @@ export default function ChartPanel({
                   ↻ Renew alert {a.condition} <b className="num">{fmt(a.price)}</b>
                 </MenuItem>
               )}
+              <div style={{ display: "flex", gap: 6, padding: "8px 12px", borderBottom: "1px solid var(--border-light)", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Rating:</span>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    onClick={() => { onRateAlert && onRateAlert(a._id, null); setCtxMenu(null); }}
+                    style={{
+                      background: !a.rating ? "var(--panel-2)" : "transparent",
+                      color: "var(--text-muted)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4, padding: "2px 6px", fontSize: 12, cursor: "pointer",
+                      outline: "none"
+                    }}
+                  >
+                    None
+                  </button>
+                  {[1, 2, 3].map(star => (
+                    <button 
+                      key={star} 
+                      onClick={() => { onRateAlert && onRateAlert(a._id, a.rating === star ? null : star); setCtxMenu(null); }}
+                      style={{
+                        background: a.rating >= star ? "var(--orange)" : "transparent",
+                        color: a.rating >= star ? "#1a1206" : "var(--text)",
+                        border: "1px solid var(--orange)",
+                        borderRadius: 4, padding: "2px 6px", fontSize: 12, cursor: "pointer",
+                        outline: "none"
+                      }}
+                    >
+                      {star}★
+                    </button>
+                  ))}
+                </div>
+              </div>
               {!a.chainId && (
                 <MenuItem onClick={() => { onCreateChainAlert && onCreateChainAlert(a._id); setCtxMenu(null); }}>
                   🔗 Create Chain Group
@@ -1074,6 +1287,75 @@ export default function ChartPanel({
         >
           <ChevronRight size={18} strokeWidth={2.5} />
         </button>
+      )}
+
+      {/* Zoom / Date Range selector corner button */}
+      <div 
+        style={{
+          position: "absolute",
+          right: 0,
+          bottom: 0,
+          width: 58,
+          height: 26,
+          zIndex: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "transparent",
+          cursor: "pointer",
+          color: "var(--muted)",
+          fontSize: 10,
+          fontWeight: 700,
+          userSelect: "none",
+          transition: "background 0.2s"
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+        onClick={(e) => { e.stopPropagation(); setZoomMenuOpen(!zoomMenuOpen); }}
+      >
+        <span>ZOOM</span>
+      </div>
+
+      {zoomMenuOpen && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={(e) => { e.stopPropagation(); setZoomMenuOpen(false); }} />
+          <div style={{
+            position: "absolute", right: 60, bottom: 26, zIndex: 100,
+            background: "var(--panel)", border: "1px solid var(--border-hi)",
+            borderRadius: 6, boxShadow: "0 -4px 16px rgba(0,0,0,0.5)",
+            display: "flex", flexDirection: "column", padding: 4, minWidth: 120
+          }}>
+            <div className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, padding: "4px 8px 6px" }}>Zoom To</div>
+            {(["M1", "M5", "M15"].includes(tf) ? ["Session", "4H", "24H", "7D", "1M", "3M"] : ["24H", "7D", "1M", "3M"]).map(r => (
+              <button
+                key={r}
+                className="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!chartRef.current || !barsRef.current.length) return;
+                  const ts = chartRef.current.timeScale();
+                  const lastTime = barsRef.current[barsRef.current.length - 1].time;
+                  let fromTime;
+                  if (r === "Session") fromTime = lastTime - 8 * 3600;
+                  else if (r === "4H") fromTime = lastTime - 4 * 3600;
+                  else if (r === "24H") fromTime = lastTime - 24 * 3600;
+                  else if (r === "7D") fromTime = lastTime - 7 * 86400;
+                  else if (r === "1M") fromTime = lastTime - 30 * 86400;
+                  else if (r === "3M") fromTime = lastTime - 90 * 86400;
+                  
+                  let fromIndex = barsRef.current.findIndex(b => b.time >= fromTime);
+                  if (fromIndex === -1) fromIndex = 0;
+                  
+                  ts.setVisibleLogicalRange({ from: fromIndex, to: barsRef.current.length - 1 + (isMobile ? 8 : 12) });
+                  setZoomMenuOpen(false);
+                }}
+                style={{ textAlign: "left", padding: "6px 10px", fontSize: 12, borderRadius: 4 }}
+              >
+                {r === "Session" ? "Trading Session" : r === "4H" ? "4 Hours" : r === "24H" ? "1 Day" : r === "7D" ? "1 Week" : r === "1M" ? "1 Month" : "3 Months"}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

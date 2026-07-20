@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2 } from "lucide-react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench } from "lucide-react";
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 
@@ -17,26 +17,31 @@ export default function TopBar({
   savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop,
   indicators, setIndicators,
   loadedLayoutId, onUpdateLayout, onRenameLayout, onDeleteLayout,
-  onOpenCorrelated
+  onOpenCorrelated, onOpenStrength
 }) {
   const digits = tick?.digits ?? 5;
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const layoutMenuRef = useRef(null);
+  const toolsMenuRef = useRef(null);
   const mobileLayoutMenuRef = useRef(null);
 
   useEffect(() => {
-    if (!showLayoutMenu) return;
     const handleClick = (e) => {
-      const clickedDesktop = layoutMenuRef.current && layoutMenuRef.current.contains(e.target);
-      const clickedMobile = mobileLayoutMenuRef.current && mobileLayoutMenuRef.current.contains(e.target);
-      if (!clickedDesktop && !clickedMobile) {
-        setShowLayoutMenu(false);
+      if (showLayoutMenu) {
+        const clickedDesktop = layoutMenuRef.current && layoutMenuRef.current.contains(e.target);
+        const clickedMobile = mobileLayoutMenuRef.current && mobileLayoutMenuRef.current.contains(e.target);
+        if (!clickedDesktop && !clickedMobile) setShowLayoutMenu(false);
+      }
+      if (toolsMenuOpen) {
+        const clickedTools = toolsMenuRef.current && toolsMenuRef.current.contains(e.target);
+        if (!clickedTools) setToolsMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [showLayoutMenu]);
+  }, [showLayoutMenu, toolsMenuOpen]);
   
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -55,9 +60,43 @@ export default function TopBar({
         <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
       </button>
 
-      <button className="ghost" onClick={onOpenCorrelated} title="View Correlated Pairs" style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
-        <LayoutGrid size={14} /> <span className="hide-mobile">Correlated</span>
-      </button>
+      <div style={{ position: "relative" }}>
+        <button 
+          className={toolsMenuOpen ? "primary" : "ghost"} 
+          onClick={() => setToolsMenuOpen(!toolsMenuOpen)} 
+          title="Tools & Analytics" 
+          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+        >
+          <Wrench size={14} /> <span className="hide-mobile">Tools</span>
+        </button>
+
+        {toolsMenuOpen && (
+          <div ref={toolsMenuRef} style={{
+            position: "absolute", top: "100%", left: 0, marginTop: 8,
+            background: "var(--panel)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 110, width: 220
+          }}>
+            <button className="dropdown-btn" onClick={() => { onOpenStrength(); setToolsMenuOpen(false); }}>
+              <Activity size={14} /> Currency Strength Meter
+            </button>
+            <button className="dropdown-btn" onClick={() => { onOpenCorrelated(); setToolsMenuOpen(false); }}>
+              <LayoutGrid size={14} /> Correlated Pairs
+            </button>
+            <button className="dropdown-btn" onClick={() => { onOpenMarketBias(); setToolsMenuOpen(false); }}>
+              <Activity size={14} /> Master Market Bias
+            </button>
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+            <button 
+              className="dropdown-btn" 
+              onClick={() => { onToggleBias(); setToolsMenuOpen(false); }}
+              style={{ color: biasEnabled ? "var(--green)" : "var(--muted)" }}
+            >
+              <Power size={14} /> Bias Engine: {biasEnabled ? "ON" : "OFF"}
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="tf-container" style={{ display: "flex", gap: 4 }}>
         {TFS.map((t) => (
@@ -165,22 +204,6 @@ export default function TopBar({
       <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
 
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-        <button className="ghost" onClick={onOpenMarketBias} title="Master Bias" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-          <Activity size={14} /> <span className="hide-mobile">Market Bias</span>
-        </button>
-        <button 
-          className={biasEnabled ? "primary" : "ghost"} 
-          onClick={onToggleBias} 
-          title={biasEnabled ? "Bias Engine is ON (Click to disable)" : "Bias Engine is OFF (Click to enable)"}
-          style={{ 
-            fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, 
-            background: biasEnabled ? "var(--green)" : "transparent", 
-            borderColor: biasEnabled ? "var(--green)" : "var(--border)",
-            color: biasEnabled ? "#fff" : "var(--muted)"
-          }}
-        >
-          <Power size={14} /> <span className="hide-mobile">Engine {biasEnabled ? "ON" : "OFF"}</span>
-        </button>
         {layout === "1" && (
           <button 
             className="ghost" 
@@ -313,8 +336,14 @@ export default function TopBar({
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenStrength(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
+              <Activity size={14} /> Currency Strength Meter
+            </button>
+            <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenCorrelated(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
+              <LayoutGrid size={14} /> Correlated Pairs
+            </button>
             <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenMarketBias(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
-              <Activity size={14} /> Market Bias
+              <Activity size={14} /> Master Market Bias
             </button>
             <button 
               className={biasEnabled ? "primary" : "ghost"} 

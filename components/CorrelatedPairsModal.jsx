@@ -35,19 +35,26 @@ const CORRELATIONS = {
 };
 
 function guessCorrelations(symbol) {
-  let list = new Set();
+  let groups = [];
   
   if (CORRELATIONS[symbol]) {
-    CORRELATIONS[symbol].forEach(s => list.add(s));
+    const list = CORRELATIONS[symbol].filter(s => s !== symbol).slice(0, 10);
+    groups.push({ title: "Correlated Assets", symbols: list });
   } else if (symbol.length === 6) {
     const base = symbol.substring(0, 3);
     const quote = symbol.substring(3, 6);
-    if (CORRELATIONS[base]) CORRELATIONS[base].forEach(s => list.add(s));
-    if (CORRELATIONS[quote]) CORRELATIONS[quote].forEach(s => list.add(s));
+    
+    if (CORRELATIONS[base]) {
+      const list = CORRELATIONS[base].filter(s => s !== symbol).slice(0, 8);
+      if (list.length > 0) groups.push({ title: `Base Currency (${base})`, symbols: list });
+    }
+    if (CORRELATIONS[quote]) {
+      const list = CORRELATIONS[quote].filter(s => s !== symbol).slice(0, 8);
+      if (list.length > 0) groups.push({ title: `Quote Currency (${quote})`, symbols: list });
+    }
   }
   
-  list.delete(symbol); // Remove self
-  return Array.from(list).slice(0, 10); // Return up to 10
+  return groups;
 }
 
 function MiniBiasScore({ symbol, tf }) {
@@ -96,9 +103,10 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
   const barsCache = useRef(new Map());
 
   useEffect(() => {
-    const c = guessCorrelations(symbol);
-    setCandidates(c);
-    setSelected(new Set(c.slice(0, 4))); // pre-select up to 4
+    const groups = guessCorrelations(symbol);
+    setCandidates(groups);
+    const initialSelect = groups.flatMap(g => g.symbols).slice(0, 4);
+    setSelected(new Set(initialSelect)); // pre-select up to 4
   }, [symbol]);
 
   const toggle = (sym) => {
@@ -144,19 +152,28 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
               Select which correlated symbols you want to analyze alongside {symbol}.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "50vh", overflowY: "auto" }}>
-              {candidates.map(c => (
-                <div 
-                  key={c}
-                  onClick={() => toggle(c)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "10px",
-                    background: selected.has(c) ? "var(--accent-soft)" : "var(--bg)",
-                    border: `1px solid ${selected.has(c) ? "var(--accent)" : "var(--border)"}`,
-                    borderRadius: 6, cursor: "pointer"
-                  }}
-                >
-                  {selected.has(c) ? <CheckSquare size={16} color="var(--accent)" /> : <Square size={16} color="var(--muted)" />}
-                  <span className="num">{c}</span>
+              {candidates.map((g, idx) => (
+                <div key={idx} style={{ marginBottom: 12 }}>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                    {g.title}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {g.symbols.map(c => (
+                      <div 
+                        key={c}
+                        onClick={() => toggle(c)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                          background: selected.has(c) ? "var(--accent-soft)" : "var(--bg)",
+                          border: `1px solid ${selected.has(c) ? "var(--accent)" : "var(--border)"}`,
+                          borderRadius: 6, cursor: "pointer"
+                        }}
+                      >
+                        {selected.has(c) ? <CheckSquare size={16} color="var(--accent)" /> : <Square size={16} color="var(--muted)" />}
+                        <span className="num">{c}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
               {candidates.length === 0 && (

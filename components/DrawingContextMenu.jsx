@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Copy, Trash2, Lock, Unlock, Eye, EyeOff, BringToFront, SendToBack, Settings } from "lucide-react";
+import { Copy, Trash2, Lock, Unlock, Eye, EyeOff, BringToFront, SendToBack, Settings, Crosshair } from "lucide-react";
 
 // Right-click menu for a drawing. Positioned at the click point; closes on
 // any outside click or action. Actions mutate the drawing via the api.
 export default function DrawingContextMenu({ api }) {
   const { ctxMenu, setCtxMenu, selected, setSettingsOpen,
-    cloneSelected, deleteSelected, bringToFront, sendToBack, toggleLock, toggleHide } = api;
+    cloneSelected, deleteSelected, bringToFront, sendToBack, toggleLock, toggleHide, sendToExecutor } = api;
 
   const menuRef = useRef(null);
 
@@ -66,6 +66,12 @@ export default function DrawingContextMenu({ api }) {
         {selected.type}
       </div>
       <Item icon={Settings} label="Edit settings" onClick={() => setSettingsOpen(true)} />
+      {selected.type === "rrtool" && sendToExecutor && (
+        <Item icon={Crosshair} label="Send to Executor" onClick={async () => {
+          const res = await sendToExecutor();
+          if (!res?.ok) window.alert(`Executor: ${res?.error || "failed"}`);
+        }} />
+      )}
       <Item icon={Copy} label="Clone" onClick={cloneSelected} />
       <Item icon={BringToFront} label="Bring to front" onClick={bringToFront} />
       <Item icon={SendToBack} label="Send to back" onClick={sendToBack} />
