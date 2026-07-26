@@ -1,12 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench } from "lucide-react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass } from "lucide-react";
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
+import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
+
+const THEME_LIST = [
+  { id: "dark", label: "Dark", icon: Moon, desc: "Classic dark mode" },
+  { id: "light", label: "Light", icon: Sun, desc: "Clean light mode" },
+  { id: "navyblue", label: "Navy Blue", icon: Compass, desc: "Institutional navy" },
+  { id: "creamy", label: "Creamy", icon: Coffee, desc: "Warm parchment" },
+];
 
 export default function TopBar({ 
   symbol, tf, setTf, tick, connected, onOpenPalette, onAddAlert, 
@@ -20,11 +28,22 @@ export default function TopBar({
   onOpenCorrelated, onOpenStrength
 }) {
   const digits = tick?.digits ?? 5;
+  const [settings] = useChartSettings();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const activeTheme = mounted ? (settings.appTheme || "dark") : "dark";
+
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const layoutMenuRef = useRef(null);
   const toolsMenuRef = useRef(null);
+  const themeMenuRef = useRef(null);
   const mobileLayoutMenuRef = useRef(null);
 
   useEffect(() => {
@@ -38,10 +57,14 @@ export default function TopBar({
         const clickedTools = toolsMenuRef.current && toolsMenuRef.current.contains(e.target);
         if (!clickedTools) setToolsMenuOpen(false);
       }
+      if (themeMenuOpen) {
+        const clickedTheme = themeMenuRef.current && themeMenuRef.current.contains(e.target);
+        if (!clickedTheme) setThemeMenuOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [showLayoutMenu, toolsMenuOpen]);
+  }, [showLayoutMenu, toolsMenuOpen, themeMenuOpen]);
   
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -86,6 +109,9 @@ export default function TopBar({
             <button className="dropdown-btn" onClick={() => { onOpenMarketBias(); setToolsMenuOpen(false); }}>
               <Activity size={14} /> Master Market Bias
             </button>
+            <a href="/journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
+              <BookOpen size={14} /> Trading Journal
+            </a>
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             <button 
               className="dropdown-btn" 
@@ -203,6 +229,54 @@ export default function TopBar({
 
       <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
 
+      <div style={{ position: "relative" }} className="hide-mobile">
+        <button
+          className={themeMenuOpen ? "primary" : "ghost"}
+          onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+          title="Switch Theme"
+          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+        >
+          {activeTheme === "light" ? <Sun size={14} /> :
+           activeTheme === "navyblue" ? <Compass size={14} /> :
+           activeTheme === "creamy" ? <Coffee size={14} /> :
+           <Moon size={14} />}
+          <span>{THEME_LIST.find(t => t.id === activeTheme)?.label || "Theme"}</span>
+        </button>
+
+        {themeMenuOpen && (
+          <div ref={themeMenuRef} style={{
+            position: "absolute", top: "100%", left: 0, marginTop: 4,
+            background: "var(--panel)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: 6, display: "flex", flexDirection: "column", gap: 4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 110, width: 170
+          }}>
+            <div style={{ fontSize: 10, opacity: 0.6, padding: "4px 8px", textTransform: "uppercase", fontWeight: 700 }}>Theme Mode</div>
+            {THEME_LIST.map((t) => {
+              const IconComp = t.icon;
+              const isActive = activeTheme === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => { switchTheme(t.id); setThemeMenuOpen(false); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
+                    background: isActive ? "var(--accent-soft)" : "transparent",
+                    color: isActive ? "var(--accent)" : "var(--text)",
+                    fontWeight: isActive ? 600 : 400,
+                    borderRadius: 6, border: "none", cursor: "pointer", textAlign: "left", width: "100%",
+                    fontSize: 12
+                  }}
+                >
+                  <IconComp size={14} />
+                  <span style={{ flex: 1 }}>{t.label}</span>
+                  {isActive && <span style={{ fontSize: 11 }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
         {layout === "1" && (
           <button 
@@ -260,6 +334,34 @@ export default function TopBar({
               </button>
             )}
             <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
+          </div>
+
+          {/* Mobile Theme Selector */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: 8 }}>
+            <div style={{ fontSize: 10, opacity: 0.6, textTransform: "uppercase", fontWeight: 700 }}>Color Theme</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {THEME_LIST.map((t) => {
+                const IconComp = t.icon;
+                const isActive = activeTheme === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { switchTheme(t.id); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", fontSize: 12,
+                      background: isActive ? "var(--accent)" : "var(--panel-2)",
+                      color: isActive ? "#ffffff" : "var(--text)",
+                      border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
+                      borderRadius: 6, cursor: "pointer", fontWeight: isActive ? 600 : 400,
+                      justifyContent: "center"
+                    }}
+                  >
+                    <IconComp size={14} />
+                    <span>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {showLayoutMenu && (
@@ -345,6 +447,9 @@ export default function TopBar({
             <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenMarketBias(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
               <Activity size={14} /> Master Market Bias
             </button>
+            <a href="/journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
+              <BookOpen size={14} /> Trading Journal
+            </a>
             <button 
               className={biasEnabled ? "primary" : "ghost"} 
               onClick={onToggleBias} 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
-import { useChartSettings, useRecentColors, addRecentColor } from "../lib/chartSettings";
+import { useChartSettings, useRecentColors, addRecentColor, switchTheme } from "../lib/chartSettings";
 
 function parseColor(val) {
   if (!val) return { hex: "#ffffff", alpha: 100 };
@@ -250,11 +250,13 @@ export default function ChartSettingsModal({ onClose }) {
                   <label style={{ fontSize: 13, color: "var(--text)" }}>App Theme:</label>
                   <select
                     value={settings.appTheme || "dark"}
-                    onChange={(e) => handleChange("appTheme", e.target.value)}
-                    style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", padding: "4px 8px", borderRadius: 4, width: 140 }}
+                    onChange={(e) => switchTheme(e.target.value)}
+                    style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", padding: "4px 8px", borderRadius: 4, width: 150 }}
                   >
                     <option value="dark">Dark Mode</option>
                     <option value="light">Light Mode</option>
+                    <option value="navyblue">Navy Blue</option>
+                    <option value="creamy">Creamy</option>
                     <option value="midnight">Midnight OLED</option>
                     <option value="matrix">Matrix</option>
                   </select>

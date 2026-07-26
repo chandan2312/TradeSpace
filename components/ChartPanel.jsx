@@ -444,27 +444,56 @@ export default function ChartPanel({
     const apply = (bars) => {
       if (cancelled || !seriesRef.current) return;
 
-      seriesRef.current.setData(bars);
-      lastBarRef.current = { key, bar: bars[bars.length - 1] };
-      barsRef.current = bars;
-      setDataVersion((v) => v + 1);
-      // a manual price-axis drag turns autoscale off for good — a new series
-      // must re-fit both axes or it renders outside the visible range
-      chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
-      
-      const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
-      const visibleBars = isMobile ? 60 : 80;
-      const rightOffset = isMobile ? 8 : 12;
-      const to = bars.length - 1 + rightOffset;
-      const from = Math.max(0, bars.length - visibleBars);
-      chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
+      try {
+        // Deduplicate and sort bars by time ascending (required by lightweight-charts)
+        const seen = new Set();
+        const cleanBars = [];
+        const sorted = [...bars].sort((a, b) => a.time - b.time);
+        for (const b of sorted) {
+          if (b.time != null && !seen.has(b.time)) {
+            seen.add(b.time);
+            cleanBars.push(b);
+          }
+        }
+        if (!cleanBars.length) {
+          if (!cached?.bars?.length) {
+            setError(`No valid data for ${symbol}`);
+          }
+          setLoading(false);
+          return;
+        }
 
-      const est = Math.max(
-        ...bars.slice(-50).map((b) => (String(b.close).split(".")[1] || "").length)
-      );
-      setBarsDigits(Math.min(est, 8));
-      setLoading(false);
-      setError(null);
+        seriesRef.current.setData(cleanBars);
+        lastBarRef.current = { key, bar: cleanBars[cleanBars.length - 1] };
+        barsRef.current = cleanBars;
+        setDataVersion((v) => v + 1);
+        // a manual price-axis drag turns autoscale off for good — a new series
+        // must re-fit both axes or it renders outside the visible range
+        chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
+        
+        const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+        const visibleBars = isMobile ? 60 : 80;
+        const rightOffset = isMobile ? 8 : 12;
+        const from = Math.max(0, cleanBars.length - visibleBars);
+        const to = cleanBars.length + rightOffset;
+        chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
+        setTimeout(() => {
+          if (!cancelled && chartRef.current) {
+            try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
+          }
+        }, 100);
+
+        const est = Math.max(
+          ...cleanBars.slice(-50).map((b) => (String(b.close).split(".")[1] || "").length)
+        );
+        setBarsDigits(Math.min(est, 8));
+        setError(null);
+      } catch (err) {
+        console.error("Error applying chart bars:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     };
 
     const cached = barsCache.current.get(key);
@@ -488,7 +517,12 @@ export default function ChartPanel({
         const data = await res.json();
         if (cancelled) return;
         if (!data.ok || !data.bars?.length) {
-          if (!cached) { setError(data.message || data.error || `No data for ${symbol}`); setLoading(false); }
+          if (cached?.bars?.length) {
+            apply(cached.bars);
+          } else {
+            setError(data.message || data.error || `No data for ${symbol}`);
+            setLoading(false);
+          }
           return;
         }
         let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
@@ -504,7 +538,14 @@ export default function ChartPanel({
         } catch (e) {}
         apply(bars);
       } catch (err) {
-        if (!cancelled && !cached) { setError(err.message); setLoading(false); }
+        if (!cancelled) {
+          if (cached?.bars?.length) {
+            apply(cached.bars);
+          } else {
+            setError(err.message);
+            setLoading(false);
+          }
+        }
       }
     })();
 
@@ -845,7 +886,7 @@ export default function ChartPanel({
     };
     timeScale.subscribeVisibleLogicalRangeChange(handler);
     return () => timeScale.unsubscribeVisibleLogicalRangeChange(handler);
-  }, [syncOpts?.time, paneId, setSyncedLogicalRange, chartReady]);
+  }, [syncOpts?.time, paneId, setSyncedLogicalRange, chartReady, symbol, tf]);
 
   useEffect(() => {
     if (!chartRef.current || !syncOpts?.time || !syncedLogicalRange) return;
@@ -991,6 +1032,9 @@ export default function ChartPanel({
        ev.preventDefault();
        return;
     }
+    if (!draw.activeTool && !draw.gestureRef?.current && chartRef.current) {
+      try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
+    }
     ph.onPointerDown(ev);
   };
   const mergedPointerMove = (ev) => {
@@ -1001,14 +1045,21 @@ export default function ChartPanel({
     ph.onPointerMove(ev);
   };
 
+  const onTouchIntercept = (ev) => {
+    // If a drawing tool is active for creation, OR if an active drag/resize/move gesture is occurring on a drawing,
+    // intercept native touch events in capturing phase before lightweight-charts processes them for chart panning/zooming.
+    if (draw.activeTool || draw.gestureRef?.current) {
+      ev.stopPropagation();
+      if (ev.type === "touchmove") ev.preventDefault();
+    } else if (ev.type === "touchstart" && chartRef.current) {
+      try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
+    }
+  };
+
   return (
     <div
       style={{ flex: 1, position: "relative", minWidth: 0,
         cursor: layerSpawnAlertId ? "crosshair" : (draw.cursorFor(draw.activeTool, draw.hover) || (dragHandle ? "ns-resize" : "default")) }}
-      onPointerDown={mergedPointerDown}
-      onPointerMove={mergedPointerMove}
-      onPointerUp={ph.onPointerUp}
-      onContextMenu={mergedContext}
       onMouseMove={onMouseMove}
       onMouseLeave={() => { 
         const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
@@ -1017,7 +1068,18 @@ export default function ChartPanel({
         }
       }}
     >
-      <div ref={wrapRef} style={{ position: "absolute", inset: 0, touchAction: "none" }} />
+      <div 
+        ref={wrapRef} 
+        style={{ position: "absolute", inset: 0, touchAction: "none" }}
+        onPointerDownCapture={mergedPointerDown}
+        onPointerMoveCapture={mergedPointerMove}
+        onPointerUpCapture={ph.onPointerUp}
+        onContextMenuCapture={mergedContext}
+        onTouchStartCapture={onTouchIntercept}
+        onTouchMoveCapture={onTouchIntercept}
+        onTouchEndCapture={onTouchIntercept}
+        onTouchCancelCapture={onTouchIntercept}
+      />
 
       {/* Mobile left-edge scroller */}
       {isMobile && (

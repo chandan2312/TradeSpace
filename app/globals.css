@@ -1,10 +1,13 @@
-:root {
+:root, [data-theme="dark"] {
   --bg: #0e1116;
   --panel: #151a23;
   --panel-2: #1a202c;
   --border: #232a38;
   --border-hi: #2f3949;
   --text: #d7dce6;
+  --text-inverse: #0e1116;
+  --bg-inverse: #ffffff;
+  --panel-inverse: #f4f5f8;
   --muted: #8a93a6;
   --accent: #2962ff;
   --accent-soft: rgba(41, 98, 255, 0.14);
@@ -20,16 +23,58 @@
 [data-theme="light"] {
   --bg: #f4f5f8;
   --panel: #ffffff;
-  --panel-2: #f8f9fa;
+  --panel-2: #f0f3fa;
   --border: #e0e3eb;
   --border-hi: #c5cbd8;
-  --text: #1a1e29;
-  --muted: #787b86;
+  --text: #191919;
+  --text-inverse: #ffffff;
+  --bg-inverse: #0e1116;
+  --panel-inverse: #151a23;
+  --muted: #6a6d78;
   --accent: #2962ff;
   --accent-soft: rgba(41, 98, 255, 0.08);
   --green: #089981;
   --red: #f23645;
+  --orange: #e67e22;
   --purple: #8e44ad;
+}
+
+[data-theme="navyblue"] {
+  --bg: #0a1322;
+  --panel: #0f1d33;
+  --panel-2: #152642;
+  --border: #1d3356;
+  --border-hi: #284470;
+  --text: #e1e8f5;
+  --text-inverse: #0a1322;
+  --bg-inverse: #ffffff;
+  --panel-inverse: #f0f5ff;
+  --muted: #7f95b6;
+  --accent: #0088ff;
+  --accent-soft: rgba(0, 136, 255, 0.16);
+  --green: #00c853;
+  --red: #ff5252;
+  --orange: #ffa726;
+  --purple: #b388ff;
+}
+
+[data-theme="creamy"] {
+  --bg: #fbf8f1;
+  --panel: #f4eee0;
+  --panel-2: #e9dfce;
+  --border: #ded4c2;
+  --border-hi: #c9bba5;
+  --text: #2c2825;
+  --text-inverse: #fbf8f1;
+  --bg-inverse: #2c2825;
+  --panel-inverse: #3d3732;
+  --muted: #7a7267;
+  --accent: #2962ff;
+  --accent-soft: rgba(41, 98, 255, 0.1);
+  --green: #16a34a;
+  --red: #dc2626;
+  --orange: #d97706;
+  --purple: #9333ea;
 }
 
 [data-theme="midnight"] {
@@ -39,6 +84,9 @@
   --border: #1f1f1f;
   --border-hi: #333333;
   --text: #ededed;
+  --text-inverse: #000000;
+  --bg-inverse: #ffffff;
+  --panel-inverse: #f4f5f8;
   --muted: #666666;
   --accent: #0088ff;
   --accent-soft: rgba(0, 136, 255, 0.12);
@@ -53,6 +101,9 @@
   --border: #003300;
   --border-hi: #005500;
   --text: #00ff00;
+  --text-inverse: #000000;
+  --bg-inverse: #00ff00;
+  --panel-inverse: #003300;
   --muted: #00aa00;
   --accent: #00ff00;
   --accent-soft: rgba(0, 255, 0, 0.15);
@@ -148,8 +199,8 @@ input::placeholder { color: var(--muted); }
 }
 
 .sidebar {
-  width: 250px;
-  min-width: 250px;
+  width: 180px;
+  min-width: 180px;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -164,11 +215,11 @@ input::placeholder { color: var(--muted); }
 }
 
 .wl-row-item {
-  padding: 5px 8px;
+  padding: 4px 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   border-top: 1px solid var(--border);
   position: relative;
   user-select: none;

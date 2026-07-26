@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
-export default function CurrencyStrengthMeter({ onSelectSuggested }) {
+export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbols = [] }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -163,9 +163,9 @@ export default function CurrencyStrengthMeter({ onSelectSuggested }) {
       </div>
       
       {currencies.length >= 2 && (() => {
-        // Find top 2 and bottom 2
-        const top = [currencies[0], currencies[1]].filter(c => c && c.score > 0.2);
-        const bottom = [currencies[currencies.length - 1], currencies[currencies.length - 2]].filter(c => c && c.score < -0.2);
+        // Take top 3 strongest and bottom 3 weakest currencies to ensure we get plenty of suggestions
+        const top = currencies.slice(0, 3);
+        const bottom = currencies.slice(-3).reverse();
         
         if (top.length === 0 || bottom.length === 0) return null;
 
@@ -178,17 +178,21 @@ export default function CurrencyStrengthMeter({ onSelectSuggested }) {
         };
 
         const suggestions = [];
-        if (top[0] && bottom[0]) suggestions.push(getPair(top[0].name, bottom[0].name));
-        if (top[0] && bottom[1]) suggestions.push(getPair(top[0].name, bottom[1].name));
-        if (top[1] && bottom[0]) suggestions.push(getPair(top[1].name, bottom[0].name));
+        for (const t of top) {
+          for (const b of bottom) {
+            suggestions.push(getPair(t.name, b.name));
+          }
+        }
 
-        // Deduplicate
+        // Deduplicate and filter by allowed symbols (if any)
         const uniqueSuggestions = [];
         const seen = new Set();
         suggestions.forEach(s => {
           if (!seen.has(s.symbol)) {
             seen.add(s.symbol);
-            uniqueSuggestions.push(s);
+            if (allowedSymbols.length === 0 || allowedSymbols.includes(s.symbol)) {
+              uniqueSuggestions.push(s);
+            }
           }
         });
 

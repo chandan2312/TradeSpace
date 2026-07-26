@@ -1,0 +1,3525 @@
+[
+ {
+  "symbol": "EURUSD",
+  "cut": 0,
+  "result": {
+   "symbol": "EURUSD",
+   "category": "fx",
+   "score": -26,
+   "dampMult": 0.85,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 66,
+   "stability": 100,
+   "agreement": 71,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 1
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 19,
+     "fitness": 1,
+     "n": 10
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -100,
+     "fitness": 0.72,
+     "n": 8
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": -100,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": -59,
+     "fitness": 1,
+     "n": 3
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -14,
+     "fitness": 0.65,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "MSS ↓ 7 bars ago, displaced, 2× vol"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "MSS ↓ 7 bars ago, displaced"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "MSS ↓ 28 bars ago, displaced"
+    }
+   },
+   "pillars": {
+    "htf": -74,
+    "intraday": -83,
+    "liquidity": 19,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 16,
+     "note": "9 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 14,
+     "note": "1 equal low pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London L swept",
+     "dir": 1,
+     "w": 13,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 1.9× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL swept",
+     "dir": 1,
+     "w": 12,
+     "note": "stop hunt 26 bars ago (London KZ), climactic 2× vol"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 structure",
+     "dir": -1,
+     "w": 11,
+     "note": "MSS ↓ 7 bars ago, displaced, 2× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Asia L swept",
+     "dir": 1,
+     "w": 11,
+     "note": "stop hunt 26 bars ago (London KZ), climactic 2× vol"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "D1 V-reversal",
+     "dir": -1,
+     "w": 10,
+     "note": "3 bars ago"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 46% of normal"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008424
+  }
+ },
+ {
+  "symbol": "EURUSD",
+  "cut": 1500,
+  "result": {
+   "symbol": "EURUSD",
+   "category": "fx",
+   "score": 15,
+   "dampMult": 1,
+   "phase": "reversal-watch",
+   "setup": null,
+   "confidence": 66,
+   "stability": 100,
+   "agreement": 66,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": -100,
+     "fitness": 0.61,
+     "n": 2
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 2,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 77,
+     "fitness": 1,
+     "n": 6
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.6,
+     "n": 3
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": -16,
+     "fitness": 0.94,
+     "n": 5
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 14,
+     "fitness": 0.73,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "Asia",
+   "layers": {
+    "D1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "MSS ↑ 3 bars ago, displaced, 3.7× vol"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "MSS ↑ 10 bars ago, displaced"
+    }
+   },
+   "pillars": {
+    "htf": -1,
+    "intraday": 66,
+    "liquidity": 11,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 16,
+     "note": "11 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 14,
+     "note": "4 equal low pools active"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 structure",
+     "dir": 1,
+     "w": 12,
+     "note": "MSS ↑ 3 bars ago, displaced, 3.7× vol"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "QML",
+     "dir": 1,
+     "w": 11,
+     "note": "sweep→neck break 10 bars ago"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL swept",
+     "dir": 1,
+     "w": 10,
+     "note": "stop hunt 20 bars ago, thin 0.4× vol + tapped H1 FVG"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 V-reversal",
+     "dir": 1,
+     "w": 9,
+     "note": "swept liquidity, 3 bars ago"
+    }
+   ],
+   "damps": [],
+   "news": [],
+   "missing": [],
+   "at": 1785055008434
+  }
+ },
+ {
+  "symbol": "EURUSD",
+  "cut": 7000,
+  "result": {
+   "symbol": "EURUSD",
+   "category": "fx",
+   "score": 32,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 86,
+   "stability": 100,
+   "agreement": 100,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 60,
+     "fitness": 0.69,
+     "n": 2
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -4,
+     "fitness": 1,
+     "n": 6
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 42,
+     "fitness": 0.56,
+     "n": 5
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.66,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 11,
+     "fitness": 0.86,
+     "n": 5
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 11,
+     "fitness": 0.58,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "MSS ↑ 6 bars ago, displaced"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "MSS ↑ 7 bars ago, displaced"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": 37,
+    "intraday": -3,
+    "liquidity": -3,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "1 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL swept",
+     "dir": 1,
+     "w": 13,
+     "note": "stop hunt 17 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 structure",
+     "dir": 1,
+     "w": 9,
+     "note": "MSS ↑ 7 bars ago, displaced"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 9,
+     "note": "stop hunt 30 bars ago (New York KZ), climactic 2× vol"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "premium",
+     "dir": -1,
+     "w": 8,
+     "note": "96% of H4 range"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "10 touches: Massive multi-phase compression"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 26% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008440
+  }
+ },
+ {
+  "symbol": "EURUSD",
+  "cut": 20000,
+  "result": {
+   "symbol": "EURUSD",
+   "category": "fx",
+   "score": -45,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 74,
+   "stability": 100,
+   "agreement": 86,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": -66,
+     "fitness": 0.56,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -13,
+     "fitness": 1,
+     "n": 12
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -79,
+     "fitness": 1,
+     "n": 7
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.56,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": -100,
+     "fitness": 0.9,
+     "n": 1
+    },
+    "sr": {
+     "label": "S/R",
+     "score": -14,
+     "fitness": 0.99,
+     "n": 6
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -100,
+     "fitness": 0.62,
+     "n": 1
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "MSS ↓ 7 bars ago, displaced"
+    }
+   },
+   "pillars": {
+    "htf": -30,
+    "intraday": -37,
+    "liquidity": -22,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PDH swept",
+     "dir": -1,
+     "w": 25,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 7.3× vol + tapped H4 FVG"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "reversal",
+     "label": "Descending BSL Swept",
+     "dir": -1,
+     "w": 23,
+     "note": "Hunted 3-touch Curvy trendline liquidity, 22 bars ago (New York KZ) + tapped H4 FVG"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 21,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 7.3× vol + tapped H4 FVG"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 19,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 7.3× vol + tapped H4 FVG"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "3 touches: Curvy trendline liquidity"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "sweep-rejection high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "3 equal high pools active"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 38% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "EQH likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008448
+  }
+ },
+ {
+  "symbol": "GBPUSD",
+  "cut": 0,
+  "result": {
+   "symbol": "GBPUSD",
+   "category": "fx",
+   "score": -29,
+   "dampMult": 0.46962499999999996,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 65,
+   "stability": 100,
+   "agreement": 89,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": -38,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -8,
+     "fitness": 1,
+     "n": 9
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -6,
+     "fitness": 0.62,
+     "n": 6
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": -100,
+     "fitness": 0.55,
+     "n": 3
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 16,
+     "fitness": 1,
+     "n": 3
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -100,
+     "fitness": 0.64,
+     "n": 3
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "MSS ↑ 11 bars ago, displaced"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "MSS ↑ 14 bars ago, displaced, 1.9× vol"
+    }
+   },
+   "pillars": {
+    "htf": 0,
+    "intraday": -12,
+    "liquidity": -28,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "liquidity",
+     "lens": "reversal",
+     "label": "Descending BSL Swept",
+     "dir": -1,
+     "w": 20,
+     "note": "Hunted 7-touch Massive multi-phase compression, 13 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 17,
+     "note": "stop hunt 14 bars ago (New York KZ), climactic 1.9× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "5 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL swept",
+     "dir": 1,
+     "w": 12,
+     "note": "stop hunt 21 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "D1 V-reversal",
+     "dir": -1,
+     "w": 12,
+     "note": "swept liquidity, 3 bars ago"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "QML",
+     "dir": 1,
+     "w": 10,
+     "note": "sweep→neck break 14 bars ago, 1.9× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Asia L swept",
+     "dir": 1,
+     "w": 10,
+     "note": "stop hunt 23 bars ago (London KZ)"
+    }
+   ],
+   "damps": [
+    {
+     "label": "structure chop",
+     "mult": 0.65,
+     "note": "H1 and M15 both ranging"
+    },
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 43% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "EQH likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008453
+  }
+ },
+ {
+  "symbol": "GBPUSD",
+  "cut": 1500,
+  "result": {
+   "symbol": "GBPUSD",
+   "category": "fx",
+   "score": 13,
+   "dampMult": 1,
+   "phase": "setup",
+   "setup": {
+    "dir": 1,
+    "pool": "EQL",
+    "sweptAgo": 11,
+    "mssTf": "M15",
+    "mssAgeMin": 150,
+    "volRatio": 0.7,
+    "grade": "A"
+   },
+   "confidence": 59,
+   "stability": 100,
+   "agreement": 59,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 59,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -17,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 100,
+     "fitness": 1,
+     "n": 2
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 3
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": -63,
+     "fitness": 1,
+     "n": 3
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -100,
+     "fitness": 0.62,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "Asia",
+   "layers": {
+    "D1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": -42,
+    "intraday": 74,
+    "liquidity": -12,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "sweep → M15 MSS",
+     "dir": 1,
+     "w": 21,
+     "note": "EQL swept, MSS 150m ago on 0.7× vol (A)"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL swept",
+     "dir": 1,
+     "w": 18,
+     "note": "stop hunt 11 bars ago + tapped H1 FVG"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 16,
+     "note": "3 touches: Curvy trendline liquidity"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 16,
+     "note": "6 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 14,
+     "note": "3 equal low pools active"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "QML",
+     "dir": 1,
+     "w": 11,
+     "note": "sweep→neck break 10 bars ago"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 10,
+     "note": "stop hunt 3 bars ago, thin 0.3× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 8,
+     "note": "7 touches: Massive multi-phase compression"
+    }
+   ],
+   "damps": [],
+   "news": [],
+   "missing": [],
+   "at": 1785055008458
+  }
+ },
+ {
+  "symbol": "GBPUSD",
+  "cut": 7000,
+  "result": {
+   "symbol": "GBPUSD",
+   "category": "fx",
+   "score": 59,
+   "dampMult": 0.85,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 93,
+   "stability": 100,
+   "agreement": 100,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 100,
+     "fitness": 0.79,
+     "n": 2
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 18,
+     "fitness": 1,
+     "n": 5
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 40,
+     "fitness": 0.57,
+     "n": 5
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.74,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 11,
+     "fitness": 0.76,
+     "n": 5
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 100,
+     "fitness": 0.73,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "MSS ↑ 7 bars ago, displaced"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "MSS ↓ 21 bars ago, displaced, 2.1× vol"
+    }
+   },
+   "pillars": {
+    "htf": 37,
+    "intraday": 32,
+    "liquidity": 19,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "3 touches: Curvy trendline liquidity"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "1 equal high pools active"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 structure",
+     "dir": 1,
+     "w": 9,
+     "note": "MSS ↑ 7 bars ago, displaced"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "premium",
+     "dir": -1,
+     "w": 8,
+     "note": "97% of H4 range"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "9 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 7,
+     "note": "4 equal low pools active"
+    }
+   ],
+   "damps": [
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008463
+  }
+ },
+ {
+  "symbol": "GBPUSD",
+  "cut": 20000,
+  "result": {
+   "symbol": "GBPUSD",
+   "category": "fx",
+   "score": -19,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 60,
+   "stability": 100,
+   "agreement": 70,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": -25,
+     "fitness": 0.76,
+     "n": 5
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -70,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 11,
+     "fitness": 1,
+     "n": 3
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.71,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": -16,
+     "fitness": 0.79,
+     "n": 6
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -100,
+     "fitness": 0.66,
+     "n": 1
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": -28,
+    "intraday": 35,
+    "liquidity": -62,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 19,
+     "note": "stop hunt 1 bars ago (New York KZ), thin 0.6× vol + tapped H1 FVG"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 12,
+     "note": "stop hunt 26 bars ago (New York KZ), climactic 3× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 12,
+     "note": "stop hunt 24 bars ago (New York KZ), climactic 3× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "9 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "structure",
+     "label": "A+ alignment",
+     "dir": -1,
+     "w": 8,
+     "note": "HTF bias + fresh trigger agree"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 V-reversal",
+     "dir": -1,
+     "w": 7,
+     "note": "7 bars ago"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 49% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York H likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008468
+  }
+ },
+ {
+  "symbol": "USDJPY",
+  "cut": 0,
+  "result": {
+   "symbol": "USDJPY",
+   "category": "fx",
+   "score": 35,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 86,
+   "stability": 100,
+   "agreement": 100,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 64,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 12,
+     "fitness": 1,
+     "n": 12
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 1,
+     "fitness": 0.7,
+     "n": 4
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 60,
+     "fitness": 1,
+     "n": 3
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": 62,
+    "intraday": 19,
+    "liquidity": 13,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "sweep-rejection low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London L swept",
+     "dir": 1,
+     "w": 17,
+     "note": "stop hunt 13 bars ago (New York KZ), climactic 2× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "11 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "2 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 11,
+     "note": "stop hunt 27 bars ago (London KZ), climactic 1.9× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 11,
+     "note": "stop hunt 22 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 10,
+     "note": "stop hunt 22 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "QML",
+     "dir": -1,
+     "w": 9,
+     "note": "sweep→neck break 15 bars ago, 2.1× vol"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 32% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008473
+  }
+ },
+ {
+  "symbol": "USDJPY",
+  "cut": 1500,
+  "result": {
+   "symbol": "USDJPY",
+   "category": "fx",
+   "score": 3,
+   "dampMult": 1,
+   "phase": "reversal-watch",
+   "setup": null,
+   "confidence": 53,
+   "stability": null,
+   "agreement": 53,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 17,
+     "fitness": 0.55,
+     "n": 3
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 4,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -66,
+     "fitness": 0.73,
+     "n": 4
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": -23,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 0,
+     "fitness": 1,
+     "n": 2
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 100,
+     "fitness": 0.7,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "Asia",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "MSS ↓ 5 bars ago, displaced, 3× vol"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": -38,
+    "intraday": 18,
+    "liquidity": 4,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "8 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "5 equal high pools active"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 structure",
+     "dir": -1,
+     "w": 12,
+     "note": "MSS ↓ 5 bars ago, displaced, 3× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PWH swept",
+     "dir": -1,
+     "w": 10,
+     "note": "weekly stop hunt"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PWL swept",
+     "dir": 1,
+     "w": 10,
+     "note": "weekly stop hunt"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 V-reversal",
+     "dir": -1,
+     "w": 9,
+     "note": "swept liquidity, 5 bars ago"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "6 touches: Massive multi-phase compression"
+    }
+   ],
+   "damps": [],
+   "news": [],
+   "missing": [],
+   "at": 1785055008475
+  }
+ },
+ {
+  "symbol": "USDJPY",
+  "cut": 7000,
+  "result": {
+   "symbol": "USDJPY",
+   "category": "fx",
+   "score": 39,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 84,
+   "stability": 100,
+   "agreement": 97,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 52,
+     "fitness": 0.65,
+     "n": 5
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 34,
+     "fitness": 1,
+     "n": 9
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 24,
+     "fitness": 0.6,
+     "n": 3
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.62,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 42,
+     "fitness": 0.9,
+     "n": 4
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -11,
+     "fitness": 0.59,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "HH+HL"
+    }
+   },
+   "pillars": {
+    "htf": 18,
+    "intraday": 74,
+    "liquidity": 34,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "11 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "sweep-rejection low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "7 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 13,
+     "note": "stop hunt 4 bars ago (New York KZ), thin 0.3× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London L swept",
+     "dir": 1,
+     "w": 9,
+     "note": "stop hunt 30 bars ago (New York KZ), climactic 2× vol"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 V-reversal",
+     "dir": -1,
+     "w": 8,
+     "note": "5 bars ago"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "structure",
+     "label": "A+ alignment",
+     "dir": 1,
+     "w": 8,
+     "note": "HTF bias + fresh trigger agree"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 27% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "EQL likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008481
+  }
+ },
+ {
+  "symbol": "USDJPY",
+  "cut": 20000,
+  "result": {
+   "symbol": "USDJPY",
+   "category": "fx",
+   "score": 55,
+   "dampMult": 0.85,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 93,
+   "stability": 100,
+   "agreement": 100,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 3
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 34,
+     "fitness": 1,
+     "n": 9
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 73,
+     "fitness": 1,
+     "n": 7
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 3
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 35,
+     "fitness": 1,
+     "n": 4
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 13,
+     "fitness": 0.64,
+     "n": 4
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "MSS ↓ 15 bars ago, displaced"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "MSS ↑ 19 bars ago, displaced"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "HH+HL"
+    }
+   },
+   "pillars": {
+    "htf": 29,
+    "intraday": 73,
+    "liquidity": 45,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 18,
+     "note": "stop hunt 11 bars ago (New York KZ), thin 0.5× vol + tapped H4 FVG"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "7 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "reversal",
+     "label": "Ascending SSL Swept",
+     "dir": 1,
+     "w": 15,
+     "note": "Hunted 4-touch Curvy trendline liquidity, 22 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "sweep-rejection low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "3 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Asia L swept",
+     "dir": 1,
+     "w": 13,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 4× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London L swept",
+     "dir": 1,
+     "w": 13,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 4× vol"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 44% of normal"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008489
+  }
+ },
+ {
+  "symbol": "AUDNZD",
+  "cut": 0,
+  "result": {
+   "symbol": "AUDNZD",
+   "category": "fx",
+   "score": -28,
+   "dampMult": 0.85,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 68,
+   "stability": 100,
+   "agreement": 74,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 5,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -20,
+     "fitness": 1,
+     "n": 11
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -100,
+     "fitness": 0.71,
+     "n": 2
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": -100,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 100,
+     "fitness": 0.9,
+     "n": 1
+    },
+    "sr": {
+     "label": "S/R",
+     "score": -12,
+     "fitness": 1,
+     "n": 2
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -100,
+     "fitness": 0.76,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "LH+LL"
+    }
+   },
+   "pillars": {
+    "htf": 9,
+    "intraday": -100,
+    "liquidity": -20,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 16,
+     "note": "6 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 14,
+     "note": "2 equal low pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London L swept",
+     "dir": 1,
+     "w": 12,
+     "note": "stop hunt 18 bars ago (New York KZ)"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PWH swept",
+     "dir": -1,
+     "w": 10,
+     "note": "weekly stop hunt"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PWL swept",
+     "dir": 1,
+     "w": 10,
+     "note": "weekly stop hunt"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "QML",
+     "dir": -1,
+     "w": 9,
+     "note": "sweep→neck break 15 bars ago, 2× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 8,
+     "note": "3 touches: Curvy trendline liquidity"
+    }
+   ],
+   "damps": [
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York H likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008496
+  }
+ },
+ {
+  "symbol": "AUDNZD",
+  "cut": 1500,
+  "result": {
+   "symbol": "AUDNZD",
+   "category": "fx",
+   "score": 39,
+   "dampMult": 0.46962499999999996,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 67,
+   "stability": 100,
+   "agreement": 91,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": -33,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 34,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 100,
+     "fitness": 0.97,
+     "n": 3
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 1
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 2,
+     "fitness": 1,
+     "n": 5
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 14,
+     "fitness": 0.65,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "Asia",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": -1,
+    "intraday": 75,
+    "liquidity": 43,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "3 touches: Curvy trendline liquidity"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "3 equal high pools active"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "QML",
+     "dir": 1,
+     "w": 11,
+     "note": "sweep→neck break 10 bars ago"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "reversal",
+     "label": "Ascending SSL Swept",
+     "dir": 1,
+     "w": 10,
+     "note": "Hunted 5-touch Massive multi-phase compression, 26 bars ago"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "4 touches: Curvy trendline liquidity"
+    }
+   ],
+   "damps": [
+    {
+     "label": "structure chop",
+     "mult": 0.65,
+     "note": "H1 and M15 both ranging"
+    },
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 48% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "Asia L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008505
+  }
+ },
+ {
+  "symbol": "AUDNZD",
+  "cut": 7000,
+  "result": {
+   "symbol": "AUDNZD",
+   "category": "fx",
+   "score": -17,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 60,
+   "stability": 100,
+   "agreement": 70,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 7,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 8,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -100,
+     "fitness": 0.89,
+     "n": 2
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": -100,
+     "fitness": 0.9,
+     "n": 1
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 39,
+     "fitness": 1,
+     "n": 3
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -11,
+     "fitness": 0.67,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "LH+LL"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "mixed"
+    }
+   },
+   "pillars": {
+    "htf": 15,
+    "intraday": 14,
+    "liquidity": 8,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "7 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 15,
+     "note": "stop hunt 28 bars ago (New York KZ), climactic 2.7× vol + tapped H1 FVG"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "8 equal high pools active"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 V-reversal",
+     "dir": -1,
+     "w": 8,
+     "note": "4 bars ago"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "5 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 7,
+     "note": "2 equal low pools active"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 52% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "EQH likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008515
+  }
+ },
+ {
+  "symbol": "AUDNZD",
+  "cut": 20000,
+  "result": {
+   "symbol": "AUDNZD",
+   "category": "fx",
+   "score": 20,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 59,
+   "stability": 100,
+   "agreement": 69,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 28,
+     "fitness": 0.74,
+     "n": 5
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 19,
+     "fitness": 1,
+     "n": 7
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 100,
+     "fitness": 0.59,
+     "n": 1
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": -100,
+     "fitness": 0.7,
+     "n": 1
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 68,
+     "fitness": 0.81,
+     "n": 4
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -25,
+     "fitness": 0.66,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "LH+LL"
+    }
+   },
+   "pillars": {
+    "htf": 66,
+    "intraday": -9,
+    "liquidity": 14,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "7 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "7 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL swept",
+     "dir": 1,
+     "w": 12,
+     "note": "stop hunt 10 bars ago (New York KZ), thin 0.6× vol"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PWH swept",
+     "dir": -1,
+     "w": 10,
+     "note": "weekly stop hunt"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "8 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "structure",
+     "label": "A+ alignment",
+     "dir": 1,
+     "w": 8,
+     "note": "HTF bias + fresh trigger agree"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "fvg",
+     "label": "iFVG flip",
+     "dir": -1,
+     "w": 7,
+     "note": "bullish gap inverted 7 bars ago"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 51% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008524
+  }
+ },
+ {
+  "symbol": "GBPJPY",
+  "cut": 0,
+  "result": {
+   "symbol": "GBPJPY",
+   "category": "fx",
+   "score": 4,
+   "dampMult": 1,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 81,
+   "stability": null,
+   "agreement": 81,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 69,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -4,
+     "fitness": 1,
+     "n": 12
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -7,
+     "fitness": 1,
+     "n": 2
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 0,
+     "fitness": 0.55,
+     "n": 0
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": -12,
+     "fitness": 0.9,
+     "n": 2
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 4,
+     "fitness": 1,
+     "n": 3
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 0,
+     "fitness": 0.69,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "HH+HL"
+    }
+   },
+   "pillars": {
+    "htf": -3,
+    "intraday": 34,
+    "liquidity": -4,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 26,
+     "note": "stop hunt 13 bars ago (New York KZ), climactic 2.1× vol + tapped H1 OB"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 19,
+     "note": "stop hunt 19 bars ago (New York KZ) + tapped H1 OB"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "6 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "4 touches: Curvy trendline liquidity"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong ceiling holding",
+     "dir": -1,
+     "w": 14,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "3 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "10 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "htf",
+     "lens": "ob",
+     "label": "H1 supply OB",
+     "dir": -1,
+     "w": 7,
+     "note": "price inside unmitigated block"
+    }
+   ],
+   "damps": [],
+   "news": [],
+   "missing": [],
+   "at": 1785055008528
+  }
+ },
+ {
+  "symbol": "GBPJPY",
+  "cut": 1500,
+  "result": {
+   "symbol": "GBPJPY",
+   "category": "fx",
+   "score": 43,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 86,
+   "stability": 100,
+   "agreement": 100,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 1
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -9,
+     "fitness": 1,
+     "n": 8
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 18,
+     "fitness": 0.57,
+     "n": 7
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 21,
+     "fitness": 1,
+     "n": 5
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 100,
+     "fitness": 0.64,
+     "n": 1
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "Asia",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "MSS ↑ 3 bars ago, displaced"
+    },
+    "H4": {
+     "dir": -1,
+     "note": "MSS ↓ 4 bars ago, displaced, 1.9× vol"
+    },
+    "H1": {
+     "dir": -1,
+     "note": "MSS ↓ 21 bars ago, displaced, 2.4× vol"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "HH+HL"
+    }
+   },
+   "pillars": {
+    "htf": 12,
+    "intraday": 65,
+    "liquidity": -3,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "9 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 15,
+     "note": "stop hunt 4 bars ago, thin 0.4× vol + tapped H4 FVG"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "4 equal high pools active"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "H4 structure",
+     "dir": -1,
+     "w": 12,
+     "note": "MSS ↓ 4 bars ago, displaced, 1.9× vol"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "D1 V-reversal",
+     "dir": 1,
+     "w": 10,
+     "note": "3 bars ago"
+    },
+    {
+     "pillar": "htf",
+     "lens": "reversal",
+     "label": "D1 structure",
+     "dir": 1,
+     "w": 8,
+     "note": "MSS ↑ 3 bars ago, displaced"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 44% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "Asia L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008535
+  }
+ },
+ {
+  "symbol": "GBPJPY",
+  "cut": 7000,
+  "result": {
+   "symbol": "GBPJPY",
+   "category": "fx",
+   "score": 49,
+   "dampMult": 0.7224999999999999,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 86,
+   "stability": 100,
+   "agreement": 100,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 77,
+     "fitness": 0.55,
+     "n": 4
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": 17,
+     "fitness": 1,
+     "n": 6
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": 57,
+     "fitness": 0.58,
+     "n": 5
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.55,
+     "n": 2
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 59,
+     "fitness": 1,
+     "n": 4
+    },
+    "volume": {
+     "label": "Volume",
+     "score": 11,
+     "fitness": 0.61,
+     "n": 2
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": 1,
+     "note": "mixed"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": -1,
+     "note": "LH+LL"
+    }
+   },
+   "pillars": {
+    "htf": 72,
+    "intraday": 40,
+    "liquidity": 15,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Descending BSL",
+     "dir": 1,
+     "w": 16,
+     "note": "4 touches: Curvy trendline liquidity"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH Buildup",
+     "dir": 1,
+     "w": 14,
+     "note": "2 equal high pools active"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 11,
+     "note": "stop hunt 26 bars ago (New York KZ), climactic 2.2× vol"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "premium",
+     "dir": -1,
+     "w": 8,
+     "note": "96% of H4 range"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Ascending SSL",
+     "dir": -1,
+     "w": 8,
+     "note": "10 touches: Massive multi-phase compression"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQL Buildup",
+     "dir": -1,
+     "w": 7,
+     "note": "3 equal low pools active"
+    },
+    {
+     "pillar": "intraday",
+     "lens": "reversal",
+     "label": "M15 V-reversal",
+     "dir": 1,
+     "w": 7,
+     "note": "sharp leg recovered ≥70% (B)"
+    }
+   ],
+   "damps": [
+    {
+     "label": "dead tape",
+     "mult": 0.85,
+     "note": "participation 34% of normal"
+    },
+    {
+     "label": "counter-liquidity near",
+     "mult": 0.85,
+     "note": "New York L likely to be run first"
+    }
+   ],
+   "news": [],
+   "missing": [],
+   "at": 1785055008542
+  }
+ },
+ {
+  "symbol": "GBPJPY",
+  "cut": 20000,
+  "result": {
+   "symbol": "GBPJPY",
+   "category": "fx",
+   "score": 6,
+   "dampMult": 1,
+   "phase": "trend",
+   "setup": null,
+   "confidence": 59,
+   "stability": 99,
+   "agreement": 59,
+   "lenses": {
+    "structure": {
+     "label": "Structure",
+     "score": 48,
+     "fitness": 0.9,
+     "n": 3
+    },
+    "liquidity": {
+     "label": "Liquidity",
+     "score": -62,
+     "fitness": 1,
+     "n": 11
+    },
+    "reversal": {
+     "label": "Reversal",
+     "score": -12,
+     "fitness": 1,
+     "n": 6
+    },
+    "fvg": {
+     "label": "FVG",
+     "score": 100,
+     "fitness": 0.82,
+     "n": 1
+    },
+    "ob": {
+     "label": "Order Blk",
+     "score": 0,
+     "fitness": 0.6,
+     "n": 0
+    },
+    "sr": {
+     "label": "S/R",
+     "score": 5,
+     "fitness": 0.65,
+     "n": 5
+    },
+    "volume": {
+     "label": "Volume",
+     "score": -9,
+     "fitness": 0.65,
+     "n": 3
+    },
+    "flow": {
+     "label": "Flow",
+     "score": 0,
+     "fitness": 0.5,
+     "n": 0
+    }
+   },
+   "session": "New York",
+   "layers": {
+    "D1": {
+     "dir": -1,
+     "note": "mixed"
+    },
+    "H4": {
+     "dir": 1,
+     "note": "MSS ↑ 0 bars ago, displaced, thin 0.6× vol"
+    },
+    "H1": {
+     "dir": 1,
+     "note": "HH+HL"
+    },
+    "M15": {
+     "dir": 1,
+     "note": "HH+HL"
+    }
+   },
+   "pillars": {
+    "htf": 12,
+    "intraday": 51,
+    "liquidity": -67,
+    "context": 0
+   },
+   "factors": [
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "PDH swept",
+     "dir": -1,
+     "w": 23,
+     "note": "stop hunt 18 bars ago (New York KZ) + tapped H4 OB"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "reversal",
+     "label": "Descending BSL Swept",
+     "dir": -1,
+     "w": 23,
+     "note": "Hunted 5-touch Massive multi-phase compression, 22 bars ago (New York KZ) + tapped H4 OB"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 22,
+     "note": "stop hunt 21 bars ago (New York KZ), climactic 2.5× vol + tapped H4 OB"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "EQH swept",
+     "dir": -1,
+     "w": 21,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 4× vol + tapped H4 OB"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "London H swept",
+     "dir": -1,
+     "w": 20,
+     "note": "stop hunt 21 bars ago (New York KZ), climactic 2.5× vol + tapped H4 OB"
+    },
+    {
+     "pillar": "liquidity",
+     "lens": "liquidity",
+     "label": "Asia H swept",
+     "dir": -1,
+     "w": 19,
+     "note": "stop hunt 22 bars ago (New York KZ), climactic 4× vol + tapped H4 OB"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong base holding",
+     "dir": 1,
+     "w": 18,
+     "note": "V-reversal low, macro uptrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "D1 strong ceiling holding",
+     "dir": -1,
+     "w": 18,
+     "note": "V-reversal high, macro downtrend base"
+    },
+    {
+     "pillar": "htf",
+     "lens": "sr",
+     "label": "H4 strong base holding",
+     "dir": 1,
+     "w": 14,
+     "note": "V-reversal low, macro uptrend base"
+    }
+   ],
+   "damps": [],
+   "news": [],
+   "missing": [],
+   "at": 1785055008551
+  }
+ }
+]

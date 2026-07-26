@@ -153,23 +153,78 @@ export default function DrawingSettings({ api }) {
                   style={{ width: 100, fontSize: 12 }}
                 />
               </Row>
-              <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
               <Row label="Direction">
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    const isLong = selected.target >= selected.entry.price;
-                    const risk = Math.abs(selected.entry.price - selected.stop);
-                    const rew = Math.abs(selected.target - selected.entry.price);
-                    set({ 
-                      stop: isLong ? selected.entry.price + risk : selected.entry.price - risk,
-                      target: isLong ? selected.entry.price - rew : selected.entry.price + rew 
-                    });
-                  }}
-                  style={{ padding: "2px 8px", fontSize: 11, width: "100%" }}
-                >
-                  {selected.target >= selected.entry.price ? "Long (Flip to Short)" : "Short (Flip to Long)"}
-                </button>
+                <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border)", borderRadius: 6, padding: 2, gap: 2, width: "100%" }}>
+                  <button
+                    onClick={() => {
+                      const isLong = selected.target >= selected.entry.price;
+                      if (!isLong) {
+                        const risk = Math.abs(selected.entry.price - selected.stop);
+                        const rew = Math.abs(selected.target - selected.entry.price);
+                        set({ stop: selected.entry.price - risk, target: selected.entry.price + rew, rrSide: "long" });
+                      }
+                    }}
+                    style={{
+                      padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: selected.target >= selected.entry.price ? 600 : 500,
+                      color: selected.target >= selected.entry.price ? "#fff" : "var(--muted)",
+                      background: selected.target >= selected.entry.price ? "#26a69a" : "transparent", border: "none", cursor: "pointer", flex: 1,
+                      boxShadow: selected.target >= selected.entry.price ? "0 2px 6px rgba(38,166,154,0.35)" : "none",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 4
+                    }}
+                  >
+                    Long
+                  </button>
+                  <button
+                    onClick={() => {
+                      const isLong = selected.target >= selected.entry.price;
+                      if (isLong) {
+                        const risk = Math.abs(selected.entry.price - selected.stop);
+                        const rew = Math.abs(selected.target - selected.entry.price);
+                        set({ stop: selected.entry.price + risk, target: selected.entry.price - rew, rrSide: "short" });
+                      }
+                    }}
+                    style={{
+                      padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: selected.target < selected.entry.price ? 600 : 500,
+                      color: selected.target < selected.entry.price ? "#fff" : "var(--muted)",
+                      background: selected.target < selected.entry.price ? "#ef5350" : "transparent", border: "none", cursor: "pointer", flex: 1,
+                      boxShadow: selected.target < selected.entry.price ? "0 2px 6px rgba(239,83,80,0.35)" : "none",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 4
+                    }}
+                  >
+                    Short
+                  </button>
+                </div>
+              </Row>
+              <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+              <Row label="Live/Achieved Opac">
+                <input
+                  type="range" min={0} max={1.0} step={0.05} value={selected.progressOpacity ?? 0.55}
+                  onChange={(e) => set({ progressOpacity: Number(e.target.value) })}
+                  style={{ width: 100 }}
+                />
+                <span className="num" style={{ fontSize: 10, width: 32, textAlign: "right" }}>
+                  {Math.round((selected.progressOpacity ?? 0.55) * 100)}%
+                </span>
+              </Row>
+              <Row label="Box Opacity">
+                <input
+                  type="range" min={0} max={0.8} step={0.05} value={selected.fillOpacity ?? 0.25}
+                  onChange={(e) => set({ fillOpacity: Number(e.target.value) })}
+                  style={{ width: 100 }}
+                />
+                <span className="num" style={{ fontSize: 10, width: 32, textAlign: "right" }}>
+                  {Math.round((selected.fillOpacity ?? 0.25) * 100)}%
+                </span>
+              </Row>
+              <Row label="Border Opac">
+                <input
+                  type="range" min={0} max={1.0} step={0.05} value={selected.borderOpacity ?? 0.60}
+                  onChange={(e) => set({ borderOpacity: Number(e.target.value) })}
+                  style={{ width: 100 }}
+                />
+                <span className="num" style={{ fontSize: 10, width: 32, textAlign: "right" }}>
+                  {Math.round((selected.borderOpacity ?? 0.60) * 100)}%
+                </span>
               </Row>
             </>
           )}
@@ -201,6 +256,70 @@ export default function DrawingSettings({ api }) {
                     />
                   ))}
                 </div>
+              </Row>
+              <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+              <Row label="Live/Achieved Opac">
+                <input
+                  type="range" min={0} max={1.0} step={0.05} value={selected.progressOpacity ?? 0.55}
+                  onChange={(e) => set({ progressOpacity: Number(e.target.value) })}
+                  style={{ width: 100 }}
+                />
+                <span className="num" style={{ fontSize: 10, width: 32, textAlign: "right" }}>
+                  {Math.round((selected.progressOpacity ?? 0.55) * 100)}%
+                </span>
+              </Row>
+              <Row label="Box Opacity">
+                <input
+                  type="range" min={0} max={0.8} step={0.05} value={selected.fillOpacity ?? 0.25}
+                  onChange={(e) => set({ fillOpacity: Number(e.target.value) })}
+                  style={{ width: 100 }}
+                />
+                <span className="num" style={{ fontSize: 10, width: 32, textAlign: "right" }}>
+                  {Math.round((selected.fillOpacity ?? 0.25) * 100)}%
+                </span>
+              </Row>
+              <Row label="Border Opac">
+                <input
+                  type="range" min={0} max={1.0} step={0.05} value={selected.borderOpacity ?? 0.60}
+                  onChange={(e) => set({ borderOpacity: Number(e.target.value) })}
+                  style={{ width: 100 }}
+                />
+                <span className="num" style={{ fontSize: 10, width: 32, textAlign: "right" }}>
+                  {Math.round((selected.borderOpacity ?? 0.60) * 100)}%
+                </span>
+              </Row>
+              <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+              <Row label="Normal View">
+                <div style={{ display: "flex", gap: 3 }}>
+                  {["minimal", "full", "hidden"].map((mode) => (
+                    <button
+                      key={mode}
+                      className={(selected.normalDisplay || "minimal") === mode ? "primary" : "ghost"}
+                      onClick={() => set({ normalDisplay: mode })}
+                      style={{ padding: "2px 5px", fontSize: 10, textTransform: "capitalize" }}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </Row>
+              <Row label="Show PnL ($)">
+                <button
+                  className={selected.showPnL !== false ? "primary" : "ghost"}
+                  onClick={() => set({ showPnL: selected.showPnL === false })}
+                  style={{ padding: "2px 8px", fontSize: 11 }}
+                >
+                  {selected.showPnL !== false ? "On" : "Off"}
+                </button>
+              </Row>
+              <Row label="Axis Tags">
+                <button
+                  className={selected.showPrices !== false ? "primary" : "ghost"}
+                  onClick={() => set({ showPrices: selected.showPrices === false })}
+                  style={{ padding: "2px 8px", fontSize: 11 }}
+                >
+                  {selected.showPrices !== false ? "On" : "Off"}
+                </button>
               </Row>
             </>
           )}

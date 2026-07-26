@@ -1,0 +1,874 @@
+[
+ {
+  "cut": 0,
+  "nSymbols": 28,
+  "currencyStrength": [
+   {
+    "ccy": "NZD",
+    "score": 24
+   },
+   {
+    "ccy": "USD",
+    "score": 21
+   },
+   {
+    "ccy": "GBP",
+    "score": 8
+   },
+   {
+    "ccy": "AUD",
+    "score": 4
+   },
+   {
+    "ccy": "EUR",
+    "score": -3
+   },
+   {
+    "ccy": "CAD",
+    "score": -3
+   },
+   {
+    "ccy": "JPY",
+    "score": -18
+   },
+   {
+    "ccy": "CHF",
+    "score": -34
+   }
+  ],
+  "categories": [
+   {
+    "id": "fx",
+    "label": "Forex",
+    "score": 8,
+    "alignment": 64,
+    "members": [
+     "EURUSD",
+     "GBPUSD",
+     "AUDUSD",
+     "NZDUSD",
+     "USDJPY",
+     "USDCHF",
+     "USDCAD",
+     "EURGBP",
+     "EURAUD",
+     "EURNZD",
+     "EURJPY",
+     "EURCHF",
+     "EURCAD",
+     "GBPAUD",
+     "GBPNZD",
+     "GBPJPY",
+     "GBPCHF",
+     "GBPCAD",
+     "AUDNZD",
+     "AUDJPY",
+     "AUDCHF",
+     "AUDCAD",
+     "NZDJPY",
+     "NZDCHF",
+     "NZDCAD",
+     "CADJPY",
+     "CADCHF",
+     "CHFJPY"
+    ]
+   }
+  ],
+  "finalScores": {
+   "EURUSD": {
+    "score": -20,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "GBPUSD": {
+    "score": -12,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDUSD": {
+    "score": -2,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "NZDUSD": {
+    "score": -9,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "USDJPY": {
+    "score": 24,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "USDCHF": {
+    "score": 15,
+    "dir": "neutral",
+    "phase": "trend"
+   },
+   "USDCAD": {
+    "score": 20,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "EURGBP": {
+    "score": 7,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "EURAUD": {
+    "score": -8,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURNZD": {
+    "score": -20,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURJPY": {
+    "score": 13,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "EURCHF": {
+    "score": 21,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "EURCAD": {
+    "score": -12,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "GBPAUD": {
+    "score": 12,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "GBPNZD": {
+    "score": -21,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "GBPJPY": {
+    "score": 4,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "GBPCHF": {
+    "score": 26,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPCAD": {
+    "score": 37,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDNZD": {
+    "score": -22,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "AUDJPY": {
+    "score": 19,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDCHF": {
+    "score": 37,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDCAD": {
+    "score": -12,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "NZDJPY": {
+    "score": 27,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCHF": {
+    "score": 20,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCAD": {
+    "score": 30,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "CADJPY": {
+    "score": 12,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "CADCHF": {
+    "score": 39,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "CHFJPY": {
+    "score": 4,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   }
+  }
+ },
+ {
+  "cut": 1500,
+  "nSymbols": 28,
+  "currencyStrength": [
+   {
+    "ccy": "GBP",
+    "score": 40
+   },
+   {
+    "ccy": "AUD",
+    "score": 16
+   },
+   {
+    "ccy": "NZD",
+    "score": 11
+   },
+   {
+    "ccy": "EUR",
+    "score": -3
+   },
+   {
+    "ccy": "USD",
+    "score": -11
+   },
+   {
+    "ccy": "JPY",
+    "score": -14
+   },
+   {
+    "ccy": "CHF",
+    "score": -14
+   },
+   {
+    "ccy": "CAD",
+    "score": -24
+   }
+  ],
+  "categories": [
+   {
+    "id": "fx",
+    "label": "Forex",
+    "score": 10,
+    "alignment": 71,
+    "members": [
+     "EURUSD",
+     "GBPUSD",
+     "AUDUSD",
+     "NZDUSD",
+     "USDJPY",
+     "USDCHF",
+     "USDCAD",
+     "EURGBP",
+     "EURAUD",
+     "EURNZD",
+     "EURJPY",
+     "EURCHF",
+     "EURCAD",
+     "GBPAUD",
+     "GBPNZD",
+     "GBPJPY",
+     "GBPCHF",
+     "GBPCAD",
+     "AUDNZD",
+     "AUDJPY",
+     "AUDCHF",
+     "AUDCAD",
+     "NZDJPY",
+     "NZDCHF",
+     "NZDCAD",
+     "CADJPY",
+     "CADCHF",
+     "CHFJPY"
+    ]
+   }
+  ],
+  "finalScores": {
+   "EURUSD": {
+    "score": 15,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "GBPUSD": {
+    "score": 13,
+    "dir": "neutral",
+    "phase": "setup"
+   },
+   "AUDUSD": {
+    "score": 27,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDUSD": {
+    "score": -11,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "USDJPY": {
+    "score": 3,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "USDCHF": {
+    "score": 11,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "USDCAD": {
+    "score": -28,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURGBP": {
+    "score": -43,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURAUD": {
+    "score": 9,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURNZD": {
+    "score": -16,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURJPY": {
+    "score": 14,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURCHF": {
+    "score": -11,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURCAD": {
+    "score": 24,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPAUD": {
+    "score": 27,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPNZD": {
+    "score": 19,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPJPY": {
+    "score": 29,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPCHF": {
+    "score": 32,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPCAD": {
+    "score": 45,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDNZD": {
+    "score": 16,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDJPY": {
+    "score": 39,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDCHF": {
+    "score": 4,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDCAD": {
+    "score": 24,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDJPY": {
+    "score": 17,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCHF": {
+    "score": 40,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCAD": {
+    "score": 25,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "CADJPY": {
+    "score": -14,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "CADCHF": {
+    "score": -14,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "CHFJPY": {
+    "score": -13,
+    "dir": "neutral",
+    "phase": "chop"
+   }
+  }
+ },
+ {
+  "cut": 7000,
+  "nSymbols": 28,
+  "currencyStrength": [
+   {
+    "ccy": "GBP",
+    "score": 24
+   },
+   {
+    "ccy": "NZD",
+    "score": 22
+   },
+   {
+    "ccy": "AUD",
+    "score": 10
+   },
+   {
+    "ccy": "EUR",
+    "score": 9
+   },
+   {
+    "ccy": "CHF",
+    "score": -1
+   },
+   {
+    "ccy": "CAD",
+    "score": -16
+   },
+   {
+    "ccy": "USD",
+    "score": -18
+   },
+   {
+    "ccy": "JPY",
+    "score": -30
+   }
+  ],
+  "categories": [
+   {
+    "id": "fx",
+    "label": "Forex",
+    "score": 11,
+    "alignment": 75,
+    "members": [
+     "EURUSD",
+     "GBPUSD",
+     "AUDUSD",
+     "NZDUSD",
+     "USDJPY",
+     "USDCHF",
+     "USDCAD",
+     "EURGBP",
+     "EURAUD",
+     "EURNZD",
+     "EURJPY",
+     "EURCHF",
+     "EURCAD",
+     "GBPAUD",
+     "GBPNZD",
+     "GBPJPY",
+     "GBPCHF",
+     "GBPCAD",
+     "AUDNZD",
+     "AUDJPY",
+     "AUDCHF",
+     "AUDCAD",
+     "NZDJPY",
+     "NZDCHF",
+     "NZDCAD",
+     "CADJPY",
+     "CADCHF",
+     "CHFJPY"
+    ]
+   }
+  ],
+  "finalScores": {
+   "EURUSD": {
+    "score": 21,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPUSD": {
+    "score": 45,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "AUDUSD": {
+    "score": 24,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDUSD": {
+    "score": 23,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "USDJPY": {
+    "score": 25,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "USDCHF": {
+    "score": -13,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "USDCAD": {
+    "score": 6,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURGBP": {
+    "score": 5,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "EURAUD": {
+    "score": -6,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURNZD": {
+    "score": -24,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURJPY": {
+    "score": 29,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "EURCHF": {
+    "score": -5,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "EURCAD": {
+    "score": 21,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPAUD": {
+    "score": 9,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "GBPNZD": {
+    "score": -3,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "GBPJPY": {
+    "score": 33,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPCHF": {
+    "score": 36,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPCAD": {
+    "score": 7,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "AUDNZD": {
+    "score": -12,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDJPY": {
+    "score": 8,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDCHF": {
+    "score": 5,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDCAD": {
+    "score": 29,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDJPY": {
+    "score": 27,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCHF": {
+    "score": 14,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "NZDCAD": {
+    "score": 7,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "CADJPY": {
+    "score": 8,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "CADCHF": {
+    "score": -25,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "CHFJPY": {
+    "score": 17,
+    "dir": "bullish",
+    "phase": "trend"
+   }
+  }
+ },
+ {
+  "cut": 20000,
+  "nSymbols": 28,
+  "currencyStrength": [
+   {
+    "ccy": "USD",
+    "score": 20
+   },
+   {
+    "ccy": "NZD",
+    "score": 16
+   },
+   {
+    "ccy": "GBP",
+    "score": 10
+   },
+   {
+    "ccy": "AUD",
+    "score": 10
+   },
+   {
+    "ccy": "CHF",
+    "score": 6
+   },
+   {
+    "ccy": "CAD",
+    "score": -16
+   },
+   {
+    "ccy": "EUR",
+    "score": -19
+   },
+   {
+    "ccy": "JPY",
+    "score": -28
+   }
+  ],
+  "categories": [
+   {
+    "id": "fx",
+    "label": "Forex",
+    "score": 4,
+    "alignment": 57,
+    "members": [
+     "EURUSD",
+     "GBPUSD",
+     "AUDUSD",
+     "NZDUSD",
+     "USDJPY",
+     "USDCHF",
+     "USDCAD",
+     "EURGBP",
+     "EURAUD",
+     "EURNZD",
+     "EURJPY",
+     "EURCHF",
+     "EURCAD",
+     "GBPAUD",
+     "GBPNZD",
+     "GBPJPY",
+     "GBPCHF",
+     "GBPCAD",
+     "AUDNZD",
+     "AUDJPY",
+     "AUDCHF",
+     "AUDCAD",
+     "NZDJPY",
+     "NZDCHF",
+     "NZDCAD",
+     "CADJPY",
+     "CADCHF",
+     "CHFJPY"
+    ]
+   }
+  ],
+  "finalScores": {
+   "EURUSD": {
+    "score": -30,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "GBPUSD": {
+    "score": -12,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDUSD": {
+    "score": -30,
+    "dir": "bearish",
+    "phase": "setup"
+   },
+   "NZDUSD": {
+    "score": 22,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "USDJPY": {
+    "score": 43,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "USDCHF": {
+    "score": -11,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "USDCAD": {
+    "score": 20,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "EURGBP": {
+    "score": 0,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "EURAUD": {
+    "score": -32,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURNZD": {
+    "score": -40,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURJPY": {
+    "score": 26,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "EURCHF": {
+    "score": -20,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "EURCAD": {
+    "score": -3,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "GBPAUD": {
+    "score": -20,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "GBPNZD": {
+    "score": 38,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPJPY": {
+    "score": 6,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "GBPCHF": {
+    "score": 27,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "GBPCAD": {
+    "score": 10,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDNZD": {
+    "score": 12,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDJPY": {
+    "score": 8,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "AUDCHF": {
+    "score": -25,
+    "dir": "bearish",
+    "phase": "trend"
+   },
+   "AUDCAD": {
+    "score": 24,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDJPY": {
+    "score": 35,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCHF": {
+    "score": 28,
+    "dir": "bullish",
+    "phase": "trend"
+   },
+   "NZDCAD": {
+    "score": 15,
+    "dir": "neutral",
+    "phase": "reversal-watch"
+   },
+   "CADJPY": {
+    "score": -1,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "CADCHF": {
+    "score": -13,
+    "dir": "neutral",
+    "phase": "chop"
+   },
+   "CHFJPY": {
+    "score": 25,
+    "dir": "bullish",
+    "phase": "trend"
+   }
+  }
+ }
+]

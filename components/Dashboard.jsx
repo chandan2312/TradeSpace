@@ -119,8 +119,8 @@ export default function Dashboard() {
   const [correlatedOpen, setCorrelatedOpen] = useState(false);
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [biasEnabled, setBiasEnabled] = useState(false); // default off to save RAM on RDP
-
   const [savedLayouts, setSavedLayouts] = useState([]);
+  const [loadedLayoutId, setLoadedLayoutId] = useState(null);
   const [saveLayoutOpen, setSaveLayoutOpen] = useState(false);
   const [activeNotesSymbol, setActiveNotesSymbol] = useState(null);
   const [notesPanelData, setNotesPanelData] = useState({ checklist: [], notes: "" });
@@ -136,20 +136,98 @@ export default function Dashboard() {
   const [joinChainAlertId, setJoinChainAlertId] = useState(null);
   const [settings] = useChartSettings();
 
+  // ---------- App Theme Sync ----------
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.body.setAttribute("data-theme", settings.appTheme || "dark");
+    }
+  }, [settings.appTheme]);
+
+  // ---------- Dynamic Tab Title Sync ----------
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const getShortSymbol = (s) => {
+      if (!s) return "";
+      const clean = String(s).toUpperCase().trim();
+      const map = {
+        EURUSD: "EU", GBPUSD: "GU", USDJPY: "UJ", AUDUSD: "AU",
+        USDCAD: "UC", USDCHF: "UF", NZDUSD: "NU", EURJPY: "EJ",
+        GBPJPY: "GJ", EURGBP: "EG", AUDJPY: "AJ", CADJPY: "CJ",
+        CHFJPY: "FJ", EURAUD: "EA", EURCAD: "EC", EURCHF: "EF",
+        GBPAUD: "GA", GBPCAD: "GC", GBPCHF: "GF", AUDCAD: "AC",
+        AUDCHF: "AF", AUDNZD: "AN", CADCHF: "CF", NZDJPY: "NJ",
+        NZDCAD: "NC", NZDCHF: "NF", GBPNZD: "GN", EURNZD: "EN",
+        XAUUSD: "GOLD", GOLD: "GOLD", XAGUSD: "SLV", SILVER: "SLV",
+        US30: "US30", NAS100: "NAS", USTEC: "NAS", SPX500: "SPX",
+        US500: "SPX", GER30: "DAX", GER40: "DAX", DAX: "DAX",
+        BTCUSD: "BTC", BTCUSDT: "BTC", ETHUSD: "ETH", ETHUSDT: "ETH",
+        SOLUSD: "SOL", SOLUSDT: "SOL", XRPUSD: "XRP"
+      };
+      if (map[clean]) return map[clean];
+      if (clean.length === 6 && !clean.includes("USD") && !clean.includes("US")) {
+        return clean.substring(0, 1) + clean.substring(3, 4);
+      }
+      return clean.length > 6 ? clean.substring(0, 4) : clean;
+    };
+
+    const TF_MAP = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
+    const currentPanesSig = (panes || []).map(p => `${p.symbol}:${p.tf}`).join(",");
+    const activeLayoutObj = savedLayouts?.find(l => {
+      if (l._id !== loadedLayoutId) return false;
+      if (l.layoutMode && l.layoutMode !== layout) return false;
+      const lPanesSig = (l.panes || []).map(p => `${p.symbol}:${p.tf}`).join(",");
+      return lPanesSig === currentPanesSig;
+    });
+
+    const titleParts = [];
+
+    if (activeLayoutObj?.name) {
+      titleParts.push(activeLayoutObj.name);
+    }
+
+    if (panes && panes.length > 0) {
+      if (panes.length === 1 && panes[0]) {
+        const symShort = getShortSymbol(panes[0].symbol);
+        const tfStr = TF_MAP[panes[0].tf] || panes[0].tf || "";
+        titleParts.push(`${symShort} ${tfStr}`.trim());
+      } else {
+        const uniqueShorts = [...new Set(panes.map(p => getShortSymbol(p.symbol)).filter(Boolean))];
+        titleParts.push(uniqueShorts.join(", "));
+      }
+    }
+
+    titleParts.push("TradeSpace");
+    document.title = titleParts.filter(Boolean).join(" · ");
+  }, [panes, layout, loadedLayoutId, savedLayouts]);
+
   // ---------- boot: restore prefs ----------
   useEffect(() => {
+    const getTabItem = (key) => {
+      try {
+        let val = sessionStorage.getItem(key);
+        if (!val) {
+          val = localStorage.getItem(key);
+          if (val) sessionStorage.setItem(key, val);
+        }
+        return val;
+      } catch {
+        return null;
+      }
+    };
+
     const syncFromStorage = () => {
       try {
-        const p = localStorage.getItem("ts_panes");
+        const p = getTabItem("ts_panes");
         if (p) {
           const parsed = JSON.parse(p);
           if (parsed.length) setPanes(parsed);
         }
-        const l = localStorage.getItem("ts_layout");
+        const l = getTabItem("ts_layout");
         if (l) setLayout(l);
-        const gf = localStorage.getItem("ts_grid_fractions");
+        const gf = getTabItem("ts_grid_fractions");
         if (gf) setGridFractions(JSON.parse(gf));
-        const s = localStorage.getItem("ts_sync");
+        const s = getTabItem("ts_sync");
         if (s) setSyncOpts(JSON.parse(s));
         const w = localStorage.getItem("ts_watchlist_open");
         if (w) setWatchlistOpen(w === "true");
@@ -157,7 +235,7 @@ export default function Dashboard() {
         if (f) setSymbolFlags(JSON.parse(f));
         const ind = localStorage.getItem("ts_indicators");
         if (ind) setIndicators(JSON.parse(ind));
-        const lid = localStorage.getItem("ts_loaded_layout_id");
+        const lid = getTabItem("ts_loaded_layout_id");
         if (lid) setLoadedLayoutId(lid);
         const be = localStorage.getItem("ts_bias_enabled");
         if (be !== null) setBiasEnabled(be === "true");
@@ -199,16 +277,49 @@ export default function Dashboard() {
           watchlistLayoutsRef.current = d.settings.watchlistLayouts;
           localStorage.setItem("ts_watchlist_layouts", JSON.stringify(d.settings.watchlistLayouts));
         }
+        if (d.settings.drawings) {
+          const rawDrawings = typeof d.settings.drawings === "string" ? d.settings.drawings : JSON.stringify(d.settings.drawings);
+          const cleaned = sanitizeDrawingsBlob(rawDrawings);
+          if (cleaned !== localStorage.getItem("ts_drawings")) {
+            localStorage.setItem("ts_drawings", cleaned);
+            window.dispatchEvent(new Event("storage"));
+            window.dispatchEvent(new CustomEvent("ts_drawings_sync"));
+          }
+        }
       }
     }).catch(console.error);
-
-    window.addEventListener("storage", syncFromStorage);
 
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
-    
-    return () => window.removeEventListener("storage", syncFromStorage);
+  }, []);
+
+  // ---------- Auto-Sync Drawings on Focus/Tab Switch ----------
+  useEffect(() => {
+    const syncDrawingsFromBackend = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetch("/api/settings")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok && d.settings?.drawings) {
+            const rawDrawings = typeof d.settings.drawings === "string" ? d.settings.drawings : JSON.stringify(d.settings.drawings);
+            const cleaned = sanitizeDrawingsBlob(rawDrawings);
+            if (cleaned !== localStorage.getItem("ts_drawings")) {
+              localStorage.setItem("ts_drawings", cleaned);
+              window.dispatchEvent(new Event("storage"));
+              window.dispatchEvent(new CustomEvent("ts_drawings_sync"));
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener("focus", syncDrawingsFromBackend);
+    document.addEventListener("visibilitychange", syncDrawingsFromBackend);
+    return () => {
+      window.removeEventListener("focus", syncDrawingsFromBackend);
+      document.removeEventListener("visibilitychange", syncDrawingsFromBackend);
+    };
   }, []);
 
   // ---------- App Theme Sync ----------
@@ -218,7 +329,7 @@ export default function Dashboard() {
     }
   }, [settings.appTheme]);
 
-  // Sync state to local storage
+  // Sync state to local/session storage
   // PiP State
   const [pipWindow, setPipWindow] = useState(null);
 
@@ -264,10 +375,17 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { if (isHydrated) localStorage.setItem("ts_panes", JSON.stringify(panes)); }, [panes, isHydrated]);
-  useEffect(() => { if (isHydrated) localStorage.setItem("ts_layout", layout); }, [layout, isHydrated]);
-  useEffect(() => { if (isHydrated) localStorage.setItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions, isHydrated]);
-  useEffect(() => { if (isHydrated) localStorage.setItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts, isHydrated]);
+  const saveTabItem = (key, value) => {
+    try {
+      sessionStorage.setItem(key, value);
+      localStorage.setItem(key, value);
+    } catch {}
+  };
+
+  useEffect(() => { if (isHydrated) saveTabItem("ts_panes", JSON.stringify(panes)); }, [panes, isHydrated]);
+  useEffect(() => { if (isHydrated) saveTabItem("ts_layout", layout); }, [layout, isHydrated]);
+  useEffect(() => { if (isHydrated) saveTabItem("ts_grid_fractions", JSON.stringify(gridFractions)); }, [gridFractions, isHydrated]);
+  useEffect(() => { if (isHydrated) saveTabItem("ts_sync", JSON.stringify(syncOpts)); }, [syncOpts, isHydrated]);
   useEffect(() => { if (isHydrated) localStorage.setItem("ts_watchlist_open", String(watchlistOpen)); }, [watchlistOpen, isHydrated]);
   
   useEffect(() => { 
@@ -401,8 +519,6 @@ export default function Dashboard() {
       );
     }
   }, []);
-
-  const [loadedLayoutId, setLoadedLayoutId] = useState(null);
 
   useEffect(() => {
     if (loadedLayoutId) localStorage.setItem("ts_loaded_layout_id", loadedLayoutId);
@@ -1307,6 +1423,7 @@ export default function Dashboard() {
           <div style={{ position: "absolute", inset: 0 }} onClick={() => setStrengthOpen(false)} />
           <div style={{ position: "relative", zIndex: 111, width: 400, maxWidth: "90vw" }}>
             <CurrencyStrengthMeter 
+              allowedSymbols={watchlists.find(w => w._id === activeListId)?.symbols || []}
               onSelectSuggested={(sym) => {
                 setLayout("1");
                 setPanes([{ id: 1, symbol: sym, tf: panes[0]?.tf || "H1" }]);

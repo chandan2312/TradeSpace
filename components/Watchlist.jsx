@@ -118,8 +118,14 @@ export default function Watchlist({
   const allWatchlists = [...watchlists, ...virtualWatchlists];
   const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
   
-  const mainLists = allWatchlists.filter(w => w.type !== "auto" || (isMobile && w._id.includes("star")));
+  const baseMainLists = allWatchlists.filter(w => w.type !== "auto" || (isMobile && w._id.includes("star")));
   const autoLists = allWatchlists.filter(w => w.type === "auto" && !(isMobile && w._id.includes("star")));
+  const activeAutoList = autoLists.find(w => w._id === activeListId);
+
+  const mainLists = [
+    ...baseMainLists,
+    ...(activeAutoList && !baseMainLists.some(w => w._id === activeAutoList._id) ? [activeAutoList] : [])
+  ];
 
   const list = allWatchlists.find((w) => w._id === activeListId) || null;
   const [editing, setEditing] = useState(null); // list id being renamed, or "new"
@@ -176,6 +182,7 @@ export default function Watchlist({
       if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
 
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (e.defaultPrevented || typeof window !== "undefined" && window.__ts_drawing_selected) return;
         if (!list || !list.symbols || list.symbols.length === 0) return;
         
         const idx = list.symbols.indexOf(symbol);
@@ -252,11 +259,11 @@ export default function Watchlist({
                 onClick={() => setActiveListId(w._id)}
                 onDoubleClick={() => !w.isVirtual && startRename(w)}
                 className={w._id === activeListId && !w.isVirtual ? "primary" : "ghost"}
-                title={w.isVirtual ? `${w.name} Flag (${w.symbols.length})` : `${w.name} (${(w.symbols || []).length}) — double-click to rename`}
+                title={w.isVirtual ? `${w.name} (${(w.symbols || []).length})` : `${w.name} (${(w.symbols || []).length}) — double-click to rename`}
                 style={{
-                  fontSize: 11, padding: "3px 9px", whiteSpace: "nowrap",
-                  display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
-                  ...(w.isVirtual ? { 
+                  fontSize: 11, padding: "3px 8px", whiteSpace: "nowrap",
+                  display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
+                  ...(w.isVirtual && w.color ? { 
                     background: w.color === "red" ? "rgba(239, 83, 80, 0.2)" : 
                                 w.color === "blue" ? "rgba(41, 98, 255, 0.2)" : 
                                 w.color === "green" ? "rgba(38, 166, 154, 0.2)" : 
@@ -267,6 +274,11 @@ export default function Watchlist({
                                 w.color === "green" ? "#26a69a" : 
                                 w.color === "yellow" ? "#ffeb3b" : "inherit"
                     }` : "1px solid transparent"
+                  } : w.type === "auto" ? {
+                    background: w._id === activeListId ? (w.style?.background || "rgba(41, 98, 255, 0.2)") : "transparent",
+                    color: w._id === activeListId ? (w.style?.color || "var(--accent)") : "var(--muted)",
+                    border: w._id === activeListId ? `1px solid ${w.style?.color || "var(--accent)"}` : "1px solid transparent",
+                    fontWeight: 600
                   } : {})
                 }}
               >
@@ -474,13 +486,13 @@ export default function Watchlist({
 
       {/* Header (Desktop Only) */}
       <div className="hide-mobile" style={{
-        display: "flex", alignItems: "center", padding: "7px 12px",
+        display: "flex", alignItems: "center", padding: "5px 8px",
         borderBottom: "1px solid var(--border)",
       }}>
-        <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 600 }}>
+        <div className="muted" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {list ? `${list.name} · ${(list.symbols || []).length}` : "No list"}
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 2, flexShrink: 0 }}>
           {list && !list.isVirtual && watchlists.length > 0 && (
             <button
               className="ghost danger"
@@ -488,19 +500,19 @@ export default function Watchlist({
                 if (confirm(`Delete list “${list.name}”? Its symbols stay in your alerts.`)) onDelete(list._id);
               }}
               title="Delete this list"
-              style={{ padding: "4px", display: "flex", alignItems: "center" }}
+              style={{ padding: "2px 4px", display: "flex", alignItems: "center" }}
             >
-              <Trash2 size={14} />
+              <Trash2 size={13} />
             </button>
           )}
           {list && !list.isVirtual && (
-            <button className="ghost" onClick={onAddSymbol} title="Add symbol to list" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-              <Plus size={14} /> Add
+            <button className="ghost" onClick={onAddSymbol} title="Add symbol to list" style={{ fontSize: 11, padding: "2px 5px", fontWeight: 600, display: "flex", alignItems: "center", gap: 2 }}>
+              <Plus size={13} /> Add
             </button>
           )}
           {list && (list.symbols || []).length > 0 && (
-            <button className="ghost" onClick={handleGridClick} title="Grid View" style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, color: "var(--brand)" }}>
-              <LayoutGrid size={14} /> Grid
+            <button className="ghost" onClick={handleGridClick} title="Grid View" style={{ fontSize: 11, padding: "2px 5px", fontWeight: 600, display: "flex", alignItems: "center", gap: 2, color: "var(--brand)" }}>
+              <LayoutGrid size={13} /> Grid
             </button>
           )}
         </div>
@@ -810,43 +822,43 @@ function WatchRow({
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
       }}
     >
-      <div className="wl-row-drag muted hide-mobile" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={14} /></div>
+      <div className="wl-row-drag muted hide-mobile" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={12} /></div>
       
       <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
           {flag && (
             <Flag 
-              size={12} 
+              size={10} 
               fill="currentColor" 
               strokeWidth={0} 
               style={{ flexShrink: 0, color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)" }} 
             />
           )}
-          <span className="num" style={{ fontWeight: 700, fontSize: 12 }}>{sym}</span>
-          {hasAlert && <span style={{ color: "var(--orange)", fontSize: 10 }} title="Has active alert">●</span>}
+          <span className="num" style={{ fontWeight: 700, fontSize: 11 }}>{sym}</span>
+          {hasAlert && <span style={{ color: "var(--orange)", fontSize: 9 }} title="Has active alert">●</span>}
         </div>
         {spreadPips != null && (
-          <div className="muted wl-row-spread" style={{ fontSize: 10 }}>{spreadPips.toFixed(1)} pips</div>
+          <div className="muted wl-row-spread" style={{ fontSize: 9 }}>{spreadPips.toFixed(1)} pips</div>
         )}
       </div>
 
       {bid != null && dailyOpen != null ? (
-        <div className="num" style={{ textAlign: "right", fontSize: 13, fontWeight: 700 }}>
+        <div className="num" style={{ textAlign: "right", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
           <div className={bid > dailyOpen ? "up" : bid < dailyOpen ? "down" : ""}>
             {bid > dailyOpen ? "+" : ""}{(((bid - dailyOpen) / dailyOpen) * 100).toFixed(2)}%
           </div>
         </div>
       ) : (
-        <div className="muted" style={{ fontSize: 11 }}>—</div>
+        <div className="muted" style={{ fontSize: 10 }}>—</div>
       )}
 
       <button
         className="ghost danger wl-row-remove hide-mobile"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         title={`Remove ${sym} from list`}
-        style={{ padding: "4px", display: "flex", alignItems: "center" }}
+        style={{ padding: "2px", display: "flex", alignItems: "center", flexShrink: 0 }}
       >
-        <X size={14} />
+        <X size={12} />
       </button>
 
       {showPalette && (
