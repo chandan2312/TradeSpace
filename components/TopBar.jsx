@@ -447,6 +447,11 @@ export default function TopBar({
             <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenMarketBias(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
               <Activity size={14} /> Master Market Bias
             </button>
+            {layout === "1" && (
+              <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenPip(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", color: isPipActive ? "var(--brand)" : "inherit" }}>
+                <ExternalLink size={14} /> {isPipActive ? "Close Pop Out" : "Pop Out Chart"}
+              </button>
+            )}
             <a href="/journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <BookOpen size={14} /> Trading Journal
             </a>

@@ -327,8 +327,6 @@ export default function ChartPanel({
     ];
     let hash = 0;
     for (let i = 0; i < symbol.length; i++) hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
-    // add time so it rotates every hour for the same symbol
-    hash += new Date().getHours();
     return tips[Math.abs(hash) % tips.length];
   }, [loading, symbol, biasData]);
 
@@ -435,6 +433,38 @@ export default function ChartPanel({
       seriesRef.current = null;
     };
   }, []);
+
+  // ---------- PiP Media Session Actions ----------
+  useEffect(() => {
+    const handlePipAction = (e) => {
+      if (!chartRef.current || !isActive) return;
+      const timeScale = chartRef.current.timeScale();
+      
+      switch (e.detail) {
+        case "play":
+          timeScale.scrollToRealTime();
+          break;
+        case "zoom-in": {
+          const lr = timeScale.getVisibleLogicalRange();
+          if (lr) {
+            const diff = (lr.to - lr.from) * 0.2;
+            timeScale.setVisibleLogicalRange({ from: lr.from + diff, to: lr.to - diff });
+          }
+          break;
+        }
+        case "zoom-out": {
+          const lr = timeScale.getVisibleLogicalRange();
+          if (lr) {
+            const diff = (lr.to - lr.from) * 0.2;
+            timeScale.setVisibleLogicalRange({ from: lr.from - diff, to: lr.to + diff });
+          }
+          break;
+        }
+      }
+    };
+    window.addEventListener("pip-action", handlePipAction);
+    return () => window.removeEventListener("pip-action", handlePipAction);
+  }, [isActive]);
 
   // ---------- load bars on symbol/tf change (cache-first for instant switch) ----------
   useEffect(() => {
@@ -614,9 +644,52 @@ export default function ChartPanel({
     if (onAutoAlert) for (const s of autoAlerts) onAutoAlert({ ...s, symbol });
   }, [dataVersion, indicators, tf, symbol, onAutoAlert]);
 
+  // ---------- RR tool → auto alerts for Entry / SL / TP ----------
+  const rrAlertSymbolRef = useRef(symbol);
+  useEffect(() => { rrAlertSymbolRef.current = symbol; }, [symbol]);
+  useEffect(() => {
+    if (!onAutoAlert || !draw.drawings) return;
+    const rrTools = draw.drawings.filter((d) => d.type === "rrtool" && !d.hidden);
+    for (const d of rrTools) {
+      const id = d.id;
+      const sym = rrAlertSymbolRef.current;
+      // Entry alert
+      onAutoAlert({
+        symbol: sym,
+        price: d.entry.price,
+        condition: "cross",
+        tag: `[RR:${id}:entry]`,
+        noteBase: `📐 RR Tool Entry`,
+        rating: 2,
+        toast: null,
+      });
+      // Stop Loss alert
+      onAutoAlert({
+        symbol: sym,
+        price: d.stop,
+        condition: "cross",
+        tag: `[RR:${id}:sl]`,
+        noteBase: `🛑 RR Tool Stop Loss`,
+        rating: 2,
+        toast: null,
+      });
+      // Take Profit alert
+      onAutoAlert({
+        symbol: sym,
+        price: d.target,
+        condition: "cross",
+        tag: `[RR:${id}:tp]`,
+        noteBase: `🎯 RR Tool Take Profit`,
+        rating: 2,
+        toast: null,
+      });
+    }
+  }, [draw.drawings, onAutoAlert]);
+
   // ---------- custom alert lines ----------
   useEffect(() => {
-    alertsPrimRef.current?.update(alerts, dragging, barsRef.current);
+    const visibleAlerts = (alerts || []).filter(a => !a.note?.includes("[RR:"));
+    alertsPrimRef.current?.update(visibleAlerts, dragging, barsRef.current);
   }, [alerts, dragging, dataVersion]);
 
   // ---------- pointer tracking for "+ price" button and drag handle ----------
@@ -671,9 +744,10 @@ export default function ChartPanel({
     const price = hoverPriceRef.current;
     const rect = wrapRef.current.getBoundingClientRect();
     
-    // find alerts near this price (within 10 pixels of y-space)
+    // find alerts near this price (within 10 pixels of y-space), ignoring RR tool auto-alerts
     const y = series.priceToCoordinate(price);
     const nearAlerts = alerts.filter((a) => {
+      if (a.note?.includes("[RR:")) return false;
       const ay = series.priceToCoordinate(a.price);
       return ay != null && Math.abs(ay - y) < 10;
     });
@@ -738,7 +812,8 @@ export default function ChartPanel({
       dragStateRef.current = { id, price };
       
       if (alertsPrimRef.current) {
-        alertsPrimRef.current.update(alertsRef.current, dragStateRef.current, barsRef.current);
+        const visibleAlerts = alertsRef.current.filter(a => !a.note?.includes("[RR:"));
+        alertsPrimRef.current.update(visibleAlerts, dragStateRef.current, barsRef.current);
       }
 
       // Force crosshair to follow drag

@@ -11,7 +11,7 @@ export default function Watchlist({
   symbol, setSymbol, ticks, alerts,
   onCreate, onRename, onDelete, onAddSymbol, onRemoveSymbol,
   symbolFlags, setSymbolFlags, onNavUp, onNavDown, onGridify,
-  onDoubleJump, biasData, onSelectAutoList
+  onDoubleJump, biasData, onSelectAutoList, onReorder
 }) {
   const flagColors = ["red", "blue", "green", "yellow"];
   const virtualWatchlists = [];
@@ -519,7 +519,7 @@ export default function Watchlist({
       </div>
 
       {/* Rows */}
-      <div className="wl-rows">
+      <div className="wl-rows" style={{ position: "relative" }}>
         {!list && (
           <div className="muted" style={{ padding: 16, textAlign: "center", fontSize: 12 }}>
             No watchlist selected.
@@ -554,14 +554,72 @@ export default function Watchlist({
             }}
             dragging={drag === sym}
             dropTarget={over === sym && drag && drag !== sym}
-            onDragStart={!list.isVirtual ? () => setDrag(sym) : undefined}
-            onDragOver={(e) => { e.preventDefault(); setOver(sym); }}
-            onDragLeave={() => setOver((o) => (o === sym ? null : o))}
-            onDrop={() => {
-              if (drag && drag !== sym) reorder(list, drag, sym);
+            onDragStart={!list.isVirtual ? (e) => {
+              try {
+                e.dataTransfer.setData("text/plain", sym);
+                e.dataTransfer.effectAllowed = "move";
+              } catch {}
+              setDrag(sym);
+            } : undefined}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try { e.dataTransfer.dropEffect = "move"; } catch {}
+              if (over !== sym) setOver(sym);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setOver((o) => (o === sym ? null : o));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (drag && drag !== sym) reorder(list, drag, sym, onReorder);
               setDrag(null); setOver(null);
             }}
-            onDragEnd={() => { setDrag(null); setOver(null); }}
+            onDragEnd={(e) => {
+              e.preventDefault();
+              setDrag(null); setOver(null);
+            }}
+            onGripPointerDown={!list.isVirtual ? (e, gripSym) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Start touch drag immediately when grip is pressed
+              setDrag(gripSym);
+              const rowEls = document.querySelectorAll(".wl-row-item");
+              const onMove = (ev) => {
+                const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+                for (const el of rowEls) {
+                  const rect = el.getBoundingClientRect();
+                  if (clientY >= rect.top && clientY <= rect.bottom) {
+                    const hSym = el.dataset.sym;
+                    if (hSym && hSym !== gripSym) setOver(hSym);
+                    break;
+                  }
+                }
+              };
+              const onUp = (ev) => {
+                const clientY = ev.changedTouches ? ev.changedTouches[0].clientY : ev.clientY;
+                let dropSym = null;
+                for (const el of rowEls) {
+                  const rect = el.getBoundingClientRect();
+                  if (clientY >= rect.top && clientY <= rect.bottom) {
+                    dropSym = el.dataset.sym;
+                    break;
+                  }
+                }
+                if (dropSym && dropSym !== gripSym) reorder(list, gripSym, dropSym, onReorder);
+                setDrag(null); setOver(null);
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("touchmove", onMove);
+                window.removeEventListener("touchend", onUp);
+              };
+              window.addEventListener("pointermove", onMove, { passive: true });
+              window.addEventListener("pointerup", onUp);
+              window.addEventListener("touchmove", onMove, { passive: true });
+              window.addEventListener("touchend", onUp);
+            } : undefined}
             flag={symbolFlags?.[sym]}
             onFlag={(color) => setSymbolFlags(p => {
               const next = { ...p };
@@ -579,6 +637,7 @@ export default function Watchlist({
           onClose={() => setEditModalOpen(false)} 
           onAddSymbol={onAddSymbol} 
           onRemoveSymbol={onRemoveSymbol} 
+          onReorder={onReorder}
           onDeleteList={() => {
             if (confirm(`Delete list “${list.name}”?`)) {
               onDelete(list._id);
@@ -731,37 +790,34 @@ export default function Watchlist({
 // Reorder by persisting the new symbol order to the active list.
 // We reuse the rename endpoint's "watchlists changed" broadcast path by
 // POSTing the full symbol array to a small dedicated endpoint.
-async function reorder(list, fromSym, toSym) {
+async function reorder(list, fromSym, toSym, onReorder) {
   const syms = [...(list.symbols || [])];
   const from = syms.indexOf(fromSym);
   const to = syms.indexOf(toSym);
   if (from < 0 || to < 0 || from === to) return;
   syms.splice(from, 1);
   syms.splice(to, 0, fromSym);
-  try {
-    await fetch(`/api/watchlists/${list._id}/reorder`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbols: syms }),
-    });
-  } catch { /* optimistic UI will self-heal on next WS broadcast */ }
+  if (onReorder) {
+    onReorder(list._id, syms);
+  } else {
+    try {
+      await fetch(`/api/watchlists/${list._id}/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbols: syms }),
+      });
+    } catch { /* optimistic UI will self-heal on next WS broadcast */ }
+  }
 }
 
 function WatchRow({
   sym, tick, dailyOpen, current, hasAlert, onJump, onDoubleClick, onRemove,
   dragging, dropTarget, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
-  flag, onFlag
+  onGripPointerDown, flag, onFlag
 }) {
   const [showPalette, setShowPalette] = useState(false);
   const paletteRef = useRef(null);
   const rowRef = useRef(null);
-  const [isDraggable, setIsDraggable] = useState(true);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0))) {
-      setIsDraggable(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (current && rowRef.current) {
@@ -806,12 +862,13 @@ function WatchRow({
     <div
       ref={rowRef}
       className="wl-row-item"
-      draggable={isDraggable}
-      onDragStart={isDraggable ? onDragStart : undefined}
-      onDragOver={isDraggable ? onDragOver : undefined}
-      onDragLeave={isDraggable ? onDragLeave : undefined}
-      onDrop={isDraggable ? onDrop : undefined}
-      onDragEnd={isDraggable ? onDragEnd : undefined}
+      data-sym={sym}
+      draggable={Boolean(onDragStart)}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={onJump}
       onDoubleClick={onDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setShowPalette(true); }}
@@ -820,9 +877,15 @@ function WatchRow({
         background: bgColor,
         opacity: dragging ? 0.4 : 1,
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
+        touchAction: "none",
       }}
     >
-      <div className="wl-row-drag muted hide-mobile" style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5 }} title="Drag to reorder"><GripVertical size={12} /></div>
+      <div
+        className="wl-row-drag muted"
+        style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5, touchAction: "none" }}
+        title="Drag to reorder"
+        onPointerDown={onGripPointerDown ? (e) => onGripPointerDown(e, sym) : undefined}
+      ><GripVertical size={12} /></div>
       
       <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
@@ -882,20 +945,20 @@ function WatchRow({
   );
 }
 
-function WatchlistEditModal({ list, onClose, onAddSymbol, onRemoveSymbol, onDeleteList }) {
+function WatchlistEditModal({ list, onClose, onAddSymbol, onRemoveSymbol, onDeleteList, onReorder }) {
   const syms = list?.symbols || [];
 
   const moveUp = async (idx) => {
     if (idx === 0) return;
     const fromSym = syms[idx];
     const toSym = syms[idx - 1];
-    await reorder(list, fromSym, toSym);
+    await reorder(list, fromSym, toSym, onReorder);
   };
   const moveDown = async (idx) => {
     if (idx === syms.length - 1) return;
     const fromSym = syms[idx];
     const toSym = syms[idx + 1];
-    await reorder(list, fromSym, toSym);
+    await reorder(list, fromSym, toSym, onReorder);
   };
 
   return (

@@ -43,3 +43,21 @@ export async function POST(req) {
   broadcast({ type: "alerts_changed" });
   return json({ ok: true, alert });
 }
+
+export async function DELETE(req) {
+  const { searchParams } = new URL(req.url);
+  const symbol = searchParams.get("symbol");
+  const filter = searchParams.get("filter") || "all";
+  if (!symbol) return json({ ok: false, error: "symbol required" }, 400);
+
+  const { alertsCol } = await getCols();
+  const query = { symbol: String(symbol).toUpperCase() };
+  if (filter === "star") {
+    query.rating = { $ne: null };
+  } else if (filter === "normal") {
+    query.$or = [{ rating: null }, { rating: { $exists: false } }];
+  }
+  await alertsCol.deleteMany(query);
+  broadcast({ type: "alerts_changed" });
+  return json({ ok: true });
+}

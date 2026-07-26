@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X, RotateCcw, Trash2 } from "lucide-react";
+import { X, RotateCcw, Trash2, BellOff, StarOff } from "lucide-react";
 
 const FILTERS = [
   { id: "active", label: "Active" },
@@ -14,7 +14,7 @@ const COND_COLOR = { cross: "var(--orange)", above: "var(--green)", below: "var(
 
 // Every alert across every symbol. Filter by status, jump the chart by clicking
 // the symbol, re-arm a triggered alert, or delete.
-export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onRearm, onCloseMobile }) {
+export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onDeleteBySymbol, onRearm, onCloseMobile }) {
   const [filter, setFilter] = useState("active");
 
   const counts = useMemo(() => ({
@@ -80,6 +80,7 @@ export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onRea
             current={a.symbol === symbol}
             onJump={() => setSymbol(a.symbol)}
             onDelete={() => onDelete(a._id)}
+            onDeleteBySymbol={onDeleteBySymbol}
             onRearm={() => onRearm(a._id)}
           />
         ))}
@@ -88,7 +89,7 @@ export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onRea
   );
 }
 
-function AlertRow({ a, current, onJump, onDelete, onRearm }) {
+function AlertRow({ a, current, onJump, onDelete, onDeleteBySymbol, onRearm }) {
   const triggered = a.status === "triggered";
   const time = triggered
     ? new Date(a.triggeredAt || a.createdAt)
@@ -129,7 +130,7 @@ function AlertRow({ a, current, onJump, onDelete, onRearm }) {
             🔗 {(a.currentStep || 0) + 1}/{a.chain.length}
           </span>
         )}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
           {triggered && (
             <button
               className="ghost"
@@ -143,11 +144,39 @@ function AlertRow({ a, current, onJump, onDelete, onRearm }) {
           <button
             className="ghost danger"
             onClick={onDelete}
-            title="Delete alert"
+            title="Delete this alert"
             style={{ padding: "4px", display: "flex", alignItems: "center" }}
           >
             <Trash2 size={14} />
           </button>
+          {onDeleteBySymbol && (
+            <div style={{ display: "flex", gap: 2, marginLeft: 4, paddingLeft: 4, borderLeft: "1px solid var(--border)" }}>
+              <button
+                className="ghost"
+                onClick={(e) => { e.stopPropagation(); onDeleteBySymbol(a.symbol, "normal"); }}
+                title={`Delete all NORMAL alerts for ${a.symbol}`}
+                style={{ padding: "4px", display: "flex", alignItems: "center", color: "var(--muted)" }}
+              >
+                <BellOff size={13} />
+              </button>
+              <button
+                className="ghost"
+                onClick={(e) => { e.stopPropagation(); onDeleteBySymbol(a.symbol, "star"); }}
+                title={`Delete all STAR alerts for ${a.symbol}`}
+                style={{ padding: "4px", display: "flex", alignItems: "center", color: "#ffb300" }}
+              >
+                <StarOff size={13} />
+              </button>
+              <button
+                className="ghost danger"
+                onClick={(e) => { e.stopPropagation(); onDeleteBySymbol(a.symbol, "all"); }}
+                title={`Delete ALL alerts for ${a.symbol}`}
+                style={{ padding: "4px", display: "flex", alignItems: "center", color: "#ef5350" }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

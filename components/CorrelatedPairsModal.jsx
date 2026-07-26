@@ -184,7 +184,30 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
             borderRadius: 12, padding: 20, boxShadow: "0 12px 36px rgba(0,0,0,0.5)",
             maxHeight: "90vh", overflowY: "auto"
           }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Select Correlated Assets</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Select Correlated Assets</h3>
+              {/* Global select/unselect only for non-FX (single group) */}
+              {candidates.length <= 1 && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button
+                    className="ghost"
+                    onClick={() => setSelected(new Set(candidates.flatMap(g => g.symbols)))}
+                    title="Select All"
+                    style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6 }}
+                  >
+                    <CheckSquare size={15} color="var(--accent)" />
+                  </button>
+                  <button
+                    className="ghost"
+                    onClick={() => setSelected(new Set())}
+                    title="Unselect All"
+                    style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6 }}
+                  >
+                    <Square size={15} color="var(--muted)" />
+                  </button>
+                </div>
+              )}
+            </div>
             <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
               Select assets and choose layout & synchronization options for side-by-side analysis of {symbol}.
             </p>
@@ -192,8 +215,35 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "40vh", overflowY: "auto", paddingRight: 4 }}>
               {candidates.map((g, idx) => (
                 <div key={idx}>
-                  <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
-                    {g.title}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      {g.title}
+                    </div>
+                    {/* Per-group select/unselect for FX pairs (multiple groups) */}
+                    {candidates.length > 1 && (
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button
+                          className="ghost"
+                          onClick={() => setSelected(prev => new Set([...prev, ...g.symbols]))}
+                          title={`Select all ${g.title}`}
+                          style={{ padding: "2px 6px", display: "flex", alignItems: "center", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4 }}
+                        >
+                          <CheckSquare size={13} color="var(--accent)" />
+                        </button>
+                        <button
+                          className="ghost"
+                          onClick={() => setSelected(prev => {
+                            const next = new Set(prev);
+                            g.symbols.forEach(s => next.delete(s));
+                            return next;
+                          })}
+                          title={`Unselect all ${g.title}`}
+                          style={{ padding: "2px 6px", display: "flex", alignItems: "center", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4 }}
+                        >
+                          <Square size={13} color="var(--muted)" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6 }}>
                     {g.symbols.map(c => (

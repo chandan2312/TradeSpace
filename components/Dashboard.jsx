@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Toaster, toast as sonnerToast } from "sonner";
 import TopBar from "./TopBar";
 import ChartPanel from "./ChartPanel";
@@ -10,7 +11,7 @@ import SymbolPalette from "./SymbolPalette";
 import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
-import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag, LayoutGrid } from "lucide-react";
+import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag, LayoutGrid, X } from "lucide-react";
 import BiasPanel from "./BiasPanel";
 import MiniBiasHeader from "./MiniBiasHeader";
 import ChartSettingsModal from "./ChartSettingsModal";
@@ -330,50 +331,186 @@ export default function Dashboard() {
   }, [settings.appTheme]);
 
   // Sync state to local/session storage
-  // PiP State
+  // PiP State — null = closed, "mobile" = in-app float overlay, Window obj = Document PiP
   const [pipWindow, setPipWindow] = useState(null);
+  const [pipPos, setPipPos] = useState({ x: 16, y: 80 }); // in-app float position
+  const pipDragRef = useRef(null);
 
   const openPip = async () => {
-    if (!("documentPictureInPicture" in window)) {
-      showToast("Picture-in-Picture API not supported on this browser (use Chrome/Edge 116+).");
+    // If already open, close it
+    if (pipWindow) {
+      if (pipWindow === "mobile") {
+        setPipWindow(null);
+      } else if (pipWindow instanceof HTMLVideoElement) {
+        if (document.pictureInPictureElement) {
+          try { await document.exitPictureInPicture(); } catch {}
+        }
+        setPipWindow(null);
+      } else if (pipWindow.close) {
+        try { pipWindow.close(); } catch {}
+        setPipWindow(null);
+      }
       return;
     }
-    try {
-      const pip = await window.documentPictureInPicture.requestWindow({
-        width: 1000,
-        height: 700,
-      });
 
-      // Copy stylesheets
-      [...document.styleSheets].forEach((styleSheet) => {
-        try {
-          const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join('');
-          const style = document.createElement('style');
-          style.textContent = cssRules;
-          pip.document.head.appendChild(style);
-        } catch (e) {
-          const link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.type = styleSheet.type;
-          link.media = styleSheet.media;
-          link.href = styleSheet.href;
-          pip.document.head.appendChild(link);
-        }
-      });
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = '/index.css';
-      pip.document.head.appendChild(link);
+    // Desktop Document Picture-in-Picture API
+    const isTouchDevice = typeof window !== "undefined" && (("ontouchstart" in window) || navigator.maxTouchPoints > 0);
+    const hasPipApi = typeof window !== "undefined" && "documentPictureInPicture" in window;
 
-      pip.addEventListener("pagehide", () => {
-        setPipWindow(null);
-      });
-      setPipWindow(pip);
-    } catch (err) {
-      console.error("PiP error:", err);
-      showToast("Failed to open floating window.");
+    if (hasPipApi && !isTouchDevice) {
+      try {
+        const pip = await window.documentPictureInPicture.requestWindow({
+          width: 1000,
+          height: 700,
+        });
+
+        // Copy stylesheets
+        [...document.styleSheets].forEach((styleSheet) => {
+          try {
+            const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join('');
+            const style = document.createElement('style');
+            style.textContent = cssRules;
+            pip.document.head.appendChild(style);
+          } catch (e) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.type = styleSheet.type;
+            link.media = styleSheet.media;
+            link.href = styleSheet.href;
+            pip.document.head.appendChild(link);
+          }
+        });
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/index.css';
+        pip.document.head.appendChild(link);
+
+        pip.addEventListener("pagehide", () => setPipWindow(null));
+        setPipWindow(pip);
+        return;
+      } catch (err) {
+        console.error("Document PiP error:", err);
+      }
     }
+
+    // Mobile / Android Native Video Picture-in-Picture Fallback via Canvas Stream
+    if (typeof document !== "undefined" && "pictureInPictureEnabled" in document && document.pictureInPictureEnabled) {
+      const chartContainer = document.querySelector(".tv-lightweight-charts");
+      if (chartContainer) {
+        const canvases = Array.from(chartContainer.querySelectorAll("canvas"));
+        if (canvases.length > 0) {
+          const masterCanvas = document.createElement("canvas");
+          const rect = chartContainer.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          masterCanvas.width = rect.width * dpr;
+          masterCanvas.height = rect.height * dpr;
+          const ctx = masterCanvas.getContext("2d");
+          ctx.scale(dpr, dpr);
+
+          let rafId;
+          const drawMaster = () => {
+            // Fill background
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg") || "#0d1117";
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            // Draw all chart canvases
+            canvases.forEach(c => {
+              const cRect = c.getBoundingClientRect();
+              const x = cRect.left - rect.left;
+              const y = cRect.top - rect.top;
+              if (cRect.width > 0 && cRect.height > 0) {
+                ctx.drawImage(c, x, y, cRect.width, cRect.height);
+              }
+            });
+            rafId = requestAnimationFrame(drawMaster);
+          };
+          drawMaster();
+
+          const stream = masterCanvas.captureStream(30);
+          const video = document.createElement("video");
+          video.srcObject = stream;
+          video.muted = true;
+          video.playsInline = true;
+
+          video.onloadedmetadata = async () => {
+            try {
+              await video.play();
+              
+              if ("mediaSession" in navigator) {
+                navigator.mediaSession.metadata = new window.MediaMetadata({
+                  title: "TradeSpace Live Chart",
+                  artist: "Auto-Scroll: ON (Play)",
+                });
+
+                navigator.mediaSession.setActionHandler('play', () => {
+                  navigator.mediaSession.metadata.artist = "Auto-Scroll: ON (Play)";
+                  video.play();
+                  window.dispatchEvent(new CustomEvent("pip-action", { detail: "play" }));
+                });
+                
+                navigator.mediaSession.setActionHandler('pause', () => {
+                  navigator.mediaSession.metadata.artist = "Auto-Scroll: OFF (Paused)";
+                  // keep video playing so stream doesn't freeze completely on Android
+                  video.play();
+                  window.dispatchEvent(new CustomEvent("pip-action", { detail: "pause" }));
+                });
+                
+                navigator.mediaSession.setActionHandler('previoustrack', () => {
+                  window.dispatchEvent(new CustomEvent("pip-action", { detail: "zoom-out" }));
+                });
+                
+                navigator.mediaSession.setActionHandler('nexttrack', () => {
+                  window.dispatchEvent(new CustomEvent("pip-action", { detail: "zoom-in" }));
+                });
+              }
+
+              await video.requestPictureInPicture();
+              setPipWindow(video);
+            } catch (e) {
+              console.error("Video PiP failed:", e);
+              cancelAnimationFrame(rafId);
+              // Fallback to in-app overlay if Native PiP is blocked
+              setPipPos({ x: 16, y: 80 });
+              setPipWindow("mobile");
+            }
+          };
+
+          video.addEventListener("leavepictureinpicture", () => {
+            cancelAnimationFrame(rafId);
+            setPipWindow(null);
+          });
+          return;
+        }
+      }
+    }
+
+    // Absolute fallback: In-app floating overlay
+    setPipPos({ x: 16, y: 80 });
+    setPipWindow("mobile");
   };
+
+  // Drag handler for mobile in-app floating overlay
+  const onPipDragStart = useCallback((e) => {
+    e.preventDefault();
+    const startX = (e.touches ? e.touches[0].clientX : e.clientX) - pipPos.x;
+    const startY = (e.touches ? e.touches[0].clientY : e.clientY) - pipPos.y;
+    const onMove = (ev) => {
+      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      const newX = Math.max(0, Math.min(window.innerWidth - 220, cx - startX));
+      const newY = Math.max(0, Math.min(window.innerHeight - 200, cy - startY));
+      setPipPos({ x: newX, y: newY });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+  }, [pipPos.x, pipPos.y]);
 
   const saveTabItem = (key, value) => {
     try {
@@ -711,12 +848,42 @@ export default function Dashboard() {
       }
       setFullScreenPaneId(null);
       setPreFullScreenPanes(null);
+      try {
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+          if (document.exitFullscreen) document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        }
+      } catch (err) {}
     } else {
       setPreFullScreenPanes(panes);
       setFullScreenPaneId(id);
       setActivePaneId(id);
+      try {
+        const el = document.getElementById(`pane-${id}`);
+        if (el && (typeof window !== "undefined" && (window.innerWidth <= 768 || panes.length === 1))) {
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        }
+      } catch (err) {}
     }
   };
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (fullScreenPaneId && (typeof window !== "undefined" && (window.innerWidth <= 768 || panes.length === 1))) {
+          setFullScreenPaneId(null);
+          setPreFullScreenPanes(null);
+        }
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+    };
+  }, [fullScreenPaneId, panes.length]);
 
   const changeLayout = (newLayout) => {
     const required = LAYOUT_CONFIG[newLayout]?.count || 1;
@@ -986,18 +1153,42 @@ export default function Dashboard() {
   const autoAlertTags = useRef(new Set());
 
   const handleAutoAlert = useCallback(async (sug) => {
-    const tag = `[AMD:${sug.symbol}:${sug.tagPart}]`;
+    const tag = sug.tag || `[AMD:${sug.symbol}:${sug.tagPart}]`;
+    const price = Number(sug.price.toFixed(6));
+    const existing = alertsRef.current.find((a) => a.note && a.note.includes(tag));
+    if (existing) {
+      if (Math.abs(existing.price - price) > 0.000001) {
+        await api(`/api/alerts/${existing._id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ price }),
+        });
+        loadAlerts();
+      }
+      return;
+    }
     if (autoAlertTags.current.has(tag)) return;
     autoAlertTags.current.add(tag);
-    if (alertsRef.current.some((a) => a.note && a.note.includes(tag))) return;
     const note = `${sug.noteBase} ${tag}`.slice(0, 200);
-    const price = Number(sug.price.toFixed(6));
+    const body = { symbol: sug.symbol, price, condition: sug.condition || "cross", note };
+    if (sug.rating !== undefined) body.rating = sug.rating;
     const data = await api("/api/alerts", {
       method: "POST",
-      body: JSON.stringify({ symbol: sug.symbol, price, condition: sug.condition, note }),
+      body: JSON.stringify(body),
     });
     if (data.ok) {
-      showToast(`🤖 AMD auto-alert: ${sug.symbol} ${sug.condition} ${price}`);
+      if (sug.toast === null) { /* suppress */ }
+      else if (sug.toast) showToast(sug.toast);
+      else showToast(`🤖 Auto-alert: ${sug.symbol} ${body.condition} ${price}`);
+      loadAlerts();
+    }
+  }, [loadAlerts, showToast]);
+
+  const deleteAlertsBySymbol = useCallback(async (sym, filter = "all") => {
+    const data = await api(`/api/alerts?symbol=${encodeURIComponent(sym)}&filter=${encodeURIComponent(filter)}`, {
+      method: "DELETE",
+    });
+    if (data.ok) {
+      showToast(`Deleted ${filter === "all" ? "all" : filter} alerts for ${sym}`);
       loadAlerts();
     }
   }, [loadAlerts, showToast]);
@@ -1033,6 +1224,19 @@ export default function Dashboard() {
   const removeSymbolFromList = useCallback(async (listId, sym) => {
     const data = await api(`/api/watchlists/${listId}/symbols/${encodeURIComponent(sym)}`, { method: "DELETE" });
     if (data.ok) setWatchlists(data.watchlists);
+  }, []);
+
+  const reorderWatchlist = useCallback(async (listId, newSymbols) => {
+    setWatchlists((prev) =>
+      prev.map((w) => (w._id === listId ? { ...w, symbols: newSymbols } : w))
+    );
+    const data = await api(`/api/watchlists/${listId}/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ symbols: newSymbols }),
+    });
+    if (data && data.ok && data.watchlists) {
+      setWatchlists(data.watchlists);
+    }
   }, []);
 
   // ---------- keyboard: Ctrl+K / "/" opens palette ----------
@@ -1178,14 +1382,18 @@ export default function Dashboard() {
                     onClick={() => setActivePaneId(pane.id)}
                     onDoubleClick={() => toggleFullscreen(pane.id)}
                     style={{
-                      position: "relative",
+                      position: (fullScreenPaneId === pane.id) ? "fixed" : "relative",
+                      top: (fullScreenPaneId === pane.id) ? 0 : "auto",
+                      left: (fullScreenPaneId === pane.id) ? 0 : "auto",
+                      width: (fullScreenPaneId === pane.id) ? "100vw" : "auto",
+                      height: (fullScreenPaneId === pane.id) ? "100dvh" : "auto",
                       display: isHiddenByFullscreen ? "none" : "flex",
                       flexDirection: "column",
                       minWidth: 0,
                       minHeight: 0,
                       background: "var(--bg)",
                       boxShadow: (panes.length > 1 && activePaneId === pane.id) ? "inset 0 0 0 2px var(--accent)" : "none",
-                      zIndex: activePaneId === pane.id ? 2 : 1,
+                      zIndex: (fullScreenPaneId === pane.id) ? 99999 : (activePaneId === pane.id ? 2 : 1),
                       ...spanStyle
                     }}
                   >
@@ -1247,7 +1455,7 @@ export default function Dashboard() {
                         <button className="ghost" onClick={() => activeNotesSymbol === pane.symbol ? setActiveNotesSymbol(null) : openNotesPanel(pane.symbol)} title="Notes & Checklist" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
                           <CheckSquare size={16} />
                         </button>
-                        {(panes.length > 1 || fullScreenPaneId) && (
+                        {(panes.length > 1 || fullScreenPaneId || isMobile) && (
                           <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
                             {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                           </button>
@@ -1272,6 +1480,7 @@ export default function Dashboard() {
                       onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
                       onAddAlertLayer={addAlertLayer}
                       onDeleteAlert={deleteAlert}
+                      onDeleteAlertsBySymbol={deleteAlertsBySymbol}
                       onMoveAlert={moveAlert}
                       onRearmAlert={rearmAlert}
                       onRateAlert={rateAlert}
@@ -1318,6 +1527,33 @@ export default function Dashboard() {
             </div>
           );
           
+          if (pipWindow === "mobile") {
+            return (
+              <>
+                <div style={{ display: "none" }}>{/* placeholder */}</div>
+                <div 
+                  style={{
+                    position: "fixed", top: pipPos.y, left: pipPos.x, width: 280, height: 260,
+                    zIndex: 99999, background: "var(--bg)", border: "1px solid var(--border)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)", borderRadius: 8, overflow: "hidden",
+                    display: "flex", flexDirection: "column"
+                  }}
+                >
+                  <div 
+                    ref={pipDragRef}
+                    onPointerDown={onPipDragStart}
+                    style={{ background: "var(--panel)", height: 28, flexShrink: 0, cursor: "move", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px" }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: "bold" }}>Floating Chart</span>
+                    <button className="ghost" onClick={openPip} style={{ padding: 4, display: "flex", alignItems: "center", justifyContent: "center" }}><X size={14} /></button>
+                  </div>
+                  <div style={{ flex: 1, position: "relative" }}>
+                    {gridNode}
+                  </div>
+                </div>
+              </>
+            );
+          }
           return pipWindow ? createPortal(gridNode, pipWindow.document.body) : gridNode;
         })()}
         {watchlistOpen && (
@@ -1336,6 +1572,7 @@ export default function Dashboard() {
               onDelete={deleteWatchlist}
               onAddSymbol={() => setPalette("add")}
               onRemoveSymbol={removeSymbolFromList}
+              onReorder={reorderWatchlist}
               symbolFlags={symbolFlags}
               setSymbolFlags={setSymbolFlags}
               onNavUp={layout !== "1" ? handleNavUp : null}
@@ -1361,6 +1598,7 @@ export default function Dashboard() {
           symbol={symbol}
           setSymbol={changeSymbol}
           onDelete={deleteAlert}
+          onDeleteBySymbol={deleteAlertsBySymbol}
           onRearm={rearmAlert}
           onCloseMobile={() => setAlertsOpen(false)}
         />
