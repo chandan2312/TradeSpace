@@ -5,8 +5,8 @@ import { Loader2 } from "lucide-react";
 
 // Fast, keyboard-first symbol search across the entire broker universe.
 // Two modes: "switch" (load chart) or "add" (append to active watchlist).
-export default function SymbolPalette({ mode, onClose, onPick, onAddToList }) {
-  const [q, setQ] = useState("");
+export default function SymbolPalette({ mode, initialQuery = "", onClose, onPick, onAddToList }) {
+  const [q, setQ] = useState(initialQuery);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);

@@ -8,6 +8,7 @@ import ChartPanel from "./ChartPanel";
 import Watchlist from "./Watchlist";
 import AlertsPanel from "./AlertsPanel";
 import SymbolPalette from "./SymbolPalette";
+import TimeframePalette from "./TimeframePalette";
 import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
@@ -112,7 +113,7 @@ export default function Dashboard() {
   }, [panes, layout, activePaneId]);
   const [ticks, setTicks] = useState({}); // SYM -> {bid, ask, digits, dir}
   const [connected, setConnected] = useState(false);
-  const [palette, setPalette] = useState(null); // null | "switch" | "add"
+  const [palette, setPalette] = useState(null); // null | { type: "symbol"|"timeframe", mode?: "switch"|"add", query?: string }
   const [alertDraft, setAlertDraft] = useState(null); // {price} | null
   const [error, setError] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
@@ -1239,12 +1240,34 @@ export default function Dashboard() {
     }
   }, []);
 
-  // ---------- keyboard: Ctrl+K / "/" opens palette ----------
+  // ---------- keyboard: typing to search ----------
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette("switch"); }
-      else if (e.key === "/" && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
-        e.preventDefault(); setPalette("switch");
+      // Ignore if typing in input, select, textarea
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+      if (document.activeElement?.isContentEditable) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette({ type: "symbol", mode: "switch", query: "" });
+        return;
+      }
+      if (e.key === "/") {
+        e.preventDefault();
+        setPalette({ type: "symbol", mode: "switch", query: "" });
+        return;
+      }
+
+      // If user presses a letter without modifiers, open symbol search
+      if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setPalette({ type: "symbol", mode: "switch", query: e.key });
+        return;
+      }
+
+      // If user presses a number or comma without modifiers, open timeframe search
+      if (/^[0-9,]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setPalette({ type: "timeframe", query: e.key === "," ? "" : e.key });
+        return;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1319,7 +1342,7 @@ export default function Dashboard() {
         setTf={changeTf}
         tick={ticks[symbol]}
         connected={connected}
-        onOpenPalette={() => setPalette("switch")}
+        onOpenPalette={() => setPalette({ type: "symbol", mode: "switch", query: "" })}
         onAddAlert={() => setAlertDraft({ price: ticks[symbol]?.bid ?? "" })}
         onOpenAlerts={() => setAlertsOpen(true)}
         onOpenMarketBias={() => setMarketBiasOpen(true)}
@@ -1576,7 +1599,7 @@ export default function Dashboard() {
               onCreate={createWatchlist}
               onRename={renameWatchlist}
               onDelete={deleteWatchlist}
-              onAddSymbol={() => setPalette("add")}
+              onAddSymbol={() => setPalette({ type: "symbol", mode: "add", query: "" })}
               onRemoveSymbol={removeSymbolFromList}
               onReorder={reorderWatchlist}
               symbolFlags={symbolFlags}
@@ -1610,16 +1633,28 @@ export default function Dashboard() {
         />
       </div>
 
-      {palette && (
+      {palette?.type === "symbol" && (
         <SymbolPalette
-          mode={palette}
+          mode={palette.mode}
+          initialQuery={palette.query || ""}
           onClose={() => setPalette(null)}
           onPick={(sym) => {
-            if (palette === "add" && activeListId) addSymbolToList(activeListId, sym);
-            else changeSymbol(sym);
+            if (palette.mode === "add" && activeListId) addSymbolToList(activeListId, sym);
+            else if (palette.mode === "switch") changeSymbol(sym);
             setPalette(null);
           }}
-          onAddToList={(sym) => activeListId && addSymbolToList(activeListId, sym)}
+          onAddToList={(sym) => addSymbolToList(activeListId, sym)}
+        />
+      )}
+
+      {palette?.type === "timeframe" && (
+        <TimeframePalette
+          initialQuery={palette.query || ""}
+          onClose={() => setPalette(null)}
+          onPick={(tfId) => {
+            changeTf(tfId);
+            setPalette(null);
+          }}
         />
       )}
 
