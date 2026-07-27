@@ -877,15 +877,16 @@ function WatchRow({
         background: bgColor,
         opacity: dragging ? 0.4 : 1,
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
-        touchAction: "none",
       }}
     >
-      <div
-        className="wl-row-drag muted"
-        style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5, touchAction: "none" }}
-        title="Drag to reorder"
-        onPointerDown={onGripPointerDown ? (e) => onGripPointerDown(e, sym) : undefined}
-      ><GripVertical size={12} /></div>
+      {Boolean(onGripPointerDown) && (
+        <div
+          className="wl-row-drag muted hide-on-mobile"
+          style={{ display: "flex", alignItems: "center", cursor: "grab", userSelect: "none", opacity: 0.5, touchAction: "none" }}
+          title="Drag to reorder"
+          onPointerDown={(e) => onGripPointerDown(e, sym)}
+        ><GripVertical size={12} /></div>
+      )}
       
       <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 3 }}>

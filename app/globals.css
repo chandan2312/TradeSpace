@@ -370,6 +370,10 @@ input::placeholder { color: var(--muted); }
     align-items: stretch !important;
   }
 
+  .hide-on-mobile {
+    display: none !important;
+  }
+
   .wl-rows {
     flex: 0 0 auto;
     flex-direction: row;
