@@ -1259,7 +1259,13 @@ export default function Dashboard() {
     transition: isDragging ? "none" : "grid-template-columns 0.2s, grid-template-rows 0.2s"
   };
   
-  const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   if (fullScreenPaneId || isMobile) {
     gridStyle.gridTemplateColumns = "100%";

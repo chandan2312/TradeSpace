@@ -116,7 +116,13 @@ export default function Watchlist({
   );
 
   const allWatchlists = [...watchlists, ...virtualWatchlists];
-  const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   
   const baseMainLists = allWatchlists.filter(w => w.type !== "auto" || (isMobile && w._id.includes("star")));
   const autoLists = allWatchlists.filter(w => w.type === "auto" && !(isMobile && w._id.includes("star")));
@@ -333,7 +339,7 @@ export default function Watchlist({
                 <div
                   style={{
                     position: "absolute", right: 0,
-                    ...(typeof window !== "undefined" && window.innerWidth <= 768
+                    ...(isMobile
                        ? { bottom: "100%", marginBottom: 4 }
                        : { top: "100%", marginTop: 4 }),
                     background: "var(--panel)", border: "1px solid var(--border-hi)",
@@ -818,6 +824,25 @@ function WatchRow({
   const [showPalette, setShowPalette] = useState(false);
   const paletteRef = useRef(null);
   const rowRef = useRef(null);
+  const longPressTimer = useRef(null);
+
+  const handleTouchStart = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      setShowPalette(true);
+      longPressTimer.current = null;
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try { navigator.vibrate(50); } catch {}
+      }
+    }, 500);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
 
   useEffect(() => {
     if (current && rowRef.current) {
@@ -872,11 +897,16 @@ function WatchRow({
       onClick={onJump}
       onDoubleClick={onDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setShowPalette(true); }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={cancelLongPress}
+      onTouchEnd={cancelLongPress}
+      onTouchCancel={cancelLongPress}
       title={current ? "Current chart" : `Switch to ${sym}`}
       style={{
         background: bgColor,
         opacity: dragging ? 0.4 : 1,
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
+        WebkitTouchCallout: "none", // Prevent iOS default popup
       }}
     >
       {Boolean(onGripPointerDown) && (

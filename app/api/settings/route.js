@@ -9,12 +9,6 @@ export async function GET() {
     const doc = await settingsCol.findOne({ _id: SETTINGS_DOC_ID });
     let settings = doc?.settings || {};
 
-    // Auto-clear flags if they belong to a previous day (using UTC to avoid dev vs prod server timezone mismatch)
-    const today = new Date().toISOString().split('T')[0];
-    if (settings.flags_date && settings.flags_date !== today) {
-      settings.flags = {};
-    }
-
     return json({ ok: true, settings });
   } catch (err) {
     return json({ ok: false, error: err.message }, 500);
@@ -34,9 +28,6 @@ export async function PATCH(req) {
     const setQuery = {};
     for (const [k, v] of Object.entries(updates)) {
       setQuery[`settings.${k}`] = v;
-      if (k === "flags") {
-        setQuery[`settings.flags_date`] = new Date().toISOString().split('T')[0];
-      }
     }
     setQuery["updatedAt"] = new Date();
 
