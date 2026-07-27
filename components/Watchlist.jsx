@@ -110,7 +110,7 @@ export default function Watchlist({
     { _id: "cat-nzd", name: "🥝 NZD Crosses", symbols: ["NZDUSD", "NZDJPY", "EURNZD", "GBPNZD", "AUDNZD", "NZDCAD", "NZDCHF"], isVirtual: true, type: "auto" },
     { _id: "cat-cad", name: "🍁 CAD Crosses", symbols: ["USDCAD", "CADJPY", "EURCAD", "GBPCAD", "AUDCAD", "NZDCAD", "CADCHF"], isVirtual: true, type: "auto" },
     { _id: "cat-chf", name: "🏔️ CHF Crosses", symbols: ["USDCHF", "CHFJPY", "EURCHF", "GBPCHF", "AUDCHF", "NZDCHF", "CADCHF"], isVirtual: true, type: "auto" },
-    { _id: "cat-idx", name: "📊 Indices", symbols: ["US30", "SPX500", "NAS100", "GER40", "UK100", "JPN225", "AUS200"], isVirtual: true, type: "auto" },
+    { _id: "cat-idx", name: "📊 Indices", symbols: ["US30", "SPX500", "NDX100", "GER30", "UK100", "JP225", "AUS200"], isVirtual: true, type: "auto" },
     { _id: "cat-mtl", name: "🥇 Metals & Energy", symbols: ["XAUUSD", "XAGUSD", "USOIL", "UKOIL"], isVirtual: true, type: "auto" },
     { _id: "cat-cry", name: "₿ Crypto", symbols: ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD"], isVirtual: true, type: "auto" }
   );
