@@ -980,7 +980,7 @@ export default function Dashboard() {
     if (data.ok) setNotesPanelData({ checklist: data.checklist || [], notes: data.notes || "" });
   };
 
-  const handleGridify = (symbols, chosenLayout, newSyncOpts) => {
+  const handleGridify = (symbols, chosenLayout, newSyncOpts, chosenTf) => {
     if (!symbols || !symbols.length) return;
     const count = Math.min(symbols.length, 8);
     let newLayout = chosenLayout;
@@ -1000,7 +1000,7 @@ export default function Dashboard() {
 
     const required = LAYOUT_CONFIG[newLayout]?.count || count;
 
-    const currentTf = panes.find(p => p.id === activePaneId)?.tf || "M15";
+    const currentTf = chosenTf || panes.find(p => p.id === activePaneId)?.tf || "M15";
 
     setPanes(() => {
       const next = [];
@@ -1411,18 +1411,14 @@ export default function Dashboard() {
                     onClick={() => setActivePaneId(pane.id)}
                     onDoubleClick={() => toggleFullscreen(pane.id)}
                     style={{
-                      position: (fullScreenPaneId === pane.id) ? "fixed" : "relative",
-                      top: (fullScreenPaneId === pane.id) ? 0 : "auto",
-                      left: (fullScreenPaneId === pane.id) ? 0 : "auto",
-                      width: (fullScreenPaneId === pane.id) ? "100vw" : "auto",
-                      height: (fullScreenPaneId === pane.id) ? "100dvh" : "auto",
+                      position: "relative",
                       display: isHiddenByFullscreen ? "none" : "flex",
                       flexDirection: "column",
                       minWidth: 0,
                       minHeight: 0,
                       background: "var(--bg)",
-                      boxShadow: (panes.length > 1 && activePaneId === pane.id) ? "inset 0 0 0 2px var(--accent)" : "none",
-                      zIndex: (fullScreenPaneId === pane.id) ? 99999 : (activePaneId === pane.id ? 2 : 1),
+                      boxShadow: (panes.length > 1 && activePaneId === pane.id && !fullScreenPaneId) ? "inset 0 0 0 2px var(--accent)" : "none",
+                      zIndex: activePaneId === pane.id ? 2 : 1,
                       ...spanStyle
                     }}
                   >

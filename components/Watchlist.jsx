@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid, Zap, ChevronDown } from "lucide-react";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 
+const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
+const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
+
 // Right-sidebar watchlist with multiple named lists (tabs), create/rename/delete,
 // live bid/spread per symbol, click-to-switch, and drag-to-reorder rows.
 export default function Watchlist({
@@ -145,6 +148,7 @@ export default function Watchlist({
   const [gridifyFlags, setGridifyFlags] = useState([]);
   const [selectedGridifyLayout, setSelectedGridifyLayout] = useState(null);
   const [gridifySync, setGridifySync] = useState({ symbol: false, tf: true, time: true, crosshair: true });
+  const [gridifyTf, setGridifyTf] = useState("M15");
 
   const activeAlertSymbols = new Set(
     alerts.filter((a) => a.status === "active").map((a) => a.symbol)
@@ -750,6 +754,24 @@ export default function Watchlist({
             )}
 
             {gridifySelection.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, marginBottom: 8, fontWeight: 600, opacity: 0.8 }}>Timeframe:</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {TFS.map((t) => (
+                    <button
+                      key={t}
+                      className={gridifyTf === t ? "primary" : "ghost"}
+                      onClick={() => setGridifyTf(t)}
+                      style={{ padding: "4px 8px", fontSize: 11, borderRadius: 4 }}
+                    >
+                      {TF_LABEL[t]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {gridifySelection.length > 0 && (
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 12, marginBottom: 8, fontWeight: 600, opacity: 0.8 }}>Sync Options:</div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -778,7 +800,7 @@ export default function Watchlist({
                      const targetCount = count === 7 ? 8 : count;
                      const availableLayouts = Object.keys(LAYOUT_CONFIG).filter(k => LAYOUT_CONFIG[k].count === targetCount);
                      const layoutToUse = selectedGridifyLayout && availableLayouts.includes(selectedGridifyLayout) ? selectedGridifyLayout : availableLayouts[0];
-                     onGridify(gridifySelection, layoutToUse, gridifySync);
+                     onGridify(gridifySelection, layoutToUse, gridifySync, gridifyTf);
                   }
                   setGridifyOpen(false);
                 }}
