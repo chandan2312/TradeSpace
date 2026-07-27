@@ -137,10 +137,58 @@ export default function Watchlist({
   ];
 
   const list = allWatchlists.find((w) => w._id === activeListId) || null;
-  const [editing, setEditing] = useState(null); // list id being renamed, or "new"
+  const [editing, setEditing] = useState(null);
+  const [activeTab, setActiveTab] = useState("main"); // main or auto
   const [name, setName] = useState("");
   const [drag, setDrag] = useState(null); // symbol being dragged
   const [over, setOver] = useState(null); // symbol currently hovered
+  
+  const [virtualSorts, setVirtualSorts] = useState(() => {
+    if (typeof window !== "undefined") {
+      try { return JSON.parse(localStorage.getItem("ts_virtual_sorts")) || {}; } catch { return {}; }
+    }
+    return {};
+  });
+
+  const saveVirtualSort = useCallback((listId, sortedSymbols) => {
+    const next = { ...virtualSorts, [listId]: sortedSymbols };
+    setVirtualSorts(next);
+    if (typeof window !== "undefined") localStorage.setItem("ts_virtual_sorts", JSON.stringify(next));
+  }, [virtualSorts]);
+
+  const renderedSymbols = useMemo(() => {
+    if (!list) return [];
+    if (!list.isVirtual) return list.symbols || [];
+    const syms = [...(list.symbols || [])];
+    const sortOrder = virtualSorts[list._id];
+    if (sortOrder) {
+      syms.sort((a, b) => {
+        const ia = sortOrder.indexOf(a);
+        const ib = sortOrder.indexOf(b);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return 1;
+        if (ib !== -1) return -1;
+        return a.localeCompare(b);
+      });
+    }
+    return syms;
+  }, [list, virtualSorts]);
+
+  const reorder = useCallback(async (listObj, draggedSym, droppedSym, onReorderFn) => {
+    const items = listObj.isVirtual ? [...renderedSymbols] : [...(listObj.symbols || [])];
+    const dragIdx = items.indexOf(draggedSym);
+    const dropIdx = items.indexOf(droppedSym);
+    if (dragIdx < 0 || dropIdx < 0) return;
+    items.splice(dragIdx, 1);
+    items.splice(dropIdx, 0, draggedSym);
+    
+    if (listObj.isVirtual) {
+      saveVirtualSort(listObj._id, items);
+    } else {
+      if (onReorderFn) onReorderFn(listObj._id, items);
+    }
+  }, [renderedSymbols, saveVirtualSort]);
+
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [gridifyOpen, setGridifyOpen] = useState(false);
   const [autoMenuOpen, setAutoMenuOpen] = useState(false);
@@ -541,7 +589,7 @@ export default function Watchlist({
           </div>
         )}
 
-        {list && (list.symbols || []).map((sym, i) => (
+        {list && renderedSymbols.map((sym, i) => (
           <WatchRow
             key={sym + i}
             sym={sym}
@@ -565,13 +613,13 @@ export default function Watchlist({
             }}
             dragging={drag === sym}
             dropTarget={over === sym && drag && drag !== sym}
-            onDragStart={!list.isVirtual ? (e) => {
+            onDragStart={(e) => {
               try {
                 e.dataTransfer.setData("text/plain", sym);
                 e.dataTransfer.effectAllowed = "move";
               } catch {}
               setDrag(sym);
-            } : undefined}
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -592,7 +640,7 @@ export default function Watchlist({
               e.preventDefault();
               setDrag(null); setOver(null);
             }}
-            onGripPointerDown={!list.isVirtual ? (e, gripSym) => {
+            onGripPointerDown={(e, gripSym) => {
               e.preventDefault();
               e.stopPropagation();
               // Start touch drag immediately when grip is pressed
@@ -630,7 +678,7 @@ export default function Watchlist({
               window.addEventListener("pointerup", onUp);
               window.addEventListener("touchmove", onMove, { passive: true });
               window.addEventListener("touchend", onUp);
-            } : undefined}
+            }}
             flag={symbolFlags?.[sym]}
             onFlag={(color) => setSymbolFlags(p => {
               const next = { ...p };
