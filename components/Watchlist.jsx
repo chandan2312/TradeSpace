@@ -541,6 +541,7 @@ export default function Watchlist({
           <WatchRow
             key={sym + i}
             sym={sym}
+            isMobile={isMobile}
             tick={ticks[sym]}
             dailyOpen={typeof dailyOpens[sym] === "number" ? dailyOpens[sym] : null}
             current={sym === symbol}
@@ -819,7 +820,7 @@ async function reorder(list, fromSym, toSym, onReorder) {
 function WatchRow({
   sym, tick, dailyOpen, current, hasAlert, onJump, onDoubleClick, onRemove,
   dragging, dropTarget, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
-  onGripPointerDown, flag, onFlag
+  onGripPointerDown, flag, onFlag, isMobile
 }) {
   const [showPalette, setShowPalette] = useState(false);
   const paletteRef = useRef(null);
@@ -888,8 +889,8 @@ function WatchRow({
       ref={rowRef}
       className="wl-row-item"
       data-sym={sym}
-      draggable={Boolean(onDragStart)}
-      onDragStart={onDragStart}
+      draggable={!isMobile && Boolean(onDragStart)}
+      onDragStart={!isMobile ? onDragStart : undefined}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
