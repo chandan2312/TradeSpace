@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [loopColors, setLoopColors] = useState(["red"]);
 
   const [alerts, setAlerts] = useState([]);
+  const [alertsLoaded, setAlertsLoaded] = useState(false);
   const [watchlists, setWatchlists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
   const watchlistsRef = useRef(watchlists);
@@ -629,6 +630,7 @@ export default function Dashboard() {
     else sonnerToast(text);
   }, []);
 
+
   const loadAlerts = useCallback(async () => {
     const data = await api("/api/alerts");
     if (data.ok) {
@@ -645,6 +647,7 @@ export default function Dashboard() {
         return true;
       });
       setAlerts(filtered);
+      setAlertsLoaded(true);
     }
   }, []);
 
@@ -1161,7 +1164,7 @@ export default function Dashboard() {
       if (Math.abs(existing.price - price) > 0.000001) {
         await api(`/api/alerts/${existing._id}`, {
           method: "PATCH",
-          body: JSON.stringify({ price }),
+          body: JSON.stringify({ price, status: "active" }),
         });
         loadAlerts();
       }
@@ -1538,7 +1541,7 @@ export default function Dashboard() {
                       onCreateChainAlert={createChainAlert}
                       onJoinChainAlert={joinChainAlert}
                       indicators={indicators}
-                      onAutoAlert={handleAutoAlert}
+                      onAutoAlert={alertsLoaded ? handleAutoAlert : null}
                       onOpenSettings={() => setChartSettingsOpen(true)}
                       isActive={activePaneId === pane.id}
                       // sync logic
