@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid, Zap, ChevronDown } from "lucide-react";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 
