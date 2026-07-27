@@ -1625,9 +1625,9 @@ export default function Dashboard() {
 
       {alertDraft && (
         <AlertDialog
-          symbol={symbol}
+          symbol={alertDraft.symbol || symbol}
           draft={alertDraft}
-          marketPrice={ticks[symbol]?.bid}
+          marketPrice={ticks[alertDraft.symbol || symbol]?.bid}
           onCancel={() => setAlertDraft(null)}
           onSave={createAlert}
         />
@@ -1656,8 +1656,18 @@ export default function Dashboard() {
 
       {correlatedOpen && (
         <CorrelatedPairsModal
-          symbol={panes.find(p => p.id === activePaneId)?.symbol || "EURUSD"}
+          symbol={panes.find(p => p.id === activePaneId)?.symbol || Object.keys(symbolFlags)[0] || "EURUSD"}
           indicators={indicators}
+          alerts={alerts}
+          onAddAlert={(sym, price) => setAlertDraft({ symbol: sym, price })}
+          onAddAlertLayer={addAlertLayer}
+          onDeleteAlert={deleteAlert}
+          onDeleteAlertsBySymbol={deleteAlertsBySymbol}
+          onMoveAlert={moveAlert}
+          onRearmAlert={rearmAlert}
+          onRateAlert={rateAlert}
+          onCreateChainAlert={createChainAlert}
+          onJoinChainAlert={joinChainAlert}
           onClose={() => setCorrelatedOpen(false)}
         />
       )}

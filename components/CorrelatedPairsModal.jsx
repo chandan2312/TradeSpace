@@ -96,7 +96,12 @@ function MiniBiasScore({ symbol, tf }) {
   );
 }
 
-export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
+export default function CorrelatedPairsModal({ 
+  symbol, indicators, onClose,
+  alerts = [],
+  onAddAlert, onAddAlertLayer, onDeleteAlert, onDeleteAlertsBySymbol,
+  onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert
+}) {
   const [step, setStep] = useState(1); // 1: Select Pairs, 2: View Charts
   const [candidates, setCandidates] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -392,12 +397,21 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
                       symbol={sym} 
                       tf={tf} 
                       isActive={true} 
-                      alerts={[]} 
+                      alerts={alerts.filter(a => a.symbol === sym && (a.status === "active" || a.status === "triggered" || a.status === "pending_chain"))}
                       setAlerts={() => {}} 
                       indicators={indicators || {}}
                       tick={null}
                       barsCache={barsCache}
                       paneId={sym}
+                      onAddAlert={(price) => onAddAlert?.(sym, price)}
+                      onAddAlertLayer={onAddAlertLayer}
+                      onDeleteAlert={onDeleteAlert}
+                      onDeleteAlertsBySymbol={onDeleteAlertsBySymbol}
+                      onMoveAlert={onMoveAlert}
+                      onRearmAlert={onRearmAlert}
+                      onRateAlert={onRateAlert}
+                      onCreateChainAlert={onCreateChainAlert}
+                      onJoinChainAlert={onJoinChainAlert}
                       syncOpts={syncOpts}
                       syncedLogicalRange={syncedLogicalRange}
                       setSyncedLogicalRange={setSyncedLogicalRange}
