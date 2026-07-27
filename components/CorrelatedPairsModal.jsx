@@ -106,6 +106,14 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [syncedLogicalRange, setSyncedLogicalRange] = useState(null);
   const [syncedCrosshair, setSyncedCrosshair] = useState(null);
+  
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const barsCache = useRef(new Map());
 
@@ -336,12 +344,13 @@ export default function CorrelatedPairsModal({ symbol, indicators, onClose }) {
           <div style={{
             flex: 1, minHeight: 0,
             display: "grid",
-            gridTemplateColumns: fullScreenSym ? "1fr" : `repeat(${cfg.cols}, 1fr)`,
-            gridTemplateRows: fullScreenSym ? "1fr" : `repeat(${cfg.rows}, 1fr)`,
-            gap: 8, overflowY: fullScreenSym ? "hidden" : "auto"
+            gridTemplateColumns: (fullScreenSym || isMobile) ? "1fr" : `repeat(${cfg.cols}, 1fr)`,
+            gridTemplateRows: fullScreenSym ? "1fr" : (isMobile ? "auto" : `repeat(${cfg.rows}, 1fr)`),
+            gridAutoRows: (isMobile && !fullScreenSym) ? "350px" : undefined,
+            gap: 8, overflowY: fullScreenSym ? "hidden" : "auto", overflowX: "hidden"
           }}>
             {displaySymbols.map((sym, idx) => {
-              const spanStyle = (!fullScreenSym && cfg.spans && cfg.spans[idx]) ? {
+              const spanStyle = (!fullScreenSym && !isMobile && cfg.spans && cfg.spans[idx]) ? {
                 gridColumn: `${cfg.spans[idx][0]} / ${cfg.spans[idx][2]}`,
                 gridRow: `${cfg.spans[idx][1]} / ${cfg.spans[idx][3]}`
               } : {};
