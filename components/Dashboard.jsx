@@ -81,7 +81,7 @@ export default function Dashboard() {
   const [fullScreenPaneId, setFullScreenPaneId] = useState(null);
   const [preFullScreenPanes, setPreFullScreenPanes] = useState(null);
   const [layout, setLayout] = useState("1"); // "1", "2v", "2h", "4", "6", "8"
-  const [gridFractions, setGridFractions] = useState({ col: 50, row: 50 });
+  const [gridFractions, setGridFractions] = useState({});
   const [isDragging, setIsDragging] = useState(false);
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [watchlistOpen, setWatchlistOpen] = useState(true);
@@ -1275,8 +1275,19 @@ export default function Dashboard() {
   }, []);
 
   // ---------- render helpers ----------
-  const cX = gridFractions.col;
-  const cY = gridFractions.row;
+  const getFractions = () => {
+    const config = LAYOUT_CONFIG[layout] || LAYOUT_CONFIG["1"];
+    let layoutFracs = gridFractions[layout];
+    if (!layoutFracs || !layoutFracs.cols || layoutFracs.cols.length !== config.cols || layoutFracs.rows.length !== config.rows) {
+      layoutFracs = {
+        cols: new Array(config.cols).fill(100 / config.cols),
+        rows: new Array(config.rows).fill(100 / config.rows),
+      };
+    }
+    return layoutFracs;
+  };
+  const fracs = getFractions();
+
   let gridStyle = { 
     flex: 1, display: "grid", gap: "1px", background: "var(--border)", minHeight: 0,
     transition: isDragging ? "none" : "grid-template-columns 0.2s, grid-template-rows 0.2s"
@@ -1293,35 +1304,50 @@ export default function Dashboard() {
   if (fullScreenPaneId || isMobile) {
     gridStyle.gridTemplateColumns = "100%";
     gridStyle.gridTemplateRows = "100%";
-  } else if (layout === "2v") {
-    gridStyle.gridTemplateColumns = `${cX}% ${100 - cX}%`;
-    gridStyle.gridTemplateRows = "100%";
-  } else if (layout === "2h") {
-    gridStyle.gridTemplateColumns = "100%";
-    gridStyle.gridTemplateRows = `${cY}% ${100 - cY}%`;
-  } else if (layout === "4") {
-    gridStyle.gridTemplateColumns = `${cX}% ${100 - cX}%`;
-    gridStyle.gridTemplateRows = `${cY}% ${100 - cY}%`;
   } else {
-    const config = LAYOUT_CONFIG[layout] || LAYOUT_CONFIG["1"];
-    gridStyle.gridTemplateColumns = `repeat(${config.cols}, 1fr)`;
-    gridStyle.gridTemplateRows = `repeat(${config.rows}, 1fr)`;
+    gridStyle.gridTemplateColumns = fracs.cols.map(f => `${f}%`).join(" ");
+    gridStyle.gridTemplateRows = fracs.rows.map(f => `${f}%`).join(" ");
   }
 
   // Define splitters
-  const onDragStart = (e, type) => {
+  const onDragStart = (e, type, index) => {
     e.preventDefault();
     setIsDragging(true);
-    const startPos = type === "col" ? e.clientX : e.clientY;
-    const startFrac = gridFractions[type];
+    const startPos = type === "cols" ? e.clientX : e.clientY;
+    
+    const startFracLeft = fracs[type][index];
+    const startFracRight = fracs[type][index + 1];
+    
     const container = e.target.parentElement;
-    const size = type === "col" ? container.clientWidth : container.clientHeight;
+    const size = type === "cols" ? container.clientWidth : container.clientHeight;
 
     const onMove = (ev) => {
-      const delta = type === "col" ? ev.clientX - startPos : ev.clientY - startPos;
+      const delta = type === "cols" ? ev.clientX - startPos : ev.clientY - startPos;
       const deltaFrac = (delta / size) * 100;
-      const newFrac = Math.max(10, Math.min(90, startFrac + deltaFrac));
-      setGridFractions(p => ({ ...p, [type]: newFrac }));
+      
+      let newLeft = startFracLeft + deltaFrac;
+      let newRight = startFracRight - deltaFrac;
+      
+      if (newLeft < 5) {
+        newLeft = 5;
+        newRight = startFracLeft + startFracRight - 5;
+      } else if (newRight < 5) {
+        newRight = 5;
+        newLeft = startFracLeft + startFracRight - 5;
+      }
+
+      setGridFractions(prev => {
+        const config = LAYOUT_CONFIG[layout] || LAYOUT_CONFIG["1"];
+        const prevLayoutFracs = prev[layout] || {
+           cols: new Array(config.cols).fill(100 / config.cols),
+           rows: new Array(config.rows).fill(100 / config.rows),
+        };
+        const newArr = [...prevLayoutFracs[type]];
+        newArr[index] = newLeft;
+        newArr[index + 1] = newRight;
+        
+        return { ...prev, [layout]: { ...prevLayoutFracs, [type]: newArr } };
+      });
     };
 
     const onUp = () => {
@@ -1529,26 +1555,36 @@ export default function Dashboard() {
               })}
 
               {/* Grid Splitters */}
-              {!fullScreenPaneId && (layout === "2v" || layout === "4") && (
-                <div 
-                  className="hide-mobile"
-                  onMouseDown={(e) => onDragStart(e, "col")}
-                  style={{
-                    position: "absolute", top: 0, left: `calc(${cX}% - 3px)`, width: 6, height: "100%",
-                    cursor: "col-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
-                  }}
-                />
-              )}
-              {!fullScreenPaneId && (layout === "2h" || layout === "4") && (
-                <div 
-                  className="hide-mobile"
-                  onMouseDown={(e) => onDragStart(e, "row")}
-                  style={{
-                    position: "absolute", left: 0, top: `calc(${cY}% - 3px)`, height: 6, width: "100%",
-                    cursor: "row-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
-                  }}
-                />
-              )}
+              {!fullScreenPaneId && fracs.cols.map((_, i) => {
+                if (i === fracs.cols.length - 1) return null;
+                const leftOffset = fracs.cols.slice(0, i + 1).reduce((sum, f) => sum + f, 0);
+                return (
+                  <div 
+                    key={`col-split-${i}`}
+                    className="hide-mobile"
+                    onMouseDown={(e) => onDragStart(e, "cols", i)}
+                    style={{
+                      position: "absolute", top: 0, left: `calc(${leftOffset}% - 3px)`, width: 6, height: "100%",
+                      cursor: "col-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
+                    }}
+                  />
+                );
+              })}
+              {!fullScreenPaneId && fracs.rows.map((_, i) => {
+                if (i === fracs.rows.length - 1) return null;
+                const topOffset = fracs.rows.slice(0, i + 1).reduce((sum, f) => sum + f, 0);
+                return (
+                  <div 
+                    key={`row-split-${i}`}
+                    className="hide-mobile"
+                    onMouseDown={(e) => onDragStart(e, "rows", i)}
+                    style={{
+                      position: "absolute", left: 0, top: `calc(${topOffset}% - 3px)`, height: 6, width: "100%",
+                      cursor: "row-resize", zIndex: 5, background: isDragging ? "var(--brand)" : "transparent"
+                    }}
+                  />
+                );
+              })}
             </div>
           );
           
