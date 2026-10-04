@@ -9,7 +9,14 @@ Setup (Windows VPS):
     pip install MetaTrader5
 
 Run:
-    set MT5_TOKEN=chandan-yashwant-chaudhari-2312
+    # Option 1: Auto-detects token from .env in Tradespace folder:
+    python mt5_server.py
+
+    # Option 2: Pass token directly via CLI flag:
+    python mt5_server.py --token chandan-yashwant-chaudhari-2312
+
+    # Option 3: Set environment variable in PowerShell:
+    $env:MT5_TOKEN="chandan-yashwant-chaudhari-2312"
     python mt5_server.py --host 0.0.0.0 --port 8765
 
 In TradeSpace .env:
@@ -48,6 +55,28 @@ try:
     import MetaTrader5 as mt5
 except ImportError:
     mt5 = None
+
+def _load_env_file():
+    """Auto-load variables from .env in cwd or script directory if present."""
+    search_dirs = [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]
+    for d in search_dirs:
+        env_file = os.path.join(d, ".env")
+        if os.path.isfile(env_file):
+            try:
+                with open(env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+_load_env_file()
 
 TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
@@ -895,10 +924,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    global TOKEN
+    parser = argparse.ArgumentParser(description="TradeSpace Institutional MT5 Bridge Server")
     parser.add_argument("--host", default="0.0.0.0", help="0.0.0.0 to accept remote connections")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
+    parser.add_argument("--token", default=None, help="Auth token (overrides MT5_TOKEN / NEXUS_MT5_REMOTE_TOKEN from .env)")
     args = parser.parse_args()
+
+    if args.token:
+        TOKEN = args.token
+    elif not TOKEN:
+        TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 
     print("=" * 60, flush=True)
     print("TradeSpace Institutional MT5 Bridge Server", flush=True)
