@@ -19,7 +19,8 @@ import { startAlgoLoop } from "./lib/algo/engine.js";
 import { startExecutorLoop } from "./lib/executor/engine.js";
 import { startAutonomousLoop } from "./lib/autonomous/engine.js";
 
-const dev = process.env.NODE_ENV !== "production";
+// Default to production unless explicitly started with NODE_ENV=development or dev script
+const dev = process.env.NODE_ENV === "development";
 const PORT = Number(process.env.PORT || 3000);
 
 function checkEnv() {

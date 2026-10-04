@@ -4,9 +4,9 @@
   "description": "MT5 live charts with TradingView-style alerts -> Telegram",
   "type": "module",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
     "build": "next build",
-    "start": "NODE_ENV=production node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
