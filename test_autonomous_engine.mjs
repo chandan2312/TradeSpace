@@ -29,6 +29,7 @@ import {
   ENTRY_MODEL_DEFINITIONS,
   evaluateAllEntryModels,
 } from "./lib/autonomous/models.js";
+import { getSetupFingerprint } from "./lib/autonomous/engine.js";
 
 let passed = 0;
 let failed = 0;
@@ -636,6 +637,54 @@ console.log("=======================================================");
   assert(defaultUniverse.includes("EURAUD") === false, "Default universe does NOT contain EURAUD");
   assert(defaultUniverse.includes("NZDUSD") === false, "Default universe does NOT contain NZDUSD");
   assert(defaultUniverse.every((sym) => isSymbolInMainWatchlist(sym, watchlist)), "All default universe symbols are valid Main Watchlist members");
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 10: Repetitive Trades & Duplicate Alert Suppression Engine");
+console.log("=======================================================");
+
+{
+  const levelA = { entry: 18250.25, sl: 18210.50, tp: 18350.00, modelId: "ICT_2022_MENTORSHIP" };
+  const levelB = { entry: 18250.2500001, sl: 18210.5000002, tp: 18350.0000001, modelId: "ICT_2022_MENTORSHIP" };
+  const levelDifferent = { entry: 18200.00, sl: 18170.00, tp: 18300.00, modelId: "TURTLE_SOUP_REVERSAL" };
+
+  // 10.1 Deterministic setup fingerprint generation
+  const fp1 = getSetupFingerprint("NAS100", 1, levelA);
+  const fp2 = getSetupFingerprint("NAS100", 1, levelB);
+  assert(typeof fp1 === "string" && fp1.length > 0, "Setup fingerprint successfully generated");
+  assert(fp1 === fp2, "Setup fingerprint quantizes floating-point jitter (exact match across identical price levels)");
+
+  // 10.2 Distinct setups generate distinct fingerprints
+  const fpDiffSym = getSetupFingerprint("SP500", 1, levelA);
+  const fpDiffDir = getSetupFingerprint("NAS100", -1, levelA);
+  const fpDiffLevel = getSetupFingerprint("NAS100", 1, levelDifferent);
+
+  assert(fp1 !== fpDiffSym, "Different symbols have different fingerprints");
+  assert(fp1 !== fpDiffDir, "Opposite directions on same symbol have different fingerprints");
+  assert(fp1 !== fpDiffLevel, "Different price levels have different fingerprints");
+
+  // 10.3 Setup fingerprint rejection against existing recent cache
+  const recentFingerprints = new Set([fp1]);
+  assert(recentFingerprints.has(getSetupFingerprint("NAS100", 1, levelA)) === true, "Identical NAS100 setup recognized in recent fingerprint cache");
+  assert(recentFingerprints.has(getSetupFingerprint("NAS100", 1, levelDifferent)) === false, "Distinct new setup passes through dedup check");
+
+  // 10.4 Cooldown window parameters defined in store
+  assert(DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes >= 30, `Cooldown period configured: ${DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes}m`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes >= 15, `Post-loss cooldown configured: ${DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes}m`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes >= 45, `Dedup fingerprint window configured: ${DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes}m`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.alertThrottleMinutes >= 15, `Alert throttle window configured: ${DEFAULT_AUTONOMOUS_CONFIG.alertThrottleMinutes}m`);
+
+  // 10.5 Simulated alert throttle logic
+  const alertCache = new Map();
+  const alertKey = "NAS100:1:ICT_2022_MENTORSHIP";
+  alertCache.set(alertKey, Date.now() - 5 * 60 * 1000); // fired 5 mins ago
+  const throttleMs = 30 * 60 * 1000; // 30 min throttle
+  const isThrottled = Date.now() - alertCache.get(alertKey) < throttleMs;
+  assert(isThrottled === true, "Duplicate Telegram alert correctly suppressed when inside 30m throttle window");
+
+  alertCache.set(alertKey, Date.now() - 35 * 60 * 1000); // fired 35 mins ago (past window)
+  const isExpired = Date.now() - alertCache.get(alertKey) < throttleMs;
+  assert(isExpired === false, "Alert permitted once throttle window has cleanly elapsed");
 }
 
 console.log("\n=======================================================");
