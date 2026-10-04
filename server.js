@@ -6,7 +6,9 @@
 // All REST lives in app/api/* as Next Route Handlers and shares state with us
 // via the globalThis singletons in lib/*.
 import "dotenv/config";
+import fs from "fs";
 import http from "http";
+import https from "https";
 import next from "next";
 import { WebSocketServer } from "ws";
 
@@ -43,7 +45,11 @@ async function main() {
   const handle = nextApp.getRequestHandler();
   const nextUpgrade = nextApp.getUpgradeHandler();
 
-  const server = http.createServer((req, res) => handle(req, res));
+  // HTTPS when cert.pem+key.pem exist (needed for PWA install / secure browser access), else HTTP.
+  const useHttps = fs.existsSync("./cert.pem") && fs.existsSync("./key.pem");
+  const server = useHttps
+    ? https.createServer({ cert: fs.readFileSync("./cert.pem"), key: fs.readFileSync("./key.pem") }, (req, res) => handle(req, res))
+    : http.createServer((req, res) => handle(req, res));
 
   // ---- WebSocket: /ws -------------------------------------------------
   const wss = new WebSocketServer({ noServer: true });
@@ -97,7 +103,7 @@ async function main() {
   startAutonomousLoop();
 
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[tradespace] http://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);
+    console.log(`[tradespace] ${useHttps ? "https" : "http"}://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);
   });
 
   // ---- graceful shutdown ----------------------------------------------
