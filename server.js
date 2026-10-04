@@ -104,7 +104,13 @@ async function main() {
   startAutonomousLoop();
 
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[tradespace] ${useHttps ? "https" : "http"}://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);
+    const proto = useHttps ? "https" : "http";
+    console.log("\n=======================================================");
+    console.log("🚀 TradeSpace Enterprise is LIVE & LISTENING!");
+    console.log(`📡 Protocol: ${proto.toUpperCase()} | Port: ${PORT} | Mode: ${dev ? "development" : "production"}`);
+    console.log(`🌐 Dashboard:          ${proto}://localhost:${PORT}`);
+    console.log(`🤖 Autonomous Cockpit: ${proto}://localhost:${PORT}/autonomous`);
+    console.log("=======================================================\n");
   });
 
   // ---- graceful shutdown ----------------------------------------------
