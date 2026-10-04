@@ -29,7 +29,8 @@ import {
   ENTRY_MODEL_DEFINITIONS,
   evaluateAllEntryModels,
 } from "./lib/autonomous/models.js";
-import { getSetupFingerprint } from "./lib/autonomous/engine.js";
+import { getSetupFingerprint, getExhaustedTodayFingerprints } from "./lib/autonomous/engine.js";
+import { getStartOfTradingDay } from "./lib/autonomous/timeslots.js";
 
 let passed = 0;
 let failed = 0;
@@ -685,6 +686,121 @@ console.log("=======================================================");
   alertCache.set(alertKey, Date.now() - 35 * 60 * 1000); // fired 35 mins ago (past window)
   const isExpired = Date.now() - alertCache.get(alertKey) < throttleMs;
   assert(isExpired === false, "Alert permitted once throttle window has cleanly elapsed");
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 11: Day-Scoped Trade Idea Exhaustion Guard");
+console.log("=======================================================");
+{
+  // 11.1 Verify getStartOfTradingDay() calculation
+  const now = new Date();
+  const dayStart = getStartOfTradingDay(now);
+  assert(typeof dayStart === "number" && dayStart > 0, "getStartOfTradingDay returns a valid timestamp");
+  assert(dayStart <= now.getTime(), "Trading day start is in the past or exactly current moment");
+  assert(now.getTime() - dayStart <= 86400000 + 3600000, "Trading day start is within 25 hours of now");
+
+  const dayStartDate = new Date(dayStart);
+  const eetParts = getEetTime(dayStartDate);
+  assert(eetParts.h === 0 && eetParts.m === 0, `Trading day starts at 00:00 EET midnight (observed: ${eetParts.h}:${eetParts.m})`);
+
+  // 11.2 Exhausted Idea Fingerprint Mock Collection
+  const levelNAS = {
+    entry: 20150.25,
+    sl: 20110.0,
+    tp: 20250.75,
+    type: "FVG",
+    modelId: "ICT_2022",
+  };
+  const nasFingerprint = getSetupFingerprint("NAS100", 1, levelNAS, "ICT_2022");
+
+  const levelGold = {
+    entry: 2650.5,
+    sl: 2645.0,
+    tp: 2665.0,
+    type: "ORDER_BLOCK",
+    modelId: "OTE_CONTINUATION",
+  };
+  const goldFingerprint = getSetupFingerprint("XAUUSD", 1, levelGold, "OTE_CONTINUATION");
+
+  // Mock Mongo Trades Collection
+  // Today's trading session started at dayStart. We create trades inside today's session:
+  const mockTrades = [
+    // Completed TP today (e.g. 20 minutes after session open)
+    {
+      symbol: "NAS100",
+      status: "closed_tp",
+      fingerprint: nasFingerprint,
+      closedAt: new Date(dayStart + 20 * 60 * 1000),
+      realizedR: 2.5,
+    },
+    // Completed SL today (e.g. 35 minutes after session open)
+    {
+      symbol: "XAUUSD",
+      status: "closed_sl",
+      fingerprint: goldFingerprint,
+      closedAt: new Date(dayStart + 35 * 60 * 1000),
+      realizedR: -1.0,
+    },
+    // Staged/Cancelled today - idea was NOT filled, level was just invalidated before fill
+    {
+      symbol: "EURUSD",
+      status: "invalidated",
+      fingerprint: "EURUSD:1:ICT_2022:1.085:1.083:1.090",
+      closedAt: new Date(dayStart + 40 * 60 * 1000),
+    },
+    // Trade completed yesterday (before today's dayStart rollover)
+    {
+      symbol: "DJ30",
+      status: "closed_tp",
+      fingerprint: "DJ30:1:TURTLE_SOUP:42000:41900:42300",
+      closedAt: new Date(dayStart - 3600 * 1000), // 1 hour before today's rollover
+    },
+  ];
+
+  const mockTradesCol = {
+    find: (query) => ({
+      toArray: async () => {
+        return mockTrades.filter((t) => {
+          if (query.status && query.status.$in) {
+            if (!query.status.$in.includes(t.status)) return false;
+          }
+          if (query.fingerprint && query.fingerprint.$exists) {
+            if (!t.fingerprint) return false;
+          }
+          if (query.$or) {
+            const matchesOr = query.$or.some((clause) => {
+              if (clause.closedAt && clause.closedAt.$gte) {
+                return t.closedAt >= clause.closedAt.$gte;
+              }
+              if (clause.updatedAt && clause.updatedAt.$gte) {
+                return (t.updatedAt || t.closedAt) >= clause.updatedAt.$gte;
+              }
+              return false;
+            });
+            if (!matchesOr) return false;
+          }
+          return true;
+        });
+      },
+    }),
+  };
+
+  const exhaustedSet = await getExhaustedTodayFingerprints(mockTradesCol, dayStart);
+
+  // 11.3 Assert TP trade idea is exhausted today
+  assert(exhaustedSet.has(nasFingerprint) === true, "NAS100 closed_tp trade idea is permanently flagged as EXHAUSTED for today");
+
+  // 11.4 Assert SL trade idea is exhausted today
+  assert(exhaustedSet.has(goldFingerprint) === true, "XAUUSD closed_sl trade idea is permanently flagged as EXHAUSTED for today");
+
+  // 11.5 Assert un-filled / invalidated setups are NOT considered exhausted
+  assert(exhaustedSet.has("EURUSD:1:ICT_2022:1.085:1.083:1.090") === false, "Invalidated (unfilled) setup is NOT marked exhausted (re-entry allowed if setup forms cleanly)");
+
+  // 11.6 Assert yesterday's trade is NOT in today's exhausted set
+  assert(exhaustedSet.has("DJ30:1:TURTLE_SOUP:42000:41900:42300") === false, "Yesterday's completed trade resets cleanly on new trading day");
+
+  // 11.7 Verify store configuration default
+  assert(DEFAULT_AUTONOMOUS_CONFIG.exhaustedIdeaScope === "day", "store.js config default includes exhaustedIdeaScope: 'day'");
 }
 
 console.log("\n=======================================================");
