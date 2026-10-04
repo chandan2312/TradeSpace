@@ -610,6 +610,35 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
 }
 
 console.log("\n=======================================================");
+console.log("TEST SUITE 9: Watchlist Alert Filtering & Rogue Trade Purge");
+console.log("=======================================================");
+
+{
+  const watchlist = ["NAS100", "XAUUSD", "EURUSD.I", "DJ30", "SP500", "GER40", "BTCUSD"];
+
+  // 9.1 Staging & Alert Guard: Allowed symbols
+  assert(isSymbolInMainWatchlist("NAS100", watchlist) === true, "NAS100 is permitted to stage and alert");
+  assert(isSymbolInMainWatchlist("EURUSD.I", watchlist) === true, "EURUSD.I is permitted to stage and alert");
+  assert(isSymbolInMainWatchlist("EURUSD", watchlist) === true, "EURUSD (broker alias) is permitted to stage and alert");
+  assert(isSymbolInMainWatchlist("XAUUSD", watchlist) === true, "XAUUSD is permitted to stage and alert");
+  assert(isSymbolInMainWatchlist("DJ30", watchlist) === true, "DJ30 is permitted to stage and alert");
+
+  // 9.2 Staging & Alert Guard: Blocked symbols (never stage or send Telegram alerts)
+  assert(isSymbolInMainWatchlist("EURAUD", watchlist) === false, "EURAUD alert strictly blocked (not in watchlist)");
+  assert(isSymbolInMainWatchlist("NZDUSD", watchlist) === false, "NZDUSD alert strictly blocked (not in watchlist)");
+  assert(isSymbolInMainWatchlist("ETHUSD", watchlist) === false, "ETHUSD alert strictly blocked (not in watchlist)");
+  assert(isSymbolInMainWatchlist("EURJPY", watchlist) === false, "EURJPY alert strictly blocked (not in watchlist)");
+  assert(isSymbolInMainWatchlist("GBPAUD", watchlist) === false, "GBPAUD alert strictly blocked (not in watchlist)");
+
+  // 9.3 Default Universe contains only canonical Watchlist symbols
+  const defaultUniverse = DEFAULT_AUTONOMOUS_CONFIG.universe;
+  assert(defaultUniverse.includes("ETHUSD") === false, "Default universe does NOT contain ETHUSD");
+  assert(defaultUniverse.includes("EURAUD") === false, "Default universe does NOT contain EURAUD");
+  assert(defaultUniverse.includes("NZDUSD") === false, "Default universe does NOT contain NZDUSD");
+  assert(defaultUniverse.every((sym) => isSymbolInMainWatchlist(sym, watchlist)), "All default universe symbols are valid Main Watchlist members");
+}
+
+console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
 console.log("=======================================================");
 
@@ -618,3 +647,4 @@ if (failed > 0) {
 } else {
   console.log("🎯 ALL AUTONOMOUS ENGINE TESTS PASSED WITH 100% SUCCESS!\n");
 }
+
