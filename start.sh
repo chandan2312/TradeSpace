@@ -24,6 +24,7 @@ NC='\033[0m'
 # Mode & Argument Parsing
 MODE="prod"
 START_MT5=false
+FORCE_BUILD=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -33,22 +34,26 @@ for arg in "$@"; do
         prod|production)
             MODE="prod"
             ;;
+        --build|-b)
+            FORCE_BUILD=true
+            ;;
         --with-mt5)
             START_MT5=true
             ;;
         -h|--help)
             echo -e "${BOLD}TradeSpace Service Runner${NC}"
-            echo "Usage: ./start.sh [prod|dev] [--with-mt5]"
+            echo "Usage: ./start.sh [prod|dev] [--build] [--with-mt5]"
             echo ""
             echo "Options:"
             echo "  prod        Start in production mode (default, optimized)"
             echo "  dev         Start in development mode (hot-reloading)"
+            echo "  --build, -b Force a fresh production build (npm run build)"
             echo "  --with-mt5  Also launch local python mt5_server.py on port 8765"
             exit 0
             ;;
         *)
             echo -e "${RED}Unknown argument: $arg${NC}"
-            echo "Usage: ./start.sh [prod|dev] [--with-mt5]"
+            echo "Usage: ./start.sh [prod|dev] [--build] [--with-mt5]"
             exit 1
             ;;
     esac
@@ -208,13 +213,18 @@ fi
 # -----------------------------------------------------------------------------
 if [ "$MODE" = "prod" ]; then
     echo -e "\n${BLUE}ℹ Production Mode Selected.${NC}"
-    if [ ! -d ".next" ] || [ ! -f ".next/BUILD_ID" ]; then
-        echo -e "${YELLOW}Production build (.next) not found or incomplete.${NC}"
+    if [ "$FORCE_BUILD" = true ] || [ ! -d ".next" ] || [ ! -f ".next/BUILD_ID" ]; then
+        if [ "$FORCE_BUILD" = true ]; then
+            echo -e "${YELLOW}Fresh build requested via --build flag.${NC}"
+        else
+            echo -e "${YELLOW}Production build (.next) not found or incomplete.${NC}"
+        fi
         echo -e "${YELLOW}Compiling optimized Next.js production build (npm run build)...${NC}"
         npm run build
         echo -e "${GREEN}✔ Production build completed successfully.${NC}"
     else
         echo -e "${GREEN}✔ Existing production build found (.next/BUILD_ID).${NC}"
+        echo -e "  ${YELLOW}(Tip: pass --build if you pulled new code: ./start.sh --build)${NC}"
     fi
 
     echo -e "\n${GREEN}🚀 Starting TradeSpace Production Server...${NC}"
