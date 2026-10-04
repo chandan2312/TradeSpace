@@ -1,6 +1,8 @@
 // API route: /api/autonomous — State and interactive dispatch for Autonomous Brain Trader.
 
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import {
   autonomousCols,
   getConfig,

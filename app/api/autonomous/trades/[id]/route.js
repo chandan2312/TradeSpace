@@ -1,6 +1,8 @@
 // API route: /api/autonomous/trades/[id] — Single trade management.
 
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import { ObjectId } from "mongodb";
 import { autonomousCols } from "../../../../../lib/autonomous/store.js";
 import { closeActiveTrade, dismissStagedTrade } from "../../../../../lib/autonomous/engine.js";

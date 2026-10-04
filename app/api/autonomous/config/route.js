@@ -1,6 +1,8 @@
 // API route: /api/autonomous/config — Configuration management for Autonomous Brain Trader.
 
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import { getConfig, setConfig } from "../../../../lib/autonomous/store.js";
 import { broadcast } from "../../../../lib/realtime.js";
 

@@ -13,11 +13,16 @@ if not exist ".env" (
     exit /b 1
 )
 
-REM 2. Check if user requested MT5 bridge via argument
+REM 2. Check arguments for MT5 and Build
 set "LAUNCH_MT5=0"
-if "%1"=="--with-mt5" set "LAUNCH_MT5=1"
-if "%1"=="mt5" set "LAUNCH_MT5=1"
-if "%2"=="--with-mt5" set "LAUNCH_MT5=1"
+set "FORCE_BUILD=0"
+
+for %%A in (%*) do (
+    if "%%A"=="--with-mt5" set "LAUNCH_MT5=1"
+    if "%%A"=="mt5" set "LAUNCH_MT5=1"
+    if "%%A"=="--build" set "FORCE_BUILD=1"
+    if "%%A"=="-b" set "FORCE_BUILD=1"
+)
 
 if "!LAUNCH_MT5!"=="1" (
     echo [Launcher] Spawning MT5 Bridge Server on port 8765 in background window...
@@ -25,11 +30,22 @@ if "!LAUNCH_MT5!"=="1" (
     timeout /t 2 /nobreak >nul
 )
 
-REM 3. Verify production build exists
-if not exist ".next" (
-    echo [Launcher] Production build (.next) not found.
-    echo [Launcher] Running "npm run build" first...
+REM 3. Verify production build exists and is up to date (checks BUILD_ID and autonomous route)
+set "NEED_BUILD=0"
+if "!FORCE_BUILD!"=="1" set "NEED_BUILD=1"
+if not exist ".next" set "NEED_BUILD=1"
+if not exist ".next\BUILD_ID" set "NEED_BUILD=1"
+if not exist ".next\server\app\autonomous.html" set "NEED_BUILD=1"
+
+if "!NEED_BUILD!"=="1" (
+    echo [Launcher] Compiling fresh Next.js production build (npm run build)...
     call npm run build
+    if errorlevel 1 (
+        echo [ERROR] Build failed! Please review errors above.
+        pause
+        exit /b 1
+    )
+    echo [Launcher] Production build completed successfully.
 )
 
 REM 4. Launch TradeSpace

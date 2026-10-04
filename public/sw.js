@@ -1,4 +1,4 @@
-const CACHE_NAME = "tradespace-cache-v2"; // bump = old frozen caches purged on activate
+const CACHE_NAME = "tradespace-cache-v3"; // bump = old frozen caches purged on activate
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
@@ -18,11 +18,12 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // NEVER touch WebSockets, API requests, or non-GET
+  // NEVER touch WebSockets, API requests, Next.js static chunks/CSS, or non-GET
   if (
     e.request.method !== "GET" ||
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/ws") ||
+    url.pathname.startsWith("/_next/") ||
     url.protocol === "ws:" ||
     url.protocol === "wss:"
   ) {
