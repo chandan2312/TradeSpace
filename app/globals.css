@@ -5,6 +5,7 @@
   --border: #232a38;
   --border-hi: #2f3949;
   --text: #d7dce6;
+  --fg: #d7dce6;
   --text-inverse: #0e1116;
   --bg-inverse: #ffffff;
   --panel-inverse: #f4f5f8;
@@ -27,6 +28,7 @@
   --border: #e0e3eb;
   --border-hi: #c5cbd8;
   --text: #191919;
+  --fg: #191919;
   --text-inverse: #ffffff;
   --bg-inverse: #0e1116;
   --panel-inverse: #151a23;
@@ -46,6 +48,7 @@
   --border: #1d3356;
   --border-hi: #284470;
   --text: #e1e8f5;
+  --fg: #e1e8f5;
   --text-inverse: #0a1322;
   --bg-inverse: #ffffff;
   --panel-inverse: #f0f5ff;
@@ -65,6 +68,7 @@
   --border: #ded4c2;
   --border-hi: #c9bba5;
   --text: #2c2825;
+  --fg: #2c2825;
   --text-inverse: #fbf8f1;
   --bg-inverse: #2c2825;
   --panel-inverse: #3d3732;
@@ -84,6 +88,7 @@
   --border: #1f1f1f;
   --border-hi: #333333;
   --text: #ededed;
+  --fg: #ededed;
   --text-inverse: #000000;
   --bg-inverse: #ffffff;
   --panel-inverse: #f4f5f8;
@@ -101,6 +106,7 @@
   --border: #003300;
   --border-hi: #005500;
   --text: #00ff00;
+  --fg: #00ff00;
   --text-inverse: #000000;
   --bg-inverse: #00ff00;
   --panel-inverse: #003300;
@@ -113,19 +119,24 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body { height: 100%; }
+html, body {
+  min-height: 100%;
+}
 
 .dashboard-root {
   height: 100vh;
+  overflow: hidden;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
   font: 13px/1.45 var(--font);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
 }
+
 
 button {
   font: inherit;
@@ -184,7 +195,7 @@ input::placeholder { color: var(--muted); }
 }
 
 @keyframes spin-cw { to { transform: rotate(360deg); } }
-.spin { animation: spin-cw 0.9s linear infinite; }
+.spin, .animate-spin { animation: spin-cw 0.9s linear infinite; }
 
 /* ---------- Responsive Layout ---------- */
 .hide-desktop {

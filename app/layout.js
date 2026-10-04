@@ -18,6 +18,19 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            try {
+              var s = localStorage.getItem("ts_chart_settings");
+              var t = s ? JSON.parse(s).appTheme : "dark";
+              document.documentElement.setAttribute("data-theme", t || "dark");
+            } catch(e) {
+              document.documentElement.setAttribute("data-theme", "dark");
+            }
+          })();
+        `}} />
+      </head>
       <body>
         {children}
         <script dangerouslySetInnerHTML={{ __html:
@@ -27,3 +40,4 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
+
