@@ -664,6 +664,14 @@ console.log("=======================================================");
   assert(fp1 !== fpDiffDir, "Opposite directions on same symbol have different fingerprints");
   assert(fp1 !== fpDiffLevel, "Different price levels have different fingerprints");
 
+  // 10.3 Timeframe isolation: Different timeframes for the same symbol and levels produce distinct fingerprints
+  const fp15M = getSetupFingerprint("NAS100", 1, levelA, "ICT_2022_MENTORSHIP", "15M");
+  const fpH1  = getSetupFingerprint("NAS100", 1, levelA, "ICT_2022_MENTORSHIP", "H1");
+  const fpH4  = getSetupFingerprint("NAS100", 1, levelA, "ICT_2022_MENTORSHIP", "H4");
+  assert(fp15M !== fpH1, "Different timeframes (15M vs H1) produce distinct setup fingerprints");
+  assert(fpH1 !== fpH4, "Different timeframes (H1 vs H4) produce distinct setup fingerprints");
+  assert(fp15M.includes(":15M:"), "Timeframe is explicitly embedded in the fingerprint identifier");
+
   // 10.3 Setup fingerprint rejection against existing recent cache
   const recentFingerprints = new Set([fp1]);
   assert(recentFingerprints.has(getSetupFingerprint("NAS100", 1, levelA)) === true, "Identical NAS100 setup recognized in recent fingerprint cache");
