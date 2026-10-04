@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass } from "lucide-react";
+import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass, Zap } from "lucide-react";
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
@@ -109,6 +109,9 @@ export default function TopBar({
             <button className="dropdown-btn" onClick={() => { onOpenMarketBias(); setToolsMenuOpen(false); }}>
               <Activity size={14} /> Master Market Bias
             </button>
+            <a href="/autonomous" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
+              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Trader
+            </a>
             <a href="/journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
               <BookOpen size={14} /> Trading Journal
             </a>
@@ -452,6 +455,9 @@ export default function TopBar({
                 <ExternalLink size={14} /> {isPipActive ? "Close Pop Out" : "Pop Out Chart"}
               </button>
             )}
+            <a href="/autonomous" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
+              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Trader
+            </a>
             <a href="/journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <BookOpen size={14} /> Trading Journal
             </a>

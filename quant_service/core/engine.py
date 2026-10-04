@@ -18,6 +18,10 @@ import numpy as np
 
 from .bars import Bars
 from .buildup import detect_trendline_liquidity
+from .ranges import analyze_all_dealing_ranges
+from .htf_fvg import analyze_4h_fvgs
+from .htf_liquidity import analyze_htf_liquidity
+from .brain import evaluate_market_brain
 from .lenses import clamp, js_num, js_round, js_sign, lens_fitness, lens_vote, stability
 from .liquidity import detect_qml, liquidity_map, session_of
 from .news import news_risk, symbol_currencies
@@ -133,6 +137,9 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
         if conf["pillar"] == "htf":
             htf_sum += direction * w
 
+    # Derive macro_trend objectively from higher timeframe structure
+    macro_trend = (structures.get("D1") or {}).get("dir") or (structures.get("H4") or {}).get("dir") or 0
+
     # ---------- HTF reversal anatomy + standing protected extremes
     for tf, w0, full_age, zero_age in (("D1", 10, 3, 8), ("H4", 8, 6, 16)):
         bars = frames.get(tf)
@@ -157,15 +164,23 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
         base_w = 18 if tf == "D1" else 14
 
         if lows:
-            push("htf", "sr", f"{tf} strong base holding", 1, base_w, f"{lows[0]['kind']} low, macro uptrend base")
-            htf_sum += base_w
-            if not macro_trend:
-                macro_trend = 1
+            low = lows[0]
+            dist_low = px - low["price"]
+            if dist_low <= 4.5 * avg or low.get("age", 99) <= 16:
+                prox = clamp(1.0 - (dist_low / (6.0 * avg)), 0.5, 1.0)
+                eff_w = int(round(base_w * prox))
+                push("htf", "sr", f"{tf} strong base holding", 1, eff_w, f"{low['kind']} low, macro support")
+                if tf in ("H4", "D1"):
+                    htf_sum += eff_w
         if highs:
-            push("htf", "sr", f"{tf} strong ceiling holding", -1, base_w, f"{highs[0]['kind']} high, macro downtrend base")
-            htf_sum -= base_w
-            if not macro_trend:
-                macro_trend = -1
+            high = highs[0]
+            dist_high = high["price"] - px
+            if dist_high <= 4.5 * avg or high.get("age", 99) <= 16:
+                prox = clamp(1.0 - (dist_high / (6.0 * avg)), 0.5, 1.0)
+                eff_w = int(round(base_w * prox))
+                push("htf", "sr", f"{tf} strong ceiling holding", -1, eff_w, f"{high['kind']} high, macro resistance")
+                if tf in ("H4", "D1"):
+                    htf_sum -= eff_w
 
     # ---------- HTF POIs for fractal sweep validation
     htf_pois = []
@@ -180,6 +195,30 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
         for z in detect_order_blocks(bars, avg):
             if z["age"] < 50:
                 htf_pois.append({"type": f"{tf} OB", "dir": z["dir"], "top": z["top"], "bottom": z["bottom"]})
+
+    # ---------- 4H FVGs (Respected vs Unrespected Lifecycle & Order Flow)
+    h4_frame = frames.get("H4")
+    htf_fvg_data = analyze_4h_fvgs(h4_frame) if h4_frame is not None and len(h4_frame) > 0 else {"all": [], "respected": [], "unrespected": [], "active": None, "orderFlowState": "NEUTRAL"}
+    for g in [x for x in htf_fvg_data.get("respected", []) if x.get("ageBars", 99) <= 16]:
+        k = decay(g["ageBars"], 4, 16)
+        if k > 0:
+            w = 14 * k * (1.15 if g.get("respectQuality") == "A_PRIME_CE_DEFENDED" else 1.0)
+            push("htf", "fvg", f"4H {'Bullish' if g['dir'] > 0 else 'Bearish'} FVG respected", g["dir"], w,
+                 f"defended {g['ageBars']} bars ago ({g.get('respectQuality', '').replace('_', ' ')})")
+            htf_sum += g["dir"] * w
+
+    for g in [x for x in htf_fvg_data.get("unrespected", []) if x.get("violatedAt") is not None and x["violatedAt"] <= 16]:
+        k = decay(g["violatedAt"], 4, 16)
+        if k > 0:
+            inv_dir = -g["dir"]
+            w = 12 * k
+            push("htf", "fvg", f"4H {'Bullish' if g['dir'] > 0 else 'Bearish'} FVG violated (iFVG)", inv_dir, w,
+                 f"invalidation inverted {g['violatedAt']} bars ago into {'support' if inv_dir > 0 else 'resistance'}")
+            htf_sum += inv_dir * w
+
+    if htf_fvg_data.get("active"):
+        act = htf_fvg_data["active"]
+        push("htf", "fvg", f"Testing 4H {'Bull' if act['dir'] > 0 else 'Bear'} FVG", act["dir"], 7, "price actively inside 4H gap zone")
 
     def check_mitigation(extreme_px, expected_dir):
         for z in htf_pois:
@@ -305,6 +344,34 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
             elif lv["state"] == "untapped" and lv["near"]:
                 push("liquidity", "liquidity", f"draw → {lv['name']}", lv["side"], 5, "weekly pool in reach")
 
+    # ---------- HTF-only Liquidity Intelligence (4H & D1)
+    htf_liq_data = analyze_htf_liquidity(frames)
+    for s in htf_liq_data.get("sweeps", []):
+        k = decay(s["age"], 4, 18)
+        if k > 0:
+            w = 15 * k
+            push("htf", "liquidity", f"{s['name']} swept on 4H", s["reversalDir"], w, f"HTF liquidity grab {s['age'] * 4}h ago")
+            reversal_push += s["reversalDir"] * w * 0.8
+            htf_sum += s["reversalDir"] * w * 0.6
+
+    active_4h_eqh = [p for p in htf_liq_data.get("pools", {}).get("bsl", []) if p["type"] == "MAGNET_BSL"]
+    active_4h_eql = [p for p in htf_liq_data.get("pools", {}).get("ssl", []) if p["type"] == "MAGNET_SSL"]
+    if active_4h_eqh:
+        w = 14 if macro_trend == 1 else 8
+        push("htf", "liquidity", "4H EQH Magnet", 1, w, f"{len(active_4h_eqh)} equal high pools above")
+    if active_4h_eql:
+        w = 14 if macro_trend == -1 else 8
+        push("htf", "liquidity", "4H EQL Magnet", -1, w, f"{len(active_4h_eql)} equal low pools below")
+
+    if htf_liq_data.get("drawOnLiquidity"):
+        dol = htf_liq_data["drawOnLiquidity"]
+        dol_dir = 1 if dol["targetSide"] == "BSL" else -1
+        push("htf", "liquidity", f"HTF DOL → {dol['name']}", dol_dir, 9, f"{dol['catalyst']} ({int(round(dol['distance']))} pts away)")
+
+    if htf_liq_data.get("activeCycle") == "IRL_TO_ERL" and htf_liq_data.get("drawOnLiquidity"):
+        cycle_dir = 1 if htf_liq_data["drawOnLiquidity"]["targetSide"] == "BSL" else -1
+        push("htf", "flow", "IRL → ERL expansion", cycle_dir, 7, htf_liq_data["cycleNote"])
+
     # ---------- intraday triggers: QML, FVG stack, reversal anatomy
     m15 = intraday
     if m15 is not None:
@@ -383,16 +450,26 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
                      f"slow pullback broken {js_num(gd['ratio'])}× faster")
                 trigger_sum += gd["dir"] * 7 * k
 
-    # ---------- premium / discount of the H4 dealing range
-    h4 = frames.get("H4")
-    if h4 is not None and len(h4):
-        win = h4.tail(90)
-        hi, lo = float(win.high.max()), float(win.low.min())
-        if hi > lo:
-            pos = clamp((h4.close[-1] - lo) / (hi - lo), 0, 1)
-            if pos < 0.42 or pos > 0.58:
-                push("htf", "sr", "discount" if pos < 0.5 else "premium", 1 if pos < 0.5 else -1,
-                     9 * abs(pos - 0.5) * 2, f"{js_round(pos * 100)}% of H4 range")
+    # ---------- multi-timeframe structural dealing ranges (15M, 1H, 4H, 1D)
+    all_ranges = analyze_all_dealing_ranges(frames, structures)
+    h4_r = all_ranges.get("ranges", {}).get("H4")
+    m15_r = all_ranges.get("ranges", {}).get("M15")
+
+    if h4_r:
+        if h4_r["pos"] <= 0.40:
+            if macro_trend != -1:
+                push("htf", "sr", "4H discount pricing", 1,
+                     int(round(9 * (0.5 - h4_r["pos"]) * 2)),
+                     f"{h4_r['coveragePct']}% of H4 range ({h4_r['zone'].replace('_', ' ')})")
+        elif h4_r["pos"] >= 0.60:
+            if macro_trend != 1:
+                push("htf", "sr", "4H premium pricing", -1,
+                     int(round(9 * (h4_r["pos"] - 0.5) * 2)),
+                     f"{h4_r['coveragePct']}% of H4 range ({h4_r['zone'].replace('_', ' ')})")
+
+    for al in all_ranges.get("alignments", []):
+        lbl = "Uncovered upside runway" if al["type"] == "BULLISH_UNCOVERED_EXPANSION" else "Uncovered downside runway"
+        push("htf", "structure", lbl, al["dir"], 9, al["note"])
 
     # ---------- order blocks: unmitigated origins of displacement legs
     ob_near = False
@@ -577,6 +654,13 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
             damps.append({"label": "counter-liquidity near", "mult": 0.85,
                           "note": f"{against['name']} likely to be run first"})
 
+    if h4_r and h4_r["coveragePct"] >= 85 and score > 10:
+        damps.append({"label": "H4 range exhaustion (Premium)", "mult": 0.78,
+                      "note": f"{h4_r['coveragePct']}% of H4 range covered, near ceiling"})
+    elif h4_r and h4_r["coveragePct"] <= 15 and score < -10:
+        damps.append({"label": "H4 range exhaustion (Discount)", "mult": 0.78,
+                      "note": f"{h4_r['coveragePct']}% of H4 range covered, near floor"})
+
     damp_mult = 1.0
     for d in damps:
         damp_mult *= d["mult"]
@@ -589,6 +673,16 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
 
     completeness = 1 - len(missing) / (len(frames) or 1)
     confidence = js_round(clamp((vote["agreement"] / 100) * completeness * (0.5 + 0.5 * damp_mult), 0, 1) * 100)
+
+    brain = evaluate_market_brain(
+        symbol=symbol,
+        ranges=all_ranges,
+        htf_fvg=htf_fvg_data,
+        htf_liq=htf_liq_data,
+        structures=structures,
+        intraday={"setup": setup, "liq": liq},
+        score=score,
+    )
 
     drives.sort(key=lambda d: -d["w"])
     return {
@@ -613,6 +707,21 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
         "damps": damps,
         "news": events[:3],
         "missing": missing,
+        "ranges": all_ranges.get("ranges", {}),
+        "htfFvg": htf_fvg_data,
+        "htfLiquidity": htf_liq_data,
+        "brain": brain,
+        "executionReadiness": {
+            "action": brain["action"],
+            "conviction": brain["conviction"],
+            "allowedToLong": brain["allowedToLong"],
+            "allowedToShort": brain["allowedToShort"],
+            "invalidationPrice": brain["invalidationPrice"],
+            "targetDOL": brain["targetDOL"],
+            "catalysts": brain["catalysts"],
+            "blockReasons": brain["blockReasons"],
+            "warning": brain["warning"],
+        },
     }
 
 

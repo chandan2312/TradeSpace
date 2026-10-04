@@ -6,9 +6,7 @@
 // All REST lives in app/api/* as Next Route Handlers and shares state with us
 // via the globalThis singletons in lib/*.
 import "dotenv/config";
-import fs from "fs";
 import http from "http";
-import https from "https";
 import next from "next";
 import { WebSocketServer } from "ws";
 
@@ -17,6 +15,7 @@ import { setWss } from "./lib/realtime.js";
 import { startPollLoop } from "./lib/alert-engine.js";
 import { startAlgoLoop } from "./lib/algo/engine.js";
 import { startExecutorLoop } from "./lib/executor/engine.js";
+import { startAutonomousLoop } from "./lib/autonomous/engine.js";
 
 const dev = process.env.NODE_ENV !== "production";
 const PORT = Number(process.env.PORT || 3000);
@@ -44,11 +43,7 @@ async function main() {
   const handle = nextApp.getRequestHandler();
   const nextUpgrade = nextApp.getUpgradeHandler();
 
-  // HTTPS when cert.pem+key.pem exist (needed for PWA install), else HTTP.
-  const useHttps = fs.existsSync("./cert.pem") && fs.existsSync("./key.pem");
-  const server = useHttps
-    ? https.createServer({ cert: fs.readFileSync("./cert.pem"), key: fs.readFileSync("./key.pem") }, (req, res) => handle(req, res))
-    : http.createServer((req, res) => handle(req, res));
+  const server = http.createServer((req, res) => handle(req, res));
 
   // ---- WebSocket: /ws -------------------------------------------------
   const wss = new WebSocketServer({ noServer: true });
@@ -98,8 +93,11 @@ async function main() {
   // ---- Executor engine (executes user-placed setups; rides the tick stream) ---
   startExecutorLoop();
 
+  // ---- Autonomous Brain Trader engine (scanner 3min; rides the tick stream) ---
+  startAutonomousLoop();
+
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[tradespace] ${useHttps ? "https" : "http"}://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);
+    console.log(`[tradespace] http://0.0.0.0:${PORT}  (${dev ? "dev" : "prod"})`);
   });
 
   // ---- graceful shutdown ----------------------------------------------

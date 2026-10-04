@@ -720,7 +720,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadBias();
-    const t = setInterval(loadBias, 90000);
+    const t = setInterval(loadBias, 300000);
     return () => clearInterval(t);
   }, [loadBias]);
 

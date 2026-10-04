@@ -64,10 +64,29 @@ def smt_divergence(bars: Bars, partner_bars: Bars, partner_name: str):
     def aligned(x, y):
         return abs(x - y) <= 12 * 900
 
+    bear_smt = None
+    bull_smt = None
+
     if aligned(a["h2"]["time"], b["h2"]["time"]):
-        if a["h2"]["price"] > a["h1"]["price"] and not b["h2"]["price"] > b["h1"]["price"]:
-            return {"dir": -1, "note": f"HH unconfirmed by {partner_name}"}
+        a_hh = a["h2"]["price"] > a["h1"]["price"]
+        b_hh = b["h2"]["price"] > b["h1"]["price"]
+        t = max(a["h2"]["time"], b["h2"]["time"])
+        if a_hh and not b_hh:
+            bear_smt = {"dir": -1, "note": f"HH unconfirmed by {partner_name}", "time": t}
+        elif not a_hh and b_hh:
+            bear_smt = {"dir": -1, "note": f"LH divergence ({partner_name} printed HH)", "time": t}
+
     if aligned(a["l2"]["time"], b["l2"]["time"]):
-        if a["l2"]["price"] < a["l1"]["price"] and not b["l2"]["price"] < b["l1"]["price"]:
-            return {"dir": 1, "note": f"LL unconfirmed by {partner_name}"}
-    return None
+        a_ll = a["l2"]["price"] < a["l1"]["price"]
+        b_ll = b["l2"]["price"] < b["l1"]["price"]
+        t = max(a["l2"]["time"], b["l2"]["time"])
+        if a_ll and not b_ll:
+            bull_smt = {"dir": 1, "note": f"LL unconfirmed by {partner_name}", "time": t}
+        elif not a_ll and b_ll:
+            bull_smt = {"dir": 1, "note": f"HL divergence ({partner_name} printed LL)", "time": t}
+
+    if bear_smt and bull_smt:
+        res = bear_smt if bear_smt["time"] >= bull_smt["time"] else bull_smt
+        return {"dir": res["dir"], "note": res["note"]}
+    res = bear_smt or bull_smt
+    return {"dir": res["dir"], "note": res["note"]} if res else None

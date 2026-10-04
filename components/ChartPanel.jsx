@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PatternsPrimitive } from "../lib/patterns/primitive.js";
 import { runPatterns } from "../lib/patterns/index.js";
-import { DrawingsPrimitive } from "../lib/draw/primitive.js";
 import { useDrawings } from "../lib/draw/useDrawings.js";
 import { useChartSettings } from "../lib/chartSettings.js";
 import { Loader2, ChevronRight } from "lucide-react";
@@ -215,7 +214,9 @@ class AlertsPrimitive {
 export default function ChartPanel({
   symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
   syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
-  isActive = true, onOpenSettings, biasData
+  isActive = true, onOpenSettings, biasData,
+  storageKey,
+  persistRemote = true,
 }) {
   const wrapRef = useRef(null);
   const chartRef = useRef(null);
@@ -223,7 +224,7 @@ export default function ChartPanel({
   const lastBarRef = useRef(null);
   const patternsRef = useRef(null);  // PatternsPrimitive attached to the series
   const alertsPrimRef = useRef(null); // AlertsPrimitive
-  const drawPrimRef = useRef(null);   // DrawingsPrimitive (user drawing tools)
+  const drawingManagerRef = useRef(null); // DrawingManager from lightweight-charts-drawing
   const barsRef = useRef([]);        // full bar array the detectors run on
   const [dataVersion, setDataVersion] = useState(0); // bumped on load + bar close
   const hoverPriceRef = useRef(null);
@@ -294,7 +295,7 @@ export default function ChartPanel({
   };
 
   // ---------- drawing tools ----------
-  const draw = useDrawings({ chartRef, seriesRef, wrapRef, symbol, tf, barsRef, isActive, primRef: drawPrimRef, dataVersion });
+  const draw = useDrawings({ drawingManagerRef, chartReady, symbol, tf, barsRef, isActive, wrapRef, dataVersion, storageKey, persistRemote });
 
   // ---------- global settings ----------
   const [settings] = useChartSettings();
@@ -348,11 +349,7 @@ export default function ChartPanel({
         vertLines: { color: settings.gridVertColor, visible: settings.gridVertEnabled !== false }, 
         horzLines: { color: settings.gridHorzColor, visible: settings.gridHorzEnabled !== false } 
       },
-      watermark: {
-        visible: settings.watermark,
-        color: settings.watermarkColor,
-        text: `${symbol} ${tf}`
-      },
+      // Note: watermark was moved to a plugin in LWC v5; skip here to avoid errors.
       timeScale: { borderColor: settings.linesColor },
       rightPriceScale: { borderColor: settings.linesColor },
     });
@@ -372,7 +369,8 @@ export default function ChartPanel({
   useEffect(() => {
     let disposed = false;
     (async () => {
-      const { createChart, CrosshairMode } = await import("lightweight-charts");
+      const { createChart, CrosshairMode, CandlestickSeries } = await import("lightweight-charts");
+      const { DrawingManager } = await import("lightweight-charts-drawing");
       if (disposed || !wrapRef.current) return;
       const chart = createChart(wrapRef.current, {
         layout: { 
@@ -387,19 +385,47 @@ export default function ChartPanel({
           horzLines: { color: settings.gridHorzColor, visible: settings.gridHorzEnabled !== false } 
         },
         crosshair: { mode: CrosshairMode.Normal },
-        timeScale: { rightOffset: 12, timeVisible: true, secondsVisible: false, borderColor: settings.linesColor },
-        rightPriceScale: { borderColor: settings.linesColor },
-        watermark: {
-          visible: settings.watermark,
-          fontSize: 64,
-          horzAlign: 'center',
-          vertAlign: 'center',
-          color: settings.watermarkColor,
-          text: `${symbol} ${tf}`,
+        timeScale: { 
+          rightOffset: 12, 
+          timeVisible: true, 
+          secondsVisible: false, 
+          borderColor: settings.linesColor,
+          tickMarkFormatter: (time, tickMarkType) => {
+            const d = new Date(time * 1000);
+            const day = String(d.getUTCDate()).padStart(2, "0");
+            const month = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+            const year = d.getUTCFullYear();
+            const hh = String(d.getUTCHours()).padStart(2, "0");
+            const mm = String(d.getUTCMinutes()).padStart(2, "0");
+
+            switch (tickMarkType) {
+              case 0: return `${year}`;
+              case 1: return `${month} ${year}`;
+              case 2: return `${day} ${month}`;
+              case 3:
+              case 4:
+              default:
+                return `${hh}:${mm}`;
+            }
+          },
         },
+        localization: {
+          dateFormat: "yyyy-MM-dd",
+          timeFormatter: (time) => {
+            const d = new Date(time * 1000);
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+            const day = String(d.getUTCDate()).padStart(2, "0");
+            const hh = String(d.getUTCHours()).padStart(2, "0");
+            const mm = String(d.getUTCMinutes()).padStart(2, "0");
+            return `${y}-${m}-${day} ${hh}:${mm} EET`;
+          },
+        },
+        rightPriceScale: { borderColor: settings.linesColor },
         autoSize: true,
       });
-      const series = chart.addCandlestickSeries({
+      // LWC v5: addSeries(SeriesType, options) replaces addCandlestickSeries()
+      const series = chart.addSeries(CandlestickSeries, {
         upColor: settings.upColor, 
         downColor: settings.downColor,
         wickUpColor: settings.wickUpColor, 
@@ -417,9 +443,13 @@ export default function ChartPanel({
       series.attachPrimitive(alertsPrim);
       alertsPrimRef.current = alertsPrim;
 
-      const drawPrim = new DrawingsPrimitive();
-      series.attachPrimitive(drawPrim);
-      drawPrimRef.current = drawPrim;
+      // Pure TradingView DrawingManager from lightweight-charts-drawing
+      const drawingManager = new DrawingManager(chart, series, {
+        magnet: "off",
+        stayInDrawingMode: false,
+        bars: () => barsRef.current || [],
+      });
+      drawingManagerRef.current = drawingManager;
 
       chartRef.current = chart;
       seriesRef.current = series;
@@ -428,6 +458,9 @@ export default function ChartPanel({
     return () => {
       disposed = true;
       setChartReady(false);
+      if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+      try { drawingManagerRef.current?.destroy(); } catch {}
+      drawingManagerRef.current = null;
       chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -497,6 +530,7 @@ export default function ChartPanel({
         lastBarRef.current = { key, bar: cleanBars[cleanBars.length - 1] };
         barsRef.current = cleanBars;
         setDataVersion((v) => v + 1);
+        drawingManagerRef.current?.redraw();
         // a manual price-axis drag turns autoscale off for good — a new series
         // must re-fit both axes or it renders outside the visible range
         chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
@@ -527,7 +561,7 @@ export default function ChartPanel({
     };
 
     const cached = barsCache.current.get(key);
-    
+
     // Zeroized logic: ALWAYS clear the chart and wait for the fresh API fetch to prevent ANY tick gaps.
     // We only use the cache as a strict fallback if the API fails.
     lastBarRef.current = null;
@@ -626,8 +660,7 @@ export default function ChartPanel({
     } else if (barsRef.current.length) {
       barsRef.current[barsRef.current.length - 1] = nextBar;
     }
-    if (draw.pushPrimitive) draw.pushPrimitive();
-  }, [tick, symbol, tf, draw]);
+  }, [tick, symbol, tf]);
 
   // ---------- pattern indicators ----------
   useEffect(() => {
@@ -644,48 +677,6 @@ export default function ChartPanel({
     if (onAutoAlert) for (const s of autoAlerts) onAutoAlert({ ...s, symbol });
   }, [dataVersion, indicators, tf, symbol, onAutoAlert]);
 
-  // ---------- RR tool → auto alerts for Entry / SL / TP ----------
-  const rrAlertSymbolRef = useRef(symbol);
-  useEffect(() => { rrAlertSymbolRef.current = symbol; }, [symbol]);
-  useEffect(() => {
-    if (!onAutoAlert || !draw.drawings) return;
-    const rrTools = draw.drawings.filter((d) => d.type === "rrtool" && !d.hidden);
-    for (const d of rrTools) {
-      const id = d.id;
-      const sym = rrAlertSymbolRef.current;
-      // Entry alert
-      onAutoAlert({
-        symbol: sym,
-        price: d.entry.price,
-        condition: "cross",
-        tag: `[RR:${id}:entry]`,
-        noteBase: `📐 RR Tool Entry`,
-        rating: 2,
-        toast: null,
-      });
-      // Stop Loss alert
-      onAutoAlert({
-        symbol: sym,
-        price: d.stop,
-        condition: "cross",
-        tag: `[RR:${id}:sl]`,
-        noteBase: `🛑 RR Tool Stop Loss`,
-        rating: 2,
-        toast: null,
-      });
-      // Take Profit alert
-      onAutoAlert({
-        symbol: sym,
-        price: d.target,
-        condition: "cross",
-        tag: `[RR:${id}:tp]`,
-        noteBase: `🎯 RR Tool Take Profit`,
-        rating: 2,
-        toast: null,
-      });
-    }
-  }, [draw.drawings, onAutoAlert]);
-
   // ---------- custom alert lines ----------
   useEffect(() => {
     const visibleAlerts = (alerts || []).filter(a => !a.note?.includes("[RR:"));
@@ -696,6 +687,16 @@ export default function ChartPanel({
   // A wrapper mousemove (NOT subscribeCrosshairMove) so the button stays alive
   // while the pointer travels over the price axis — crosshair events stop at
   // the pane edge, which made the button vanish before it could be clicked.
+  //
+  // Updates are coalesced into one rAF and dropped when nothing visible moved:
+  // an x-axis zoom drag otherwise re-renders this whole pane (and its drawing
+  // toolbars) on every mousemove, which is what made horizontal zoom feel laggy.
+  const hoverRafRef = useRef(null);
+  const pendingHoverRef = useRef(null);
+  const pendingHitRef = useRef(null);
+  const lastHoverRef = useRef(null);
+  const lastDragHandleRef = useRef(null);
+
   const onMouseMove = useCallback((ev) => {
     const series = seriesRef.current;
     const chart = chartRef.current;
@@ -706,33 +707,62 @@ export default function ChartPanel({
     const paneH = chart.paneSize?.().height;
     const price = paneH && y > paneH ? null : series.coordinateToPrice(y);
     if (price == null || !Number.isFinite(price)) {
-      setHoverBtn(null); setDragHandle(null);
+      if (hoverRafRef.current != null) {
+        cancelAnimationFrame(hoverRafRef.current);
+        hoverRafRef.current = null;
+      }
+      pendingHoverRef.current = null;
+      pendingHitRef.current = null;
       hoverPriceRef.current = null;
+      if (lastHoverRef.current !== null) { lastHoverRef.current = null; setHoverBtn(null); }
+      if (lastDragHandleRef.current !== null) { lastDragHandleRef.current = null; setDragHandle(null); }
       return;
     }
     hoverPriceRef.current = price;
-    const isYAxisArea = rect.width - x < 80;
+    const priceScaleW = chart.priceScale("right")?.width() || 65;
+    const isYAxisArea = rect.width - x <= priceScaleW;
     let time = chart.timeScale().coordinateToTime(x);
     if (!time && barsRef.current.length > 0) {
       time = barsRef.current[barsRef.current.length - 1].time;
     }
-    setHoverBtn({ y, price, time, isYAxisArea });
 
     // proximity test for drag handle
     let hit = null;
     const hitRadius = isMobile ? 15 : 7;
-    
+
     if (isYAxisArea) {
       for (const a of alertsRef.current) {
         const ay = series.priceToCoordinate(a.price);
-        if (ay != null && Math.abs(ay - y) < hitRadius) { 
-          hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 }; 
-          break; 
+        if (ay != null && Math.abs(ay - y) < hitRadius) {
+          hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 };
+          break;
         }
       }
     }
-    if (!lockedAlertId) {
-      setDragHandle(hit);
+
+    pendingHoverRef.current = { y, price, time, isYAxisArea };
+    // `undefined` = locked handle: leave dragHandle untouched (original behaviour
+    // was to skip the setDragHandle call entirely while an alert is locked)
+    pendingHitRef.current = lockedAlertId ? undefined : hit;
+    if (hoverRafRef.current == null) {
+      hoverRafRef.current = requestAnimationFrame(() => {
+        hoverRafRef.current = null;
+        const p = pendingHoverRef.current;
+        if (p) {
+          const last = lastHoverRef.current;
+          // skip when the button-relevant fields are unchanged — a horizontal
+          // zoom drag moves x only, so this drops its re-renders entirely
+          if (!last || last.y !== p.y || last.isYAxisArea !== p.isYAxisArea || last.price !== p.price) {
+            lastHoverRef.current = p;
+            setHoverBtn(p);
+          }
+        }
+        if (pendingHitRef.current === undefined) return;
+        const h = pendingHitRef.current;
+        const lastH = lastDragHandleRef.current;
+        const same = (h == null && lastH == null) || (h && lastH && h.id === lastH.id && h.y === lastH.y);
+        if (!same) { lastDragHandleRef.current = h; setDragHandle(h); }
+      });
     }
   }, [isMobile, lockedAlertId]);
 
@@ -1078,7 +1108,8 @@ export default function ChartPanel({
       setLockedAlertId(null);
       setDragHandle(null);
     } else {
-      const isYAxisArea = rect.width - x < 80;
+      const priceScaleW = chartRef.current?.priceScale("right")?.width() || 65;
+      const isYAxisArea = rect.width - x <= priceScaleW;
       if (isYAxisArea && seriesRef.current) {
         let hit = null;
         for (const a of alertsRef.current) {
@@ -1107,34 +1138,39 @@ export default function ChartPanel({
        ev.preventDefault();
        return;
     }
-    if (!draw.activeTool && !draw.gestureRef?.current && chartRef.current) {
+    if (!draw.activeTool && chartRef.current) {
       try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
     }
-    ph.onPointerDown(ev);
   };
   const mergedPointerMove = (ev) => {
     if (layerSpawnAlertId) {
        const rect = ev.currentTarget.getBoundingClientRect();
        setSpawnY(ev.clientY - rect.top);
     }
-    ph.onPointerMove(ev);
   };
 
-  const onTouchIntercept = (ev) => {
-    // If a drawing tool is active for creation, OR if an active drag/resize/move gesture is occurring on a drawing,
-    // intercept native touch events in capturing phase before lightweight-charts processes them for chart panning/zooming.
-    if (draw.activeTool || draw.gestureRef?.current) {
+  const onChartDoubleClick = (ev) => {
+    const mgr = drawingManagerRef.current;
+    if (!mgr) return;
+    const hovered = mgr.hoveredId();
+    if (hovered) {
+      mgr.select([hovered]);
+      draw.setSelectedId(hovered);
+      draw.setSettingsOpen(true);
       ev.stopPropagation();
-      if (ev.type === "touchmove") ev.preventDefault();
-    } else if (ev.type === "touchstart" && chartRef.current) {
-      try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
+      return;
+    }
+    const sel = mgr.selection();
+    if (sel && sel.length > 0) {
+      draw.setSettingsOpen(true);
+      ev.stopPropagation();
     }
   };
 
   return (
     <div
       style={{ flex: 1, position: "relative", minWidth: 0,
-        cursor: layerSpawnAlertId ? "crosshair" : (draw.cursorFor(draw.activeTool, draw.hover) || (dragHandle ? "ns-resize" : "default")) }}
+        cursor: layerSpawnAlertId ? "crosshair" : (draw.cursorFor(draw.activeTool) || (dragHandle ? "ns-resize" : "default")) }}
       onMouseMove={onMouseMove}
       onMouseLeave={() => { 
         const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
@@ -1148,12 +1184,8 @@ export default function ChartPanel({
         style={{ position: "absolute", inset: 0, touchAction: "none" }}
         onPointerDownCapture={mergedPointerDown}
         onPointerMoveCapture={mergedPointerMove}
-        onPointerUpCapture={ph.onPointerUp}
         onContextMenuCapture={mergedContext}
-        onTouchStartCapture={onTouchIntercept}
-        onTouchMoveCapture={onTouchIntercept}
-        onTouchEndCapture={onTouchIntercept}
-        onTouchCancelCapture={onTouchIntercept}
+        onDoubleClickCapture={onChartDoubleClick}
       />
 
       {/* Mobile left-edge scroller */}
@@ -1179,7 +1211,7 @@ export default function ChartPanel({
       {isActive && !loading && !error && (
         <DrawingContextMenu api={draw} />
       )}
-      {isActive && !loading && !error && (
+      {(isActive || draw.settingsOpen) && !loading && !error && (
         <DrawingSettings api={draw} />
       )}
       {isActive && !loading && !error && (

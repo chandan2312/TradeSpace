@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from .bars import Bars
 from .patterns import find_pivots
+from .ranges import compute_dealing_range
 
-EMPTY = {"dir": 0, "seq": "n/a", "strength": 0, "lastEvent": None, "events": [], "ranging": True}
+EMPTY = {"dir": 0, "seq": "n/a", "strength": 0, "lastEvent": None, "events": [], "ranging": True, "range": None}
 
 
 def is_displaced(bars: Bars, i: int, direction: int, avg: float) -> bool:
@@ -24,7 +25,7 @@ def is_displaced(bars: Bars, i: int, direction: int, avg: float) -> bool:
     return False
 
 
-def analyze_structure(bars: Bars, avg: float, left: int = 3, right: int = 3) -> dict:
+def analyze_structure(bars: Bars, avg: float, left: int = 3, right: int = 3, tf: str = "H4") -> dict:
     n = len(bars)
     if n < left + right + 10:
         return dict(EMPTY, events=[])
@@ -88,4 +89,5 @@ def analyze_structure(bars: Bars, avg: float, left: int = 3, right: int = 3) -> 
         "lastEvent": last,
         "events": events,
         "ranging": seq == "mixed" and flips >= 2,
+        "range": compute_dealing_range(bars, tf, avg),
     }

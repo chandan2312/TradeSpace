@@ -74,7 +74,10 @@ def lens_vote(drives: list[dict], fitness: dict) -> dict:
     for lid, l in lenses.items():
         if not l["n"]:
             continue
-        wt = BASE[lid] * l["fitness"]
+        members = [d for d in drives if d["lens"] == lid]
+        w_total = sum(d["w"] for d in members)
+        mass_mult = clamp(w_total / 16, 0.45, 1.0)
+        wt = BASE[lid] * l["fitness"] * mass_mult
         num += l["score"] * wt
         den += wt
     final = clamp(num / den, -100, 100) if den else 0
@@ -83,7 +86,10 @@ def lens_vote(drives: list[dict], fitness: dict) -> dict:
     for lid, l in lenses.items():
         if not l["n"] or abs(l["score"]) < 10:
             continue
-        m = BASE[lid] * l["fitness"] * abs(l["score"])
+        members = [d for d in drives if d["lens"] == lid]
+        w_total = sum(d["w"] for d in members)
+        mass_mult = clamp(w_total / 16, 0.45, 1.0)
+        m = BASE[lid] * l["fitness"] * mass_mult * abs(l["score"])
         mass += m
         if js_sign(l["score"]) == js_sign(final):
             agree_mass += m

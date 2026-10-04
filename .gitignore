@@ -10,3 +10,15 @@ node_modules/
 *.log
 .DS_Store
 data/
+
+# Local historical candle archive (large, machine-local dataset)
+tick-data/
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# agent & editor caches
+.opencode/

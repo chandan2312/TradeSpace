@@ -7,7 +7,7 @@ import { RefreshCw, AlertTriangle, Maximize2, Loader2, LayoutGrid } from "lucide
 // Diagrams: risk-sentiment gauge, FX currency-strength bars, per-symbol
 // pillar breakdown (HTF / Intraday / Liquidity / Context), plus the factor
 // audit trail split into drives (▲▼) and dampeners (⚠, score reducers).
-const REFRESH_MS = 90_000;
+const REFRESH_MS = 300_000;
 
 const PHASE = {
   trend: { tag: "T", title: "Trending — layers agree", color: "var(--accent)" },
@@ -99,7 +99,7 @@ export default function BiasPanel({ enabled = true, symbols, onJump, onClose, on
           <button
             className="ghost"
             onClick={load}
-            title="Refresh now (auto every 90s)"
+            title="Refresh now (auto every 300s)"
             style={{ marginLeft: "auto", padding: "2px 6px", display: "flex", alignItems: "center" }}
           >
             <RefreshCw size={13} className={loading ? "spin" : ""} />
@@ -270,6 +270,174 @@ function CenterBar({ value, height = 4 }) {
   );
 }
 
+function BrainCard({ brain }) {
+  if (!brain) return null;
+  const isLong = brain.action === "READY_FOR_LONG";
+  const isShort = brain.action === "READY_FOR_SHORT";
+  const isPullback = brain.action === "WAIT_FOR_RETRACEMENT" || brain.action === "WAIT_FOR_15M_PULLBACK";
+  const isTrigger = brain.action === "WAIT_FOR_15M_TRIGGER";
+  const col = isLong ? "var(--green)" : isShort ? "var(--red)" : (isPullback || isTrigger) ? "var(--orange)" : "var(--muted)";
+  const bg = isLong ? "rgba(38,166,154,0.08)" : isShort ? "rgba(239,83,80,0.08)" : (isPullback || isTrigger) ? "rgba(255,152,0,0.08)" : "var(--panel-2)";
+  const borderCol = isLong ? "rgba(38,166,154,0.3)" : isShort ? "rgba(239,83,80,0.3)" : (isPullback || isTrigger) ? "rgba(255,152,0,0.3)" : "var(--border)";
+
+  const dt = brain.dayTraderContext;
+  const macroCol = dt?.macroCompass === "BULLISH" ? "var(--green)" : dt?.macroCompass === "BEARISH" ? "var(--red)" : "var(--muted)";
+  const veto = dt?.ltfGatekeeper?.vetoActive;
+
+  return (
+    <div style={{ background: bg, border: `1px solid ${borderCol}`, borderRadius: 6, padding: "8px 10px", margin: "4px 0 8px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: col }}>
+            🧠 {brain.verdict?.replace(/_/g, " ")}
+          </span>
+          <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, fontWeight: 700, background: "rgba(255,255,255,0.08)", color: col }}>
+            {brain.action?.replace(/_/g, " ")}
+          </span>
+        </div>
+        <span className="num" style={{ fontSize: 9, fontWeight: 700, color: col }}>
+          {brain.conviction}% Conviction
+        </span>
+      </div>
+
+      {dt && (
+        <div style={{
+          display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px",
+          background: "rgba(0,0,0,0.2)", borderRadius: 4, padding: "4px 6px", margin: "4px 0 6px",
+          fontSize: 8.5, border: "1px solid rgba(255,255,255,0.04)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">🧭 Macro Compass:</span>
+            <span style={{ fontWeight: 700, color: macroCol }}>{dt.macroCompass}</span>
+          </div>
+          {dt.sessionRoadmap?.h1Zone && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span className="muted">🗺 1H Session:</span>
+              <span>{dt.sessionRoadmap.h1Zone} ({dt.sessionRoadmap.h1CoveragePct}%)</span>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+            <span className="muted">🎯 15M Gatekeeper:</span>
+            {veto ? (
+              <span style={{
+                color: "var(--orange)", fontWeight: 700, background: "rgba(255,152,0,0.12)",
+                padding: "1px 4px", borderRadius: 3, border: "1px solid rgba(255,152,0,0.3)"
+              }}>
+                🚫 VETO ({dt.ltfGatekeeper?.triggerStatus?.replace(/_/g, " ")})
+              </span>
+            ) : (
+              <span style={{
+                color: "var(--green)", fontWeight: 700, background: "rgba(38,166,154,0.12)",
+                padding: "1px 4px", borderRadius: 3, border: "1px solid rgba(38,166,154,0.3)"
+              }}>
+                ⚡ APPROVED
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 10, lineHeight: 1.4, opacity: 0.9, marginBottom: 5 }}>
+        {brain.narrative}
+      </div>
+
+      {brain.warning && (
+        <div style={{ fontSize: 9.5, color: "var(--orange)", display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+          <span>⚠</span> <span>{brain.warning}</span>
+        </div>
+      )}
+
+      {brain.targetDOL && (
+        <div style={{ fontSize: 9, marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="muted">Draw On Liquidity (DOL):</span>
+          <span style={{ fontWeight: 600, color: "var(--accent)" }}>
+            {brain.targetDOL.name} ({brain.targetDOL.targetSide})
+          </span>
+          {brain.targetDOL.price && (
+            <span className="num muted">@{brain.targetDOL.price.toFixed(5)}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealingRangesView({ ranges }) {
+  if (!ranges || !Object.keys(ranges).length) return null;
+  const tfs = ["M15", "H1", "H4", "D1"].filter((tf) => ranges[tf]);
+  if (!tfs.length) return null;
+
+  return (
+    <div style={{ margin: "4px 0 8px" }}>
+      <div className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+        Structural Dealing Ranges (% Covered)
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${tfs.length}, 1fr)`, gap: 6 }}>
+        {tfs.map((tf) => {
+          const r = ranges[tf];
+          const pct = r.coveragePct;
+          const zoneColor = r.zone.includes("DISCOUNT") ? "var(--green)" : r.zone.includes("PREMIUM") ? "var(--red)" : "var(--muted)";
+          return (
+            <div key={tf} style={{ background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 5, padding: "4px 6px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                <span style={{ fontSize: 9, fontWeight: 700 }}>{tf}</span>
+                <span className="num" style={{ fontSize: 9, fontWeight: 700, color: zoneColor }}>{pct}%</span>
+              </div>
+              <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 1.5, overflow: "hidden", marginBottom: 3 }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: zoneColor, borderRadius: 1.5 }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8 }}>
+                <span className="muted">{r.zone.replace(/_/g, " ")}</span>
+                <span style={{ color: r.isExhausted ? "var(--orange)" : "var(--muted)" }}>
+                  {r.status.replace(/_/g, " ")}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HTFContextView({ htfFvg, htfLiq }) {
+  if (!htfFvg && !htfLiq) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, margin: "2px 0 7px" }}>
+      {htfFvg?.orderFlowState && (
+        <span style={{
+          fontSize: 8.5, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
+          background: htfFvg.orderFlowState.includes("BULLISH") ? "rgba(38,166,154,0.12)" : htfFvg.orderFlowState.includes("BEARISH") ? "rgba(239,83,80,0.12)" : "var(--panel-2)",
+          color: htfFvg.orderFlowState.includes("BULLISH") ? "var(--green)" : htfFvg.orderFlowState.includes("BEARISH") ? "var(--red)" : "var(--muted)",
+          border: "1px solid var(--border)",
+        }}>
+          4H FVG Flow: {htfFvg.orderFlowState.replace(/_/g, " ")}
+          {htfFvg.bullishRespectedCount > 0 ? ` (+${htfFvg.bullishRespectedCount} defended)` : ""}
+          {htfFvg.bearishRespectedCount > 0 ? ` (-${htfFvg.bearishRespectedCount} defended)` : ""}
+        </span>
+      )}
+
+      {htfLiq?.activeCycle && (
+        <span style={{
+          fontSize: 8.5, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
+          background: "rgba(41,98,255,0.1)", color: "var(--accent)", border: "1px solid rgba(41,98,255,0.25)",
+        }}>
+          Cycle: {htfLiq.activeCycle.replace(/_/g, " ")}
+        </span>
+      )}
+
+      {htfLiq?.sweeps?.slice(0, 1).map((s, idx) => (
+        <span key={idx} style={{
+          fontSize: 8.5, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
+          background: "rgba(255,152,0,0.12)", color: "var(--orange)", border: "1px solid rgba(255,152,0,0.25)",
+        }}>
+          HTF Raid: {s.name} swept ({s.age * 4}h ago)
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function SymbolRow({ r, expanded, onToggle, onJump }) {
   const ph = PHASE[r.phase] || PHASE.chop;
   const col = scoreColor(r.score);
@@ -305,6 +473,47 @@ function SymbolRow({ r, expanded, onToggle, onJump }) {
           {r.setup ? `⚡${r.setup.group && !r.setup.group.confirmed ? "…" : ""} ${r.setup.dir > 0 ? "↑" : "↓"}` : ph.tag}
         </span>
 
+        {r.executionReadiness && (
+          <span
+            title={`Market Brain: ${r.brain?.verdict || ""}\nAction: ${r.executionReadiness.action}\n${r.brain?.narrative || ""}`}
+            style={{
+              fontSize: 8.5, fontWeight: 700,
+              padding: "1px 4px", borderRadius: 3,
+              background: r.executionReadiness.action === "READY_FOR_LONG"
+                ? "rgba(38,166,154,0.18)"
+                : r.executionReadiness.action === "READY_FOR_SHORT"
+                ? "rgba(239,83,80,0.18)"
+                : r.executionReadiness.action === "WAIT_FOR_RETRACEMENT"
+                ? "rgba(255,152,0,0.18)"
+                : "rgba(255,255,255,0.06)",
+              color: r.executionReadiness.action === "READY_FOR_LONG"
+                ? "var(--green)"
+                : r.executionReadiness.action === "READY_FOR_SHORT"
+                ? "var(--red)"
+                : r.executionReadiness.action === "WAIT_FOR_RETRACEMENT"
+                ? "var(--orange)"
+                : "var(--muted)",
+              border: `1px solid ${
+                r.executionReadiness.action === "READY_FOR_LONG"
+                  ? "rgba(38,166,154,0.35)"
+                  : r.executionReadiness.action === "READY_FOR_SHORT"
+                  ? "rgba(239,83,80,0.35)"
+                  : r.executionReadiness.action === "WAIT_FOR_RETRACEMENT"
+                  ? "rgba(255,152,0,0.35)"
+                  : "var(--border)"
+              }`,
+            }}
+          >
+            {r.executionReadiness.action === "READY_FOR_LONG"
+              ? "BUY"
+              : r.executionReadiness.action === "READY_FOR_SHORT"
+              ? "SELL"
+              : r.executionReadiness.action === "WAIT_FOR_RETRACEMENT"
+              ? "PULLBACK"
+              : "WAIT"}
+          </span>
+        )}
+
         {hasNews && (
           <span title={r.news.map((e) => `${e.currency} ${e.title} ${e.when === "upcoming" ? `in ${e.inMin}m` : `${e.agoMin}m ago`}`).join("\n")}>
             <AlertTriangle size={11} color="var(--orange)" />
@@ -323,6 +532,15 @@ function SymbolRow({ r, expanded, onToggle, onJump }) {
 
       {expanded && (
         <div style={{ padding: "0 12px 10px 18px", fontSize: 10.5 }}>
+          {/* Market Brain Synthesis */}
+          <BrainCard brain={r.brain} />
+
+          {/* HTF FVG & Liquidity context */}
+          <HTFContextView htfFvg={r.htfFvg} htfLiq={r.htfLiquidity} />
+
+          {/* Multi-Timeframe Structural Dealing Ranges */}
+          <DealingRangesView ranges={r.ranges} />
+
           {/* lens vote — every lens model and how much each is trusted now */}
           {r.lenses && (
             <div style={{ margin: "2px 0 7px" }}>

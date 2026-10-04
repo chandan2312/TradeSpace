@@ -63,15 +63,9 @@ export default function DrawingContextMenu({ api }) {
       }}
     >
       <div style={{ padding: "6px 12px", fontSize: 11, textTransform: "uppercase", opacity: 0.5, fontWeight: 600, borderBottom: "1px solid var(--border)" }}>
-        {selected.type}
+        {selected.type || selected.kind}
       </div>
       <Item icon={Settings} label="Edit settings" onClick={() => setSettingsOpen(true)} />
-      {selected.type === "rrtool" && sendToExecutor && (
-        <Item icon={Crosshair} label="Send to Executor" onClick={async () => {
-          const res = await sendToExecutor();
-          if (!res?.ok) window.alert(`Executor: ${res?.error || "failed"}`);
-        }} />
-      )}
       <Item icon={Copy} label="Clone" onClick={cloneSelected} />
       <Item icon={BringToFront} label="Bring to front" onClick={bringToFront} />
       <Item icon={SendToBack} label="Send to back" onClick={sendToBack} />

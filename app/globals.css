@@ -241,8 +241,8 @@ input::placeholder { color: var(--muted); }
 
 .alert-add-btn {
   border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 13px;
+  padding: 3px 6px;
+  font-size: 10px;
 }
 
 @media (max-width: 768px) {
@@ -262,8 +262,8 @@ input::placeholder { color: var(--muted); }
     font-size: 12px !important;
   }
   .alert-add-btn {
-    padding: 2px 4px !important;
-    font-size: 10px !important;
+    padding: 2px 3px !important;
+    font-size: 8px !important;
     border-radius: 4px !important;
   }
   .hide-mobile {
