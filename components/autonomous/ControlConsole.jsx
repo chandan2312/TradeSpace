@@ -6,6 +6,7 @@ import { Sliders, X, Check, Shield, Layers, Compass, Save, Clock, Target, Zap } 
 export default function ControlConsole({ config, onSaveConfig, onClose }) {
   const [form, setForm] = useState({
     executionMode: config?.executionMode || "paper",
+    liveTrading: config?.liveTrading ?? false,
     horizonMode: config?.horizonMode || "adaptive",
     minConviction: config?.minConviction || 70,
     minRunwayPct: config?.minRunwayPct || 25,
@@ -207,6 +208,43 @@ export default function ControlConsole({ config, onSaveConfig, onClose }) {
                   <option value="swing">Swing Focus (4H-1D)</option>
                 </select>
               </div>
+            </div>
+
+            {/* Direct MT5 Broker Execution Toggle */}
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: form.liveTrading ? "rgba(16, 185, 129, 0.08)" : "rgba(255, 255, 255, 0.03)",
+                border: `1px solid ${form.liveTrading ? "rgba(16, 185, 129, 0.3)" : "var(--border)"}`,
+                transition: "all 0.2s ease",
+              }}
+            >
+              <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: form.liveTrading ? "#10b981" : "var(--fg)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Zap size={14} color={form.liveTrading ? "#10b981" : "var(--muted)"} />
+                    Direct MT5 Broker Execution
+                    {form.liveTrading && (
+                      <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#10b981" }}>
+                        LIVE MT5 ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                    {form.liveTrading
+                      ? "Directly sends market orders, moves SL to breakeven, trails stops, and executes closes on MetaTrader 5 broker terminal."
+                      : "Simulated paper trading only. No orders or modifications will be sent to the broker."}
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.liveTrading}
+                  onChange={(e) => handleChange("liveTrading", e.target.checked)}
+                  style={{ accentColor: "#10b981", width: 18, height: 18, cursor: "pointer" }}
+                />
+              </label>
             </div>
           </div>
 

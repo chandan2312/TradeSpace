@@ -437,6 +437,178 @@ assert(nyPermNas.permitted === true, "isTradingPermittedNow allows NAS100 during
 const nyPermGer = isTradingPermittedNow(nySec, { enforceSymbolSessions: true }, "GER40");
 assert(nyPermGer.permitted === false, "isTradingPermittedNow blocks GER40 during New York PM/AM session (16:00 EET)");
 
+// =======================================================
+// TEST SUITE 8: Institutional Position Sizing (mt5.js)
+// Tests calculateInstitutionalPositionSize in isolation —
+// no bridge calls, pure math validation.
+// =======================================================
+console.log("\n--- TEST SUITE 8: Institutional Position Sizing ---");
+
+import { calculateInstitutionalPositionSize } from "./lib/autonomous/mt5.js";
+
+// Helper: build minimal broker symInfo
+function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0, tick_value = 0 } = {}) {
+  return {
+    volume_min: vol_min,
+    volume_max: vol_max,
+    volume_step: vol_step,
+    trade_tick_size: tick_size,
+    trade_tick_value: tick_value,
+  };
+}
+
+// --- 8.1 Forex (EURUSD) — standard lot sizing ---
+{
+  // 1% risk on $50k account = $500, SL = 20 pips = 0.0020
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "EURUSD",
+    riskUsd: 500,
+    entryPrice: 1.08500,
+    slPrice: 1.08300,
+    symInfo: symInfo({ tick_size: 0.00001, tick_value: 0.10 }),
+    accInfo: { balance: 50000 },
+  });
+  // slDist=0.002, ticks=0.002/0.00001≈200 (IEEE-754 float), lossPerLot≈$20, rawLot≈25
+  // Float division may yield 24.99 — accept within 0.02 tolerance
+  assert(Math.abs(lot - 25.00) < 0.02, `EURUSD forex lot sizing: expected ~25.00, got ${lot}`);
+}
+
+// --- 8.2 XAUUSD Gold — 100oz contract multiplier ---
+{
+  // riskUsd=$200, SL dist=2.00 (price move $2 on Gold)
+  // lossPerLot = 2.00 * 100 = $200 per lot
+  // rawLot = 200/200 = 1.00 lot
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "XAUUSD",
+    riskUsd: 200,
+    entryPrice: 1950.00,
+    slPrice: 1948.00,
+    symInfo: symInfo(),   // no tick data → uses contractMult fallback
+    accInfo: { balance: 20000 },
+  });
+  assert(lot === 1.00, `XAUUSD gold lot sizing (contractMult=100): expected 1.00, got ${lot}`);
+}
+
+// --- 8.3 NAS100 Index — contractMult = 1.0 ---
+{
+  // riskUsd=$150, SL dist=150 points on NAS100
+  // lossPerLot = 150 * 1.0 = $150 per lot → rawLot = 1.00
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "NAS100",
+    riskUsd: 150,
+    entryPrice: 18000,
+    slPrice: 17850,
+    symInfo: symInfo(),
+    accInfo: { balance: 15000 },
+  });
+  assert(lot === 1.00, `NAS100 index lot sizing (contractMult=1.0): expected 1.00, got ${lot}`);
+}
+
+// --- 8.4 BTCUSD Crypto — contractMult = 1.0 ---
+{
+  // riskUsd=$300, SL dist=$1500 on BTC
+  // lossPerLot = 1500 * 1.0 = $1500 → rawLot = 0.20
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "BTCUSD",
+    riskUsd: 300,
+    entryPrice: 65000,
+    slPrice: 63500,
+    symInfo: symInfo({ vol_min: 0.01, vol_step: 0.01 }),
+    accInfo: { balance: 30000 },
+  });
+  assert(lot === 0.20, `BTCUSD crypto lot sizing: expected 0.20, got ${lot}`);
+}
+
+// --- 8.5 Zero SL distance → returns vol_min ---
+{
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "EURUSD",
+    riskUsd: 500,
+    entryPrice: 1.08500,
+    slPrice: 1.08500,  // same as entry → SL dist = 0
+    symInfo: symInfo(),
+    accInfo: {},
+  });
+  assert(lot === 0.01, `Zero SL distance → returns vol_min (0.01), got ${lot}`);
+}
+
+// --- 8.6 10% Balance Cap Safety ---
+{
+  // $500k account, 1% risk = $5000 requested, 10% cap = $50000 (no cap triggered)
+  // But set balance very low: $1000 → 10% = $100 max
+  // riskUsd=$500 > $100 → capped to $100
+  // Gold, SL dist=5.0 → lossPerLot = 5*100=$500, after cap rawLot = 100/500 = 0.20
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "XAUUSD",
+    riskUsd: 500,
+    entryPrice: 1950.00,
+    slPrice: 1945.00,
+    symInfo: symInfo(),
+    accInfo: { balance: 1000 },  // tiny account → caps riskUsd to $100
+  });
+  assert(lot === 0.20, `10% balance cap: capped $500→$100 on $1k XAUUSD, expected 0.20, got ${lot}`);
+}
+
+// --- 8.7 Volume Step Rounding ---
+{
+  // GER40: riskUsd=175, SL=80pts, lossPerLot=80*1=$80, rawLot=2.1875
+  // vol_step=0.5 → floor(2.1875/0.5)=4 steps * 0.5 = 2.0
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "GER40",
+    riskUsd: 175,
+    entryPrice: 18000,
+    slPrice: 17920,
+    symInfo: symInfo({ vol_min: 0.5, vol_step: 0.5, vol_max: 100 }),
+    accInfo: {},
+  });
+  assert(lot === 2.00, `GER40 vol_step=0.5 rounding: expected 2.00, got ${lot}`);
+}
+
+// --- 8.8 MT5 Tick Scaling Distortion Guard (NAS100 with inflated tick value) ---
+{
+  // If broker returns tick_value unreasonably large (distorted), engine falls back to contractMult path
+  // tick_size=0.01, tick_value=10000 → pointValueRatio=1,000,000 >> expectedMaxRatio(1*10=10)
+  // → Uses slDist * contractMult = 50 * 1.0 = $50 per lot
+  // riskUsd=100 → rawLot=2.0
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "NAS100",
+    riskUsd: 100,
+    entryPrice: 18000,
+    slPrice: 17950,
+    symInfo: symInfo({ tick_size: 0.01, tick_value: 10000 }),  // distorted feed
+    accInfo: {},
+  });
+  assert(lot === 2.00, `MT5 distorted tick guard for NAS100: expected 2.00, got ${lot}`);
+}
+
+// --- 8.9 DJ30 treated same as index (contractMult=1.0) ---
+{
+  // riskUsd=$80, SL=40pts → lossPerLot=$40 → rawLot=2.0
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "DJ30",
+    riskUsd: 80,
+    entryPrice: 39000,
+    slPrice: 38960,
+    symInfo: symInfo(),
+    accInfo: {},
+  });
+  assert(lot === 2.00, `DJ30 index lot sizing: expected 2.00, got ${lot}`);
+}
+
+// --- 8.10 Volume clamped to vol_max ---
+{
+  // EURUSD: riskUsd=99999, SL=0.0001 (1 pip) → rawLot insanely large → clamped to vol_max=50
+  const lot = calculateInstitutionalPositionSize({
+    symbol: "EURUSD",
+    riskUsd: 99999,
+    entryPrice: 1.08500,
+    slPrice: 1.08490,
+    symInfo: symInfo({ vol_max: 50, vol_step: 0.01, tick_size: 0.00001, tick_value: 0.10 }),
+    accInfo: {},
+  });
+  assert(lot === 50.00, `Volume clamped to vol_max=50: got ${lot}`);
+}
+
 console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
 console.log("=======================================================");

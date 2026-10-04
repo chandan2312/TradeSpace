@@ -146,6 +146,36 @@ export default function AutonomousHeader({
           <Layers size={13} /> MODE: {execMode}
         </div>
 
+        {/* MT5 Broker Execution Status */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 10px",
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            background: config?.liveTrading
+              ? "rgba(16, 185, 129, 0.15)"
+              : "rgba(255, 255, 255, 0.05)",
+            color: config?.liveTrading ? "#10b981" : "var(--muted)",
+            border: `1px solid ${config?.liveTrading ? "rgba(16, 185, 129, 0.3)" : "var(--border)"}`,
+          }}
+          title={config?.liveTrading ? "Orders execute live on MT5 broker terminal" : "Orders are simulated in paper trading mode"}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: config?.liveTrading ? "#10b981" : "var(--muted)",
+              boxShadow: config?.liveTrading ? "0 0 8px #10b981" : "none",
+            }}
+          />
+          {config?.liveTrading ? "MT5 LIVE" : "PAPER SIM"}
+        </div>
+
         {/* Horizon Mode */}
         <div
           style={{

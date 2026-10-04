@@ -1,23 +1,38 @@
 """
-TradeSpace MT5 bridge — run on the Windows RDP next to MetaTrader 5.
+TradeSpace Institutional MT5 Bridge Server
+===========================================
+High-performance HTTP REST bridge designed to run on the Windows VPS alongside MetaTrader 5.
+Directly referenced from the battle-tested Alpha project architecture with full order execution,
+active position management (SL/TP modify, partial/full close), position tracking, and historical deals.
 
-Setup (once):
+Setup (Windows VPS):
     pip install MetaTrader5
 
 Run:
     set MT5_TOKEN=chandan-yashwant-chaudhari-2312
     python mt5_server.py --host 0.0.0.0 --port 8765
 
-Then in TradeSpace's .env on your local box, keep:
-    NEXUS_MT5_REMOTE_URL=http://<windows-public-ip>:8765
+In TradeSpace .env:
+    NEXUS_MT5_REMOTE_URL=http://<windows-vps-ip>:8765
     NEXUS_MT5_REMOTE_TOKEN=chandan-yashwant-chaudhari-2312
 
 Endpoints:
-    GET  /health
-    POST /tick     { "sym": "EURUSD" }
-    POST /ticks    { "symbols": ["EURUSD", "XAUUSD"] }
-    POST /rates    { "sym": "EURUSD", "timeframe": "M5", "count": 500 }
+    GET/POST /health
+    POST     /tick             { "sym": "EURUSD" }
+    POST     /ticks            { "symbols": ["EURUSD", "XAUUSD"] }
+    POST     /rates            { "sym": "EURUSD", "timeframe": "M5", "count": 500 }
+    POST     /bulk-rates       { "symbols": ["NAS100", "US30"], "timeframe": "M15", "count": 100 }
+    POST     /ping-timeframes  { "sym": "EURUSD", "timeframes": ["M1","M5","M15","H1","H4","D1"] }
+    GET/POST /symbols          { "query": "EUR", "visible_only": true }
+    GET/POST /symbol           { "sym": "EURUSD" }
+    POST     /order            { "symbol": "EURUSD", "action": "buy", "volume": 0.1, "sl": 1.08, "tp": 1.10 }
+    POST     /modify           { "ticket": 123456, "sl": 1.085, "tp": 1.10 }
+    POST     /close            { "ticket": 123456, "volume": 0.05 }
+    GET/POST /positions        { "sym": "EURUSD" }
+    GET/POST /history          { "days": 7, "sym": "EURUSD" }
+    GET/POST /account
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,40 +40,64 @@ import json
 import os
 import secrets
 import threading
+from urllib.parse import urlparse, parse_qsl
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 try:
     import MetaTrader5 as mt5
 except ImportError:
-    raise SystemExit("MetaTrader5 package not installed. Run: pip install MetaTrader5")
+    mt5 = None
 
 TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
 
-# Common broker symbol aliases so the app can ask for "US30" and get "US30.cash" etc.
+# Institutional broker symbol aliases (handles broker naming differences across prop firms & brokers)
 SYMBOL_ALIASES = {
     "DJ30":    ("DJ30", "DJI30", "US30", "US30.cash", "US30m", "DJI", "WallStreet30"),
+    "US30":    ("DJ30", "DJI30", "US30", "US30.cash", "US30m", "DJI", "WallStreet30"),
     "NAS100":  ("NAS100", "NDX100", "US100", "USTEC", "USTEC.cash", "NAS100.cash", "NDX"),
+    "US100":   ("NAS100", "NDX100", "US100", "USTEC", "USTEC.cash", "NAS100.cash", "NDX"),
     "SP500":   ("SP500", "SPX500", "US500", "SP500.cash", "SPX"),
-    "EURUSD":  ("EURUSD", "EURUSD.", "EURUSDm", "EURUSD.pro"),
-    "XAUUSD":  ("XAUUSD", "XAUUSD.", "XAUUSDm", "GOLD"),
-    "BTCUSD":  ("BTCUSD", "BTCUSD.", "BTCUSDm", "BITCOIN"),
+    "SPX500":  ("SP500", "SPX500", "US500", "SP500.cash", "SPX"),
+    "US500":   ("SP500", "SPX500", "US500", "SP500.cash", "SPX"),
+    "GER40":   ("GER40", "DAX40", "DE40", "GER30", "DAX30", "GER40.cash", "DE30"),
+    "JP225":   ("JP225", "NIKKEI", "JP225.cash", "NI225", "N225"),
+    "UK100":   ("UK100", "FTSE100", "UK100.cash", "FTSE"),
+    "AU200":   ("AU200", "AUS200", "AU200.cash", "ASX200"),
+    "FR40":    ("FR40", "FRA40", "FR40.cash", "CAC40"),
+    "EURUSD":  ("EURUSD", "EURUSD.i", "EURUSD.I", "EURUSD.", "EURUSDm", "EURUSD.pro", "EURUSD.raw"),
+    "GBPUSD":  ("GBPUSD", "GBPUSD.i", "GBPUSD.I", "GBPUSD.", "GBPUSDm", "GBPUSD.pro", "GBPUSD.raw"),
+    "USDJPY":  ("USDJPY", "USDJPY.i", "USDJPY.I", "USDJPY.", "USDJPYm", "USDJPY.pro", "USDJPY.raw"),
+    "USDCHF":  ("USDCHF", "USDCHF.i", "USDCHF.I", "USDCHF.", "USDCHFm", "USDCHF.pro", "USDCHF.raw"),
+    "AUDUSD":  ("AUDUSD", "AUDUSD.i", "AUDUSD.I", "AUDUSD.", "AUDUSDm", "AUDUSD.pro", "AUDUSD.raw"),
+    "USDCAD":  ("USDCAD", "USDCAD.i", "USDCAD.I", "USDCAD.", "USDCADm", "USDCAD.pro", "USDCAD.raw"),
+    "NZDUSD":  ("NZDUSD", "NZDUSD.i", "NZDUSD.I", "NZDUSD.", "NZDUSDm", "NZDUSD.pro", "NZDUSD.raw"),
+    "EURJPY":  ("EURJPY", "EURJPY.i", "EURJPY.I", "EURJPY.", "EURJPYm", "EURJPY.pro"),
+    "GBPJPY":  ("GBPJPY", "GBPJPY.i", "GBPJPY.I", "GBPJPY.", "GBPJPYm", "GBPJPY.pro"),
+    "XAUUSD":  ("XAUUSD", "XAUUSD.", "XAUUSDm", "GOLD", "XAUUSD.i"),
+    "XAGUSD":  ("XAGUSD", "XAGUSD.", "XAGUSDm", "SILVER", "XAGUSD.i"),
+    "BTCUSD":  ("BTCUSD", "BTCUSD.", "BTCUSDm", "BITCOIN", "BTCUSD.i"),
+    "ETHUSD":  ("ETHUSD", "ETHUSD.", "ETHUSDm", "ETHEREUM", "ETHUSD.i"),
+    "SOLUSD":  ("SOLUSD", "SOLUSD.", "SOLUSDm", "SOLUSD.i"),
+    "XRPUSD":  ("XRPUSD", "XRPUSD.", "XRPUSDm", "XRPUSD.i"),
 }
 
 TF_MAP = {
-    "M1":  mt5.TIMEFRAME_M1,
-    "M5":  mt5.TIMEFRAME_M5,
-    "M15": mt5.TIMEFRAME_M15,
-    "M30": mt5.TIMEFRAME_M30,
-    "H1":  mt5.TIMEFRAME_H1,
-    "H4":  mt5.TIMEFRAME_H4,
-    "D1":  mt5.TIMEFRAME_D1,
+    "M1":  getattr(mt5, "TIMEFRAME_M1", 1) if mt5 else 1,
+    "M5":  getattr(mt5, "TIMEFRAME_M5", 5) if mt5 else 5,
+    "M15": getattr(mt5, "TIMEFRAME_M15", 15) if mt5 else 15,
+    "M30": getattr(mt5, "TIMEFRAME_M30", 30) if mt5 else 30,
+    "H1":  getattr(mt5, "TIMEFRAME_H1", 16385) if mt5 else 16385,
+    "H4":  getattr(mt5, "TIMEFRAME_H4", 16388) if mt5 else 16388,
+    "D1":  getattr(mt5, "TIMEFRAME_D1", 16408) if mt5 else 16408,
 }
 
 
 def ensure_mt5() -> tuple[bool, str]:
-    """Make sure the shared MT5 terminal connection is alive. Reuses one init across requests."""
+    """Ensure connection to the MT5 terminal is active."""
+    if mt5 is None:
+        return False, "MetaTrader5 package not installed (Windows only)"
     info = mt5.terminal_info()
     if info is not None:
         return True, "ok"
@@ -67,23 +106,64 @@ def ensure_mt5() -> tuple[bool, str]:
     return True, "ok"
 
 
-def resolve_symbol(app_symbol: str) -> str | None:
-    """Try aliases, then substring-match against broker's Market Watch."""
-    candidates = list(SYMBOL_ALIASES.get(app_symbol, (app_symbol,)))
+def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
+    """
+    Resolve requested symbol to the broker's exact Market Watch symbol name.
+    1. Check payload broker_mapping
+    2. Check candidate aliases
+    3. Check fuzzy prefix/suffix against broker Market Watch
+    """
+    if not app_symbol:
+        return None
+    if mt5 is None:
+        return app_symbol
+
+    app_clean = app_symbol.strip()
+    app_upper = app_clean.upper()
+
+    # 1. Explicit broker mapping from request payload
+    if payload and "broker_mapping" in payload:
+        mapping = payload["broker_mapping"]
+        if app_upper in mapping:
+            explicit_sym = mapping[app_upper]
+            if mt5.symbol_select(explicit_sym, True):
+                return explicit_sym
+
+    # 2. Candidate list from SYMBOL_ALIASES
+    candidates = list(SYMBOL_ALIASES.get(app_upper, (app_clean, app_upper)))
     for name in dict.fromkeys(candidates):
         if mt5.symbol_select(name, True):
             return name
+
+    # 3. Market Watch fuzzy discovery
     available = mt5.symbols_get() or []
     lowered = {s.name.lower(): s.name for s in available}
+
+    # Direct lowercase match
     for name in dict.fromkeys(candidates):
         hit = lowered.get(name.lower())
         if hit and mt5.symbol_select(hit, True):
             return hit
+
+    # Prefix match (e.g. EURUSD matching EURUSD.i, EURUSD.raw, EURUSDm)
+    for s in available:
+        s_name = s.name
+        base = s_name.split(".")[0].split("_")[0].split("-")[0].rstrip("m").upper()
+        if base == app_upper:
+            if mt5.symbol_select(s_name, True):
+                return s_name
+
+    # Substring match fallback
+    for s in available:
+        if app_upper in s.name.upper():
+            if mt5.symbol_select(s.name, True):
+                return s.name
+
     return None
 
 
-def tick_dict(app_symbol: str) -> dict:
-    symbol = resolve_symbol(app_symbol)
+def tick_dict(app_symbol: str, payload: dict = None) -> dict:
+    symbol = resolve_symbol(app_symbol, payload)
     if not symbol:
         return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
     info = mt5.symbol_info(symbol)
@@ -127,7 +207,7 @@ def handle_tick(payload):
     app_symbol = str(payload.get("sym") or payload.get("symbol") or "").strip().upper()
     if not app_symbol:
         return {"ok": False, "status": "bad-request", "message": "sym required"}
-    return tick_dict(app_symbol)
+    return tick_dict(app_symbol, payload)
 
 
 def handle_ticks(payload):
@@ -140,7 +220,7 @@ def handle_ticks(payload):
     symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
     if not symbols:
         return {"ok": False, "status": "bad-request", "message": "symbols required"}
-    ticks = {s: tick_dict(s) for s in dict.fromkeys(symbols)}
+    ticks = {s: tick_dict(s, payload) for s in dict.fromkeys(symbols)}
     ok_count = sum(1 for t in ticks.values() if t.get("ok"))
     return {
         "ok": ok_count > 0,
@@ -152,7 +232,7 @@ def handle_ticks(payload):
 
 
 def handle_symbols(payload):
-    """List all symbols visible to the terminal. Filter by substring + market path."""
+    """List all symbols visible to the terminal."""
     ok, msg = ensure_mt5()
     if not ok:
         return {"ok": False, "status": "not-connected", "message": msg}
@@ -186,6 +266,52 @@ def handle_symbols(payload):
     return {"ok": True, "status": "symbols", "total": total, "count": len(items), "symbols": items}
 
 
+def handle_symbol(payload):
+    """Fetch full symbol specifications (digits, point, spread, tick size/value, volumes)."""
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+    app_symbol = payload.get("sym") or payload.get("symbol")
+    if not app_symbol:
+        return {"ok": False, "status": "bad-request", "message": "symbol required"}
+
+    symbol = resolve_symbol(str(app_symbol).strip().upper(), payload)
+    if not symbol:
+        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
+
+    info = mt5.symbol_info(symbol)
+    if not info:
+        return {"ok": False, "status": "symbol-error", "message": f"Failed to get symbol info for {symbol}"}
+
+    return {
+        "ok": True,
+        "symbol": {
+            "name": info.name,
+            "app_symbol": app_symbol,
+            "digits": info.digits,
+            "spread": info.spread,
+            "point": info.point,
+            "trade_calc_mode": info.trade_calc_mode,
+            "trade_mode": info.trade_mode,
+            "trade_stops_level": info.trade_stops_level,
+            "trade_freeze_level": info.trade_freeze_level,
+            "volume_min": info.volume_min,
+            "volume_max": info.volume_max,
+            "volume_step": info.volume_step,
+            "volume_limit": info.volume_limit,
+            "trade_contract_size": info.trade_contract_size,
+            "trade_tick_value": info.trade_tick_value,
+            "trade_tick_value_profit": info.trade_tick_value_profit,
+            "trade_tick_value_loss": info.trade_tick_value_loss,
+            "trade_tick_size": info.trade_tick_size,
+            "margin_initial": info.margin_initial,
+            "margin_maintenance": info.margin_maintenance,
+            "currency_base": info.currency_base,
+            "currency_profit": info.currency_profit,
+        }
+    }
+
+
 def handle_rates(payload):
     ok, msg = ensure_mt5()
     if not ok:
@@ -193,7 +319,7 @@ def handle_rates(payload):
     app_symbol = str(payload.get("sym") or payload.get("symbol") or "").strip().upper()
     if not app_symbol:
         return {"ok": False, "status": "bad-request", "message": "sym required"}
-    symbol = resolve_symbol(app_symbol)
+    symbol = resolve_symbol(app_symbol, payload)
     if not symbol:
         return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
     tf_name = str(payload.get("timeframe") or payload.get("tf") or "M5").strip().upper()
@@ -204,10 +330,10 @@ def handle_rates(payload):
     offset = max(0, int(payload.get("offset") or 0))
 
     rates = None
+    now_ts = int(datetime.now(timezone.utc).timestamp())
     for attempt in (
         lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
-        # Fallback: fetch using a time far in the future to ensure we get the latest bars
-        lambda: mt5.copy_rates_from(symbol, tf_const, int(datetime.now().timestamp()) + 86400, count) if offset == 0 else None,
+        lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
     ):
         try:
             rates = attempt()
@@ -261,14 +387,15 @@ def handle_bulk_rates(payload):
     count = max(1, min(int(payload.get("count") or 2), 500))
 
     results = {}
+    now_ts = int(datetime.now(timezone.utc).timestamp())
     for app_symbol in dict.fromkeys(symbols):
-        symbol = resolve_symbol(app_symbol)
+        symbol = resolve_symbol(app_symbol, payload)
         if not symbol:
             continue
         rates = None
         for attempt in (
             lambda: mt5.copy_rates_from_pos(symbol, tf_const, 0, count),
-            lambda: mt5.copy_rates_from(symbol, tf_const, int(datetime.now().timestamp()) + 86400, count),
+            lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count),
         ):
             try:
                 rates = attempt()
@@ -276,10 +403,8 @@ def handle_bulk_rates(payload):
                 rates = None
             if rates is not None and len(rates) > 0:
                 break
-        
         if rates is None or len(rates) == 0:
             continue
-        
         bars = []
         for row in rates:
             try:
@@ -295,130 +420,388 @@ def handle_bulk_rates(payload):
         bars.sort(key=lambda b: b["t"])
         results[app_symbol] = bars
 
-    return {
-        "ok": True,
-        "status": "bulk-rates",
-        "timeframe": tf_name,
-        "count": count,
-        "data": results,
-    }
+    return {"ok": True, "status": "bulk-rates", "timeframe": tf_name, "count": count, "data": results}
 
 
-def handle_order(payload):
+def handle_ping_timeframes(payload):
     ok, msg = ensure_mt5()
     if not ok:
         return {"ok": False, "status": "not-connected", "message": msg}
-    
+    app_symbol = str(payload.get("sym") or payload.get("symbol") or "").strip().upper()
+    if not app_symbol:
+        return {"ok": False, "status": "bad-request", "message": "sym required"}
+    symbol = resolve_symbol(app_symbol, payload)
+    if not symbol:
+        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
+
+    tfs = payload.get("timeframes") or payload.get("tfs") or ["M1", "M5", "M15", "H1", "H4", "D1"]
+    results = {}
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    for tf_name in tfs:
+        tf_name = str(tf_name).strip().upper()
+        tf_const = TF_MAP.get(tf_name)
+        if tf_const is None:
+            results[tf_name] = {"ok": False, "message": f"unsupported timeframe {tf_name}"}
+            continue
+        rates = None
+        for attempt in (
+            lambda: mt5.copy_rates_from_pos(symbol, tf_const, 0, 1),
+            lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, 1),
+        ):
+            try:
+                rates = attempt()
+            except Exception:
+                rates = None
+            if rates is not None and len(rates) > 0:
+                break
+        if rates is None or len(rates) == 0:
+            results[tf_name] = {"ok": False, "message": "no rates"}
+        else:
+            row = rates[0]
+            results[tf_name] = {
+                "ok": True,
+                "t": int(row["time"]) * 1000,
+                "o": float(row["open"]),
+                "h": float(row["high"]),
+                "l": float(row["low"]),
+                "c": float(row["close"]),
+                "tick_volume": int(row["tick_volume"]) if "tick_volume" in row.dtype.names else None,
+            }
+
+    return {"ok": True, "status": "ping-timeframes", "app_symbol": app_symbol, "symbol": symbol, "data": results}
+
+
+def handle_order(payload):
+    """
+    Execute a market order or close order directly on MT5.
+    Features:
+    - SL/TP slippage delta compensation
+    - Digits precision rounding
+    - Auto filling mode resolution (FOK vs IOC)
+    - Comment truncation
+    """
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+
     action = str(payload.get("action") or "").strip().lower()
     symbol = str(payload.get("symbol") or "").strip().upper()
     volume = float(payload.get("volume") or 0.01)
     sl = float(payload.get("sl") or 0.0)
     tp = float(payload.get("tp") or 0.0)
-    
+    comment = str(payload.get("comment") or "TradeSpace Algo").strip()[:31]
+    magic = int(payload.get("magic") or 231223)
+    deviation = int(payload.get("deviation") or 20)
+
     if not action or not symbol:
         return {"ok": False, "status": "bad-request", "message": "action and symbol required"}
-        
-    mt5_symbol = resolve_symbol(symbol)
+
+    mt5_symbol = resolve_symbol(symbol, payload)
     if not mt5_symbol:
         return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {symbol}"}
-        
+
     mt5.symbol_select(mt5_symbol, True)
     tick = mt5.symbol_info_tick(mt5_symbol)
     sym_info = mt5.symbol_info(mt5_symbol)
-    
+
     if not tick or not sym_info:
         return {"ok": False, "status": "no-tick", "message": f"could not get tick/info for {mt5_symbol}"}
-        
+
     order_type = mt5.ORDER_TYPE_BUY if action == "buy" else mt5.ORDER_TYPE_SELL if action == "sell" else None
     if order_type is None:
         return {"ok": False, "status": "bad-request", "message": "action must be buy or sell"}
-        
+
     price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
-    
+
+    # Slippage compensation: adjust SL/TP by fill delta to protect exact backtested R-distance
+    entry_price_sig = payload.get("entry_price")
+    if entry_price_sig and float(entry_price_sig) > 0:
+        delta = price - float(entry_price_sig)
+        if sl > 0:
+            sl += delta
+        if tp > 0:
+            tp += delta
+
     # Determine filling mode
-    filling = mt5.ORDER_FILLING_IOC
-    if sym_info.filling_mode & mt5.SYMBOL_FILLING_FOK:
-        filling = mt5.ORDER_FILLING_FOK
-    elif sym_info.filling_mode & mt5.SYMBOL_FILLING_IOC:
-        filling = mt5.ORDER_FILLING_IOC
-        
+    filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
+    fok_flag = getattr(mt5, "SYMBOL_FILLING_FOK", 1)
+    ioc_flag = getattr(mt5, "SYMBOL_FILLING_IOC", 2)
+    mode = getattr(sym_info, "filling_mode", 0)
+
+    if mode & fok_flag:
+        filling = getattr(mt5, "ORDER_FILLING_FOK", 0)
+    elif mode & ioc_flag:
+        filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
+
+    # Volume bounds validation
+    vol_min = float(getattr(sym_info, "volume_min", 0.01))
+    vol_max = float(getattr(sym_info, "volume_max", 100.0))
+    volume = max(vol_min, min(volume, vol_max))
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": mt5_symbol,
         "volume": volume,
         "type": order_type,
-        "price": price,
-        "sl": sl,
-        "tp": tp,
-        "deviation": 20,
-        "magic": 231223,
-        "comment": "TradeSpace Algo",
+        "price": round(price, sym_info.digits),
+        "sl": round(sl, sym_info.digits) if sl > 0 else 0.0,
+        "tp": round(tp, sym_info.digits) if tp > 0 else 0.0,
+        "deviation": deviation,
+        "magic": magic,
+        "comment": comment,
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": filling,
     }
-    
+
+    # Position closing parameter support
+    close_ticket = payload.get("close") or payload.get("position")
+    if close_ticket:
+        request["position"] = int(close_ticket)
+
     result = mt5.order_send(request)
     if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
         err_msg = result.comment if result else "unknown error"
         retcode = result.retcode if result else "none"
         return {
-            "ok": False, 
-            "status": "order-failed", 
+            "ok": False,
+            "status": "order-failed",
             "message": f"Order failed: {err_msg} ({retcode})"
         }
-        
+
     return {
-        "ok": True, 
-        "status": "order-filled", 
+        "ok": True,
+        "status": "order-filled",
         "ticket": result.order,
         "price": result.price,
-        "volume": result.volume
+        "volume": result.volume,
     }
 
 
 def handle_modify(payload):
+    """Modify SL and/or TP on an existing open position."""
     ok, msg = ensure_mt5()
     if not ok:
         return {"ok": False, "status": "not-connected", "message": msg}
-        
+
     ticket = int(payload.get("ticket") or 0)
     sl = float(payload.get("sl") or 0.0)
     tp = float(payload.get("tp") or 0.0)
-    
+
     if not ticket:
         return {"ok": False, "status": "bad-request", "message": "ticket required"}
-        
+
     position = mt5.positions_get(ticket=ticket)
     if not position or len(position) == 0:
         return {"ok": False, "status": "position-missing", "message": f"position {ticket} not found"}
-        
+
     pos = position[0]
-    
+    sym_info = mt5.symbol_info(pos.symbol)
+    digits = sym_info.digits if sym_info else 5
+
     request = {
         "action": mt5.TRADE_ACTION_SLTP,
         "symbol": pos.symbol,
         "position": ticket,
-        "sl": sl if sl > 0 else pos.sl,
-        "tp": tp if tp > 0 else pos.tp,
+        "sl": round(sl, digits) if sl > 0 else pos.sl,
+        "tp": round(tp, digits) if tp > 0 else pos.tp,
         "magic": pos.magic,
     }
-    
+
     result = mt5.order_send(request)
     if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
         err_msg = result.comment if result else "unknown error"
         retcode = result.retcode if result else "none"
         return {
-            "ok": False, 
-            "status": "modify-failed", 
+            "ok": False,
+            "status": "modify-failed",
             "message": f"Modify failed: {err_msg} ({retcode})"
         }
-        
+
     return {
-        "ok": True, 
-        "status": "modified", 
+        "ok": True,
+        "status": "modified",
         "ticket": ticket,
         "sl": sl,
-        "tp": tp
+        "tp": tp,
+    }
+
+
+def handle_close(payload):
+    """Close an active MT5 position by ticket (full or partial)."""
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+
+    ticket = int(payload.get("ticket") or 0)
+    if not ticket:
+        return {"ok": False, "status": "bad-request", "message": "ticket required"}
+    volume = float(payload.get("volume") or 0.0)
+
+    position = mt5.positions_get(ticket=ticket)
+    if not position or len(position) == 0:
+        return {"ok": False, "status": "position-missing", "message": f"position {ticket} not found"}
+    pos = position[0]
+
+    sym_info = mt5.symbol_info(pos.symbol)
+    if not sym_info:
+        return {"ok": False, "status": "symbol-missing", "message": f"symbol {pos.symbol} info not found"}
+
+    filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
+    fok_flag = getattr(mt5, "SYMBOL_FILLING_FOK", 1)
+    ioc_flag = getattr(mt5, "SYMBOL_FILLING_IOC", 2)
+    mode = getattr(sym_info, "filling_mode", 0)
+
+    if mode & fok_flag:
+        filling = getattr(mt5, "ORDER_FILLING_FOK", 0)
+    elif mode & ioc_flag:
+        filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
+
+    order_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+    price = sym_info.bid if pos.type == mt5.ORDER_TYPE_BUY else sym_info.ask
+
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": pos.symbol,
+        "volume": volume if volume > 0 else pos.volume,
+        "type": order_type,
+        "position": pos.ticket,
+        "price": price,
+        "deviation": 20,
+        "magic": pos.magic,
+        "comment": "TradeSpace close",
+        "type_time": mt5.ORDER_TIME_GTC,
+        "type_filling": filling,
+    }
+
+    result = mt5.order_send(request)
+    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
+        err_msg = result.comment if result else "unknown error"
+        retcode = result.retcode if result else "none"
+        return {
+            "ok": False,
+            "status": "close-failed",
+            "message": f"Close failed: {err_msg} ({retcode})"
+        }
+
+    return {
+        "ok": True,
+        "status": "closed",
+        "ticket": ticket,
+        "volume": request["volume"],
+        "price": result.price,
+    }
+
+
+def handle_positions(payload):
+    """Get active MT5 positions."""
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+
+    app_symbol = payload.get("sym") or payload.get("symbol")
+    symbol = resolve_symbol(app_symbol, payload) if app_symbol else None
+
+    positions = mt5.positions_get(symbol=symbol) if symbol else mt5.positions_get()
+    if positions is None:
+        return {"ok": True, "positions": []}
+
+    res = []
+    broker_mapping = payload.get("broker_mapping") or {}
+    reverse_mapping = {v: k for k, v in broker_mapping.items()}
+
+    for p in positions:
+        try:
+            res.append({
+                "ticket": getattr(p, "ticket", None),
+                "time": getattr(p, "time", None),
+                "type": "BUY" if getattr(p, "type", -1) == mt5.ORDER_TYPE_BUY else "SELL",
+                "magic": getattr(p, "magic", 0),
+                "identifier": getattr(p, "identifier", None),
+                "volume": getattr(p, "volume", 0),
+                "price_open": getattr(p, "price_open", 0),
+                "sl": getattr(p, "sl", 0),
+                "tp": getattr(p, "tp", 0),
+                "price_current": getattr(p, "price_current", 0),
+                "swap": getattr(p, "swap", 0),
+                "profit": getattr(p, "profit", 0),
+                "symbol": getattr(p, "symbol", ""),
+                "app_symbol": reverse_mapping.get(getattr(p, "symbol", ""), getattr(p, "symbol", "")),
+                "comment": getattr(p, "comment", ""),
+            })
+        except Exception:
+            continue
+
+    return {"ok": True, "status": "positions", "positions": res}
+
+
+def handle_history(payload):
+    """Get trade deals history."""
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+
+    days = int(payload.get("days") or 7)
+    app_symbol = payload.get("sym") or payload.get("symbol")
+    symbol = resolve_symbol(app_symbol, payload) if app_symbol else None
+
+    now = datetime.now(timezone.utc)
+    from_date = now - timedelta(days=days)
+    to_date = now + timedelta(days=1)
+
+    deals = mt5.history_deals_get(from_date, to_date, group=f"*{symbol}*") if symbol else mt5.history_deals_get(from_date, to_date)
+    if deals is None:
+        return {"ok": True, "history": []}
+
+    res = []
+    for d in deals:
+        res.append({
+            "ticket": getattr(d, "ticket", None),
+            "order": getattr(d, "order", None),
+            "time": getattr(d, "time", None),
+            "type": "BUY" if getattr(d, "type", -1) == getattr(mt5, "DEAL_TYPE_BUY", 0) else "SELL" if getattr(d, "type", -1) == getattr(mt5, "DEAL_TYPE_SELL", 1) else "OTHER",
+            "entry": getattr(d, "entry", None),
+            "magic": getattr(d, "magic", None),
+            "position_id": getattr(d, "position_id", None),
+            "volume": getattr(d, "volume", None),
+            "price": getattr(d, "price", None),
+            "commission": getattr(d, "commission", None),
+            "swap": getattr(d, "swap", None),
+            "profit": getattr(d, "profit", None),
+            "symbol": getattr(d, "symbol", None),
+            "comment": getattr(d, "comment", None),
+        })
+
+    return {"ok": True, "status": "history", "history": res}
+
+
+def handle_account(_payload):
+    """Get account balance, equity, margin, leverage."""
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+
+    acc = mt5.account_info()
+    if not acc:
+        return {"ok": False, "status": "account-error", "message": "Failed to get account info"}
+
+    return {
+        "ok": True,
+        "account": {
+            "login": acc.login,
+            "trade_mode": acc.trade_mode,
+            "leverage": acc.leverage,
+            "balance": acc.balance,
+            "equity": acc.equity,
+            "profit": acc.profit,
+            "margin": acc.margin,
+            "margin_free": acc.margin_free,
+            "margin_level": acc.margin_level,
+            "currency": acc.currency,
+            "server": acc.server,
+            "company": acc.company,
+            "trade_allowed": acc.trade_allowed,
+            "trade_expert": acc.trade_expert,
+        }
     }
 
 
@@ -429,10 +812,20 @@ ROUTES = {
     ("POST", "/ticks"):   handle_ticks,
     ("POST", "/rates"):   handle_rates,
     ("POST", "/bulk-rates"): handle_bulk_rates,
+    ("POST", "/ping-timeframes"): handle_ping_timeframes,
     ("POST", "/symbols"): handle_symbols,
     ("GET",  "/symbols"): handle_symbols,
+    ("POST", "/symbol"):  handle_symbol,
+    ("GET",  "/symbol"):  handle_symbol,
     ("POST", "/order"):   handle_order,
     ("POST", "/modify"):  handle_modify,
+    ("POST", "/close"):   handle_close,
+    ("GET",  "/positions"): handle_positions,
+    ("POST", "/positions"): handle_positions,
+    ("GET",  "/history"):   handle_history,
+    ("POST", "/history"):   handle_history,
+    ("GET",  "/account"):   handle_account,
+    ("POST", "/account"):   handle_account,
 }
 
 
@@ -443,18 +836,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-NEXUS-MT5-TOKEN")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
-    def _payload(self):
+    def _payload(self, parsed_path=None):
+        payload = {}
+        if parsed_path and parsed_path.query:
+            for k, v in parse_qsl(parsed_path.query):
+                payload[k] = v
         length = int(self.headers.get("Content-Length") or 0)
-        if not length:
-            return {}
-        try:
-            return json.loads(self.rfile.read(length).decode("utf-8"))
-        except json.JSONDecodeError:
-            return {}
+        if length:
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload.update(body)
+            except Exception:
+                pass
+        return payload
 
     def _authorized(self):
         if not TOKEN:
@@ -474,15 +873,17 @@ class Handler(BaseHTTPRequestHandler):
         self._route("POST")
 
     def _route(self, method):
-        handler = ROUTES.get((method, self.path))
+        parsed = urlparse(self.path)
+        path = parsed.path
+        handler = ROUTES.get((method, path))
         if not handler:
-            self._send(404, {"ok": False, "status": "not-found", "message": f"unknown route {method} {self.path}"})
+            self._send(404, {"ok": False, "status": "not-found", "message": f"unknown route {method} {path}"})
             return
         if not self._authorized():
             self._send(401, {"ok": False, "status": "unauthorized", "message": "MT5_TOKEN missing or invalid"})
             return
         try:
-            payload = self._payload() if method == "POST" else {}
+            payload = self._payload(parsed)
             with LOCK:
                 result = handler(payload)
             self._send(200, result)
@@ -500,9 +901,10 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60, flush=True)
+    print("TradeSpace Institutional MT5 Bridge Server", flush=True)
     ok, msg = ensure_mt5()
     if not ok:
-        print(f"[warn] MT5 not connected yet: {msg}", flush=True)
+        print(f"[warn] MT5 not connected: {msg}", flush=True)
         print("[warn] Make sure MetaTrader 5 terminal is running and logged in.", flush=True)
     else:
         info = mt5.account_info()
@@ -513,7 +915,7 @@ def main():
             print(f"[mt5] terminal={term.name} build={term.build} connected={term.connected}", flush=True)
 
     print(f"[bridge] listening on http://{args.host}:{args.port}", flush=True)
-    print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN — set MT5_TOKEN env var to require a bearer token'}", flush=True)
+    print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN — set MT5_TOKEN env var'}", flush=True)
     print("=" * 60, flush=True)
 
     try:
@@ -521,7 +923,8 @@ def main():
     except KeyboardInterrupt:
         print("\n[bridge] shutting down…", flush=True)
     finally:
-        mt5.shutdown()
+        if mt5:
+            mt5.shutdown()
 
 
 if __name__ == "__main__":
