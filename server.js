@@ -9,6 +9,7 @@ import "dotenv/config";
 import fs from "fs";
 import http from "http";
 import https from "https";
+import { parse } from "url";
 import next from "next";
 import { WebSocketServer } from "ws";
 
@@ -41,16 +42,27 @@ async function main() {
   // Warm Mongo (creates indexes, seeds default watchlist) before serving traffic.
   await getCols();
 
-  const nextApp = next({ dev });
+  const nextApp = next({ dev, hostname: "0.0.0.0", port: PORT });
   await nextApp.prepare();
   const handle = nextApp.getRequestHandler();
   const nextUpgrade = nextApp.getUpgradeHandler();
 
+  const requestListener = async (req, res) => {
+    try {
+      const parsedUrl = parse(req.url, true);
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error("[http error]", req.url, err);
+      res.statusCode = 500;
+      res.end("Internal Server Error");
+    }
+  };
+
   // HTTPS when cert.pem+key.pem exist (needed for PWA install / secure browser access), else HTTP.
   const useHttps = fs.existsSync("./cert.pem") && fs.existsSync("./key.pem");
   const server = useHttps
-    ? https.createServer({ cert: fs.readFileSync("./cert.pem"), key: fs.readFileSync("./key.pem") }, (req, res) => handle(req, res))
-    : http.createServer((req, res) => handle(req, res));
+    ? https.createServer({ cert: fs.readFileSync("./cert.pem"), key: fs.readFileSync("./key.pem") }, requestListener)
+    : http.createServer(requestListener);
 
   // ---- WebSocket: /ws -------------------------------------------------
   const wss = new WebSocketServer({ noServer: true });
