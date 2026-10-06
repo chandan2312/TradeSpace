@@ -5,6 +5,7 @@ node_modules/
 # secrets
 .env
 .env.local
+cmd.txt
 
 # misc
 *.log

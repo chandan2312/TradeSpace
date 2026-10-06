@@ -10,6 +10,7 @@ import DrawingToolbar from "./DrawingToolbar.jsx";
 import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
 import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
+import { tradeToPositionDrawing, tradeToPositionDrawings } from "../lib/autonomous/tradeDrawing.js";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
@@ -213,6 +214,7 @@ class AlertsPrimitive {
 
 export default function ChartPanel({
   symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
+  autonomousTrades = [],
   syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
   isActive = true, onOpenSettings, biasData,
   storageKey,
@@ -682,6 +684,61 @@ export default function ChartPanel({
     const visibleAlerts = (alerts || []).filter(a => !a.note?.includes("[RR:"));
     alertsPrimRef.current?.update(visibleAlerts, dragging, barsRef.current);
   }, [alerts, dragging, dataVersion]);
+
+  // ---------- autonomous trades overlay via DrawingManager (lightweight-charts-drawing native RR tool) ----------
+  useEffect(() => {
+    const mgr = drawingManagerRef.current;
+    if (!mgr || !chartReady) return;
+
+    const isEnabled = indicators?.autoTrades !== false;
+    const currentList = mgr.list || [];
+    const userDrawings = currentList.filter((d) => !String(d.id).startsWith("auto_"));
+
+    if (!isEnabled || !autonomousTrades || autonomousTrades.length === 0) {
+      if (currentList.some((d) => String(d.id).startsWith("auto_"))) {
+        mgr.list = userDrawings;
+        mgr.redraw();
+      }
+      return;
+    }
+
+    const tfSec = TF_SEC[tf] || 300;
+    const isDismissed = (id) => draw.dismissedAutoIds?.current?.has(String(id));
+
+    // Clean institutional chart display:
+    // 1. Keep ALL active / managing / open trades
+    // 2. Keep only trades closed within the last 24 hours (today's session), at most 2 most recent closed per symbol
+    // 3. Drop all stale historical trades older than 24 hours to prevent chart clutter
+    const nowMs = Date.now();
+    const activeList = [];
+    const closedList = [];
+
+    for (const t of (autonomousTrades || [])) {
+      if (!t) continue;
+      const isClosedTrade =
+        ["closed_tp", "closed_sl", "closed_be", "closed", "invalidated", "cancelled", "expired"].includes(t.status) ||
+        Boolean(t.closedAt);
+
+      if (isClosedTrade) {
+        const closedTime = new Date(t.closedAt || t.updatedAt || t.createdAt).getTime();
+        if (Math.abs(nowMs - closedTime) <= 7 * 24 * 3600 * 1000) {
+          closedList.push({ trade: t, time: closedTime });
+        }
+      } else {
+        activeList.push(t);
+      }
+    }
+
+    closedList.sort((a, b) => b.time - a.time);
+    const chartTrades = [...activeList, ...closedList.slice(0, 10).map((item) => item.trade)];
+
+    const autoDrawings = chartTrades
+      .flatMap((t) => tradeToPositionDrawings(t, barsRef.current, tfSec))
+      .filter((d) => d && !isDismissed(d.id));
+
+    mgr.list = [...userDrawings, ...autoDrawings];
+    mgr.redraw();
+  }, [autonomousTrades, indicators?.autoTrades, chartReady, symbol, tf, dataVersion]);
 
   // ---------- pointer tracking for "+ price" button and drag handle ----------
   // A wrapper mousemove (NOT subscribeCrosshairMove) so the button stays alive
@@ -1181,6 +1238,7 @@ export default function ChartPanel({
     >
       <div 
         ref={wrapRef} 
+        className="chart-wrap"
         style={{ position: "absolute", inset: 0, touchAction: "none" }}
         onPointerDownCapture={mergedPointerDown}
         onPointerMoveCapture={mergedPointerMove}
@@ -1188,8 +1246,8 @@ export default function ChartPanel({
         onDoubleClickCapture={onChartDoubleClick}
       />
 
-      {/* Mobile left-edge scroller */}
-      {isMobile && (
+      {/* Mobile left-edge scroller: disabled when drawing or selecting to avoid hijacking touches */}
+      {isMobile && !draw.activeTool && !draw.selected && (
         <div 
           style={{
             position: "absolute",

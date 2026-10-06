@@ -47,6 +47,10 @@ import json
 import os
 import secrets
 import threading
+import math
+import sqlite3
+import hashlib
+from zoneinfo import ZoneInfo
 from urllib.parse import urlparse, parse_qsl
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -80,6 +84,66 @@ _load_env_file()
 
 TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
+
+# A write is journaled before order_send. After a crash/timeout its request id
+# remains unresolved and is never replayed; orders/deals reconcile the outcome.
+def journal_connection():
+    path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE IF NOT EXISTS requests (request_id TEXT PRIMARY KEY, digest TEXT NOT NULL, state TEXT NOT NULL, response TEXT, created REAL NOT NULL)")
+    return conn
+
+
+def durable_write(handler, payload):
+    request_id = str(payload.get("request_id") or "")
+    if not request_id:
+        return handler(payload)  # Existing market bridge clients retain compatibility.
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    with journal_connection() as conn:
+        row = conn.execute("SELECT digest,state,response FROM requests WHERE request_id=?", (request_id,)).fetchone()
+        if row:
+            if row[0] != digest:
+                return {"ok": False, "status": "request-conflict", "message": "request id reused with different payload"}
+            return json.loads(row[2]) if row[2] else {"ok": False, "ambiguous": True, "status": "reconciliation-required", "request_id": request_id}
+        conn.execute("INSERT INTO requests VALUES (?,?,?,?,?)", (request_id, digest, "submitted", None, datetime.now(timezone.utc).timestamp()))
+    try:
+        expected_account = payload.get("account_login")
+        if expected_account is not None:
+            ok, msg = ensure_mt5()
+            account = mt5.account_info() if ok else None
+            result = {"ok": False, "status": "account-mismatch", "message": "Broker account changed or unavailable"} if not account or str(account.login) != str(expected_account) else handler(payload)
+        else:
+            result = handler(payload)
+    except Exception as exc:
+        result = {"ok": False, "ambiguous": True, "status": "reconciliation-required", "message": str(exc)}
+    result["request_id"] = request_id
+    with journal_connection() as conn:
+        conn.execute("UPDATE requests SET state=?,response=? WHERE request_id=?", ("finished", json.dumps(result), request_id))
+    return result
+
+
+def valid_volume(volume, info, remaining=None):
+    step = float(getattr(info, "volume_step", 0))
+    minimum = float(getattr(info, "volume_min", 0))
+    maximum = float(getattr(info, "volume_max", 0))
+    if not math.isfinite(volume) or not step > 0 or not minimum > 0 or volume < minimum - 1e-9 or volume > maximum + 1e-9:
+        return False
+    if abs(volume / step - round(volume / step)) > 1e-7:
+        return False
+    if remaining is not None:
+        rest = remaining - volume
+        if rest < -1e-9 or (rest > 1e-9 and (rest < minimum - 1e-9 or abs(rest / step - round(rest / step)) > 1e-7)):
+            return False
+    return True
+
+
+def send_result(result, success_codes, failure_status):
+    if result is None:
+        return {"ok": False, "ambiguous": True, "status": "reconciliation-required", "message": "order_send returned no receipt"}
+    if result.retcode not in success_codes:
+        ambiguous = result.retcode in [getattr(mt5, "TRADE_RETCODE_TIMEOUT", 10012), getattr(mt5, "TRADE_RETCODE_CONNECTION", 10031)]
+        return {"ok": False, "ambiguous": ambiguous, "status": failure_status, "retcode": result.retcode, "message": result.comment}
+    return None
 
 # Institutional broker symbol aliases (handles broker naming differences across prop firms & brokers)
 SYMBOL_ALIASES = {
@@ -502,12 +566,8 @@ def handle_ping_timeframes(payload):
 
 def handle_order(payload):
     """
-    Execute a market order or close order directly on MT5.
-    Features:
-    - SL/TP slippage delta compensation
-    - Digits precision rounding
-    - Auto filling mode resolution (FOK vs IOC)
-    - Comment truncation
+    Market-compatible endpoint with explicit resting BUY_LIMIT/SELL_LIMIT support.
+    Structural absolute SL/TP prices are never shifted by quote/fill delta.
     """
     ok, msg = ensure_mt5()
     if not ok:
@@ -515,7 +575,7 @@ def handle_order(payload):
 
     action = str(payload.get("action") or "").strip().lower()
     symbol = str(payload.get("symbol") or "").strip().upper()
-    volume = float(payload.get("volume") or 0.01)
+    volume = float(payload.get("volume", 0.01))
     sl = float(payload.get("sl") or 0.0)
     tp = float(payload.get("tp") or 0.0)
     comment = str(payload.get("comment") or "TradeSpace Algo").strip()[:31]
@@ -540,16 +600,26 @@ def handle_order(payload):
     if order_type is None:
         return {"ok": False, "status": "bad-request", "message": "action must be buy or sell"}
 
-    price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
-
-    # Slippage compensation: adjust SL/TP by fill delta to protect exact backtested R-distance
-    entry_price_sig = payload.get("entry_price")
-    if entry_price_sig and float(entry_price_sig) > 0:
-        delta = price - float(entry_price_sig)
-        if sl > 0:
-            sl += delta
-        if tp > 0:
-            tp += delta
+    is_limit = payload.get("order_type") == "limit"
+    price = float(payload.get("entry_price") or 0) if is_limit else (tick.ask if action == "buy" else tick.bid)
+    if not all(math.isfinite(v) for v in [volume, price, sl, tp]) or price <= 0:
+        return {"ok": False, "status": "bad-request", "message": "Finite positive volume/entry required"}
+    if is_limit:
+        if action == "buy" and price >= tick.ask or action == "sell" and price <= tick.bid:
+            return {"ok": False, "status": "bad-limit", "message": "Limit must rest below ask for buy / above bid for sell"}
+        order_type = mt5.ORDER_TYPE_BUY_LIMIT if action == "buy" else mt5.ORDER_TYPE_SELL_LIMIT
+    if payload.get("structural_levels"):
+        minimum_distance = float(getattr(sym_info, "trade_stops_level", 0)) * float(sym_info.point)
+        if sl <= 0 or tp <= 0 or (action == "buy" and not sl < price < tp) or (action == "sell" and not tp < price < sl) or min(abs(price - sl), abs(tp - price)) < minimum_distance:
+            return {"ok": False, "status": "bad-levels", "message": "Structural SL/TP direction or broker stop distance invalid"}
+        # Autonomous legs require an unambiguous dedicated position; netting an
+        # unrelated position would corrupt the original-volume risk ledger.
+        positions = mt5.positions_get(symbol=mt5_symbol)
+        orders = mt5.orders_get(symbol=mt5_symbol)
+        if positions is None or orders is None:
+            return {"ok": False, "status": "broker-state-unavailable", "message": "Cannot establish symbol capacity"}
+        if positions or orders:
+            return {"ok": False, "status": "symbol-occupied", "message": "Symbol already has broker position/order"}
 
     # Determine filling mode
     filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
@@ -562,13 +632,11 @@ def handle_order(payload):
     elif mode & ioc_flag:
         filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
 
-    # Volume bounds validation
-    vol_min = float(getattr(sym_info, "volume_min", 0.01))
-    vol_max = float(getattr(sym_info, "volume_max", 100.0))
-    volume = max(vol_min, min(volume, vol_max))
+    if not valid_volume(volume, sym_info):
+        return {"ok": False, "status": "bad-volume", "message": "Volume violates broker min/max/step"}
 
     request = {
-        "action": mt5.TRADE_ACTION_DEAL,
+        "action": mt5.TRADE_ACTION_PENDING if is_limit else mt5.TRADE_ACTION_DEAL,
         "symbol": mt5_symbol,
         "volume": volume,
         "type": order_type,
@@ -579,8 +647,14 @@ def handle_order(payload):
         "magic": magic,
         "comment": comment,
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": filling,
+        "type_filling": getattr(mt5, "ORDER_FILLING_RETURN", 2) if is_limit else filling,
     }
+    expiration = int(payload.get("expiration") or 0)
+    if is_limit and expiration:
+        if expiration <= datetime.now(timezone.utc).timestamp():
+            return {"ok": False, "status": "expired", "message": "Pending expiration is in the past"}
+        request["type_time"] = getattr(mt5, "ORDER_TIME_SPECIFIED", 2)
+        request["expiration"] = expiration
 
     # Position closing parameter support
     close_ticket = payload.get("close") or payload.get("position")
@@ -588,21 +662,20 @@ def handle_order(payload):
         request["position"] = int(close_ticket)
 
     result = mt5.order_send(request)
-    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
-        err_msg = result.comment if result else "unknown error"
-        retcode = result.retcode if result else "none"
-        return {
-            "ok": False,
-            "status": "order-failed",
-            "message": f"Order failed: {err_msg} ({retcode})"
-        }
+    failure = send_result(result, [mt5.TRADE_RETCODE_DONE, getattr(mt5, "TRADE_RETCODE_PLACED", 10008), getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)], "order-failed")
+    if failure:
+        return failure
+    deal = mt5.history_deals_get(ticket=result.deal) if getattr(result, "deal", 0) else None
 
     return {
         "ok": True,
-        "status": "order-filled",
+        "status": "order-pending" if is_limit else "order-filled",
         "ticket": result.order,
+        "orderTicket": result.order,
+        "dealTicket": getattr(result, "deal", None),
+        "positionId": getattr(deal[0], "position_id", None) if deal else None,
         "price": result.price,
-        "volume": result.volume,
+        "volume": volume if is_limit else result.volume,
     }
 
 
@@ -626,6 +699,8 @@ def handle_modify(payload):
     pos = position[0]
     sym_info = mt5.symbol_info(pos.symbol)
     digits = sym_info.digits if sym_info else 5
+    if not math.isfinite(sl) or not math.isfinite(tp):
+        return {"ok": False, "status": "bad-levels", "message": "SL/TP must be finite"}
 
     request = {
         "action": mt5.TRADE_ACTION_SLTP,
@@ -637,14 +712,9 @@ def handle_modify(payload):
     }
 
     result = mt5.order_send(request)
-    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
-        err_msg = result.comment if result else "unknown error"
-        retcode = result.retcode if result else "none"
-        return {
-            "ok": False,
-            "status": "modify-failed",
-            "message": f"Modify failed: {err_msg} ({retcode})"
-        }
+    failure = send_result(result, [mt5.TRADE_RETCODE_DONE, getattr(mt5, "TRADE_RETCODE_NO_CHANGES", 10025)], "modify-failed")
+    if failure:
+        return failure
 
     return {
         "ok": True,
@@ -664,7 +734,7 @@ def handle_close(payload):
     ticket = int(payload.get("ticket") or 0)
     if not ticket:
         return {"ok": False, "status": "bad-request", "message": "ticket required"}
-    volume = float(payload.get("volume") or 0.0)
+    volume = float(payload.get("volume", 0.0))
 
     position = mt5.positions_get(ticket=ticket)
     if not position or len(position) == 0:
@@ -674,6 +744,12 @@ def handle_close(payload):
     sym_info = mt5.symbol_info(pos.symbol)
     if not sym_info:
         return {"ok": False, "status": "symbol-missing", "message": f"symbol {pos.symbol} info not found"}
+    volume = pos.volume if "volume" not in payload else volume
+    if not valid_volume(volume, sym_info, float(pos.volume)):
+        return {"ok": False, "status": "bad-volume", "message": "Partial volume/remainder violates broker min/step"}
+    tick = mt5.symbol_info_tick(pos.symbol)
+    if not tick:
+        return {"ok": False, "status": "no-tick", "message": "Close quote unavailable"}
 
     filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
     fok_flag = getattr(mt5, "SYMBOL_FILLING_FOK", 1)
@@ -686,12 +762,12 @@ def handle_close(payload):
         filling = getattr(mt5, "ORDER_FILLING_IOC", 1)
 
     order_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-    price = sym_info.bid if pos.type == mt5.ORDER_TYPE_BUY else sym_info.ask
+    price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
 
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": pos.symbol,
-        "volume": volume if volume > 0 else pos.volume,
+        "volume": volume,
         "type": order_type,
         "position": pos.ticket,
         "price": price,
@@ -703,20 +779,17 @@ def handle_close(payload):
     }
 
     result = mt5.order_send(request)
-    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
-        err_msg = result.comment if result else "unknown error"
-        retcode = result.retcode if result else "none"
-        return {
-            "ok": False,
-            "status": "close-failed",
-            "message": f"Close failed: {err_msg} ({retcode})"
-        }
+    failure = send_result(result, [mt5.TRADE_RETCODE_DONE, getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)], "close-failed")
+    if failure:
+        return failure
 
     return {
         "ok": True,
-        "status": "closed",
+        "status": "close-filled",
         "ticket": ticket,
-        "volume": request["volume"],
+        "volume": result.volume,
+        "dealTicket": getattr(result, "deal", None),
+        "positionId": getattr(pos, "identifier", pos.ticket),
         "price": result.price,
     }
 
@@ -732,7 +805,7 @@ def handle_positions(payload):
 
     positions = mt5.positions_get(symbol=symbol) if symbol else mt5.positions_get()
     if positions is None:
-        return {"ok": True, "positions": []}
+        return {"ok": False, "status": "positions-unavailable", "message": str(mt5.last_error())}
 
     res = []
     broker_mapping = payload.get("broker_mapping") or {}
@@ -779,7 +852,7 @@ def handle_history(payload):
 
     deals = mt5.history_deals_get(from_date, to_date, group=f"*{symbol}*") if symbol else mt5.history_deals_get(from_date, to_date)
     if deals is None:
-        return {"ok": True, "history": []}
+        return {"ok": False, "status": "history-unavailable", "message": str(mt5.last_error())}
 
     res = []
     for d in deals:
@@ -787,6 +860,7 @@ def handle_history(payload):
             "ticket": getattr(d, "ticket", None),
             "order": getattr(d, "order", None),
             "time": getattr(d, "time", None),
+            "time_msc": getattr(d, "time_msc", None),
             "type": "BUY" if getattr(d, "type", -1) == getattr(mt5, "DEAL_TYPE_BUY", 0) else "SELL" if getattr(d, "type", -1) == getattr(mt5, "DEAL_TYPE_SELL", 1) else "OTHER",
             "entry": getattr(d, "entry", None),
             "magic": getattr(d, "magic", None),
@@ -794,6 +868,7 @@ def handle_history(payload):
             "volume": getattr(d, "volume", None),
             "price": getattr(d, "price", None),
             "commission": getattr(d, "commission", None),
+            "fee": getattr(d, "fee", None),
             "swap": getattr(d, "swap", None),
             "profit": getattr(d, "profit", None),
             "symbol": getattr(d, "symbol", None),
@@ -801,6 +876,69 @@ def handle_history(payload):
         })
 
     return {"ok": True, "status": "history", "history": res}
+
+
+def handle_orders(payload):
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "message": msg}
+    app_symbol = payload.get("sym") or payload.get("symbol")
+    symbol = resolve_symbol(app_symbol, payload) if app_symbol else None
+    orders = mt5.orders_get(symbol=symbol) if symbol else mt5.orders_get()
+    if orders is None:
+        return {"ok": False, "message": "Pending orders unavailable"}
+    fields = ["ticket", "symbol", "type", "state", "time_setup", "time_expiration", "volume_initial", "volume_current", "price_open", "sl", "tp", "magic", "comment", "position_id"]
+    return {"ok": True, "orders": [{k: getattr(order, k, None) for k in fields} for order in orders]}
+
+
+def handle_cancel(payload):
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "message": msg}
+    ticket = int(payload.get("ticket") or 0)
+    orders = mt5.orders_get(ticket=ticket)
+    if not ticket or orders is None:
+        return {"ok": False, "status": "order-unavailable", "message": "Pending order lookup failed"}
+    if not orders:
+        return {"ok": False, "ambiguous": True, "status": "reconciliation-required", "message": "Order absent; may have filled"}
+    result = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": ticket})
+    failure = send_result(result, [mt5.TRADE_RETCODE_DONE], "cancel-failed")
+    return failure or {"ok": True, "status": "cancelled", "orderTicket": ticket}
+
+
+def handle_calc_profit(payload):
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "message": msg}
+    symbol = resolve_symbol(payload.get("symbol") or payload.get("sym"), payload)
+    action = payload.get("action")
+    if not symbol or action not in ["buy", "sell"]:
+        return {"ok": False, "message": "Valid symbol/direction required"}
+    entry, sl = float(payload.get("entry_price") or 0), float(payload.get("sl") or 0)
+    if not all(math.isfinite(v) and v > 0 for v in [entry, sl]) or entry == sl:
+        return {"ok": False, "message": "Valid initial stop required"}
+    profit = mt5.order_calc_profit(mt5.ORDER_TYPE_BUY if action == "buy" else mt5.ORDER_TYPE_SELL, symbol, 1.0, entry, sl)
+    if profit is None or not math.isfinite(profit) or profit >= 0:
+        return {"ok": False, "message": "Broker account-currency loss calculation unavailable"}
+    return {"ok": True, "lossPerLot": -profit, "currency": mt5.account_info().currency}
+
+
+def handle_state(payload):
+    positions, orders, history, account = handle_positions({}), handle_orders({}), handle_history(payload), handle_account({})
+    if not all(r.get("ok") for r in [positions, orders, history, account]):
+        return {"ok": False, "message": "Incomplete broker snapshot"}
+    now = datetime.now(timezone.utc)
+    raw_orders = mt5.history_orders_get(now - timedelta(days=int(payload.get("days") or 7)), now + timedelta(days=1))
+    if raw_orders is None:
+        return {"ok": False, "message": "Order history unavailable"}
+    with journal_connection() as conn:
+        rows = conn.execute("SELECT request_id,state,response FROM requests WHERE created>=?", ((now - timedelta(days=7)).timestamp(),)).fetchall()
+    requests = [{"request_id": r[0], "state": r[1], "response": json.loads(r[2]) if r[2] else None} for r in rows]
+    day_start = now.astimezone(ZoneInfo(os.getenv("MT5_BROKER_TIMEZONE", "Europe/Athens"))).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    daily = [d for d in history["history"] if float(d.get("time") or 0) >= day_start and d.get("type") in ["BUY", "SELL"]]
+    pnl = sum(float(d.get("profit") or 0) + float(d.get("commission") or 0) + float(d.get("swap") or 0) + float(d.get("fee") or 0) for d in daily)
+    order_fields = ["ticket", "position_id", "state", "comment", "symbol", "volume_initial", "volume_current"]
+    return {"ok": True, "positions": positions["positions"], "orders": orders["orders"], "history": history["history"], "account": account["account"], "requests": requests, "order_history": [{k: getattr(o, k, None) for k in order_fields} for o in raw_orders], "dailyPnl": pnl, "dayStartEquity": account["account"]["balance"] - pnl, "brokerDayStart": day_start, "at": now.timestamp()}
 
 
 def handle_account(_payload):
@@ -849,6 +987,11 @@ ROUTES = {
     ("POST", "/order"):   handle_order,
     ("POST", "/modify"):  handle_modify,
     ("POST", "/close"):   handle_close,
+    ("POST", "/cancel"):  handle_cancel,
+    ("POST", "/orders"):  handle_orders,
+    ("GET",  "/orders"):  handle_orders,
+    ("POST", "/state"):   handle_state,
+    ("POST", "/calc-profit"): handle_calc_profit,
     ("GET",  "/positions"): handle_positions,
     ("POST", "/positions"): handle_positions,
     ("GET",  "/history"):   handle_history,
@@ -914,7 +1057,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = self._payload(parsed)
             with LOCK:
-                result = handler(payload)
+                result = durable_write(handler, payload) if path in ["/order", "/modify", "/close", "/cancel"] else handler(payload)
             self._send(200, result)
         except Exception as exc:
             self._send(500, {"ok": False, "status": "bridge-exception", "message": str(exc)})

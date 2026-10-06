@@ -162,6 +162,72 @@ def evaluate_market_brain(
             m15_veto_active = False
             m15_trigger_status = "APPROVED"
 
+    # Swing Gatekeeper (1D Compass -> 1H Trigger)
+    d1_dir = (structures.get("D1") or {}).get("dir", 0)
+    h1_dir = (structures.get("H1") or {}).get("dir", 0)
+    h1_coverage = h1_range.get("coveragePct") if h1_range else None
+    h1_zone = h1_range.get("zone") if h1_range else None
+
+    h1_veto_active = False
+    h1_veto_reason = None
+    h1_trigger_status = "NEUTRAL"
+
+    if d1_dir == 1 or (d1_dir == 0 and macro_compass == "BULLISH"):
+        if h1_coverage is not None and (h1_coverage > 65 or (h1_range and h1_range.get("status") == "EXHAUSTED_HIGH")):
+            h1_veto_active = True
+            h1_veto_reason = f"1H is overextended in {h1_zone} ({h1_coverage}%). Swing traders must wait for 1H pullback into Discount (<50%)."
+            h1_trigger_status = "WAIT_PULLBACK"
+        elif h1_dir == -1:
+            h1_veto_active = True
+            h1_veto_reason = f"1H reached {h1_zone} ({h1_coverage}%) but is in active downward retracement leg. Awaiting 1H structure shift (MSS/CHoCH)."
+            h1_trigger_status = "WAIT_SHIFT"
+        else:
+            h1_veto_active = False
+            h1_trigger_status = "APPROVED"
+    elif d1_dir == -1 or (d1_dir == 0 and macro_compass == "BEARISH"):
+        if h1_coverage is not None and (h1_coverage < 35 or (h1_range and h1_range.get("status") == "EXHAUSTED_LOW")):
+            h1_veto_active = True
+            h1_veto_reason = f"1H is overextended in {h1_zone} ({h1_coverage}%). Swing traders must wait for 1H pullback into Premium (>50%)."
+            h1_trigger_status = "WAIT_PULLBACK"
+        elif h1_dir == 1:
+            h1_veto_active = True
+            h1_veto_reason = f"1H reached {h1_zone} ({h1_coverage}%) but is in active upward retracement leg. Awaiting 1H structure shift (MSS/CHoCH)."
+            h1_trigger_status = "WAIT_SHIFT"
+        else:
+            h1_veto_active = False
+            h1_trigger_status = "APPROVED"
+
+    # Scalp Gatekeeper (15M Compass -> 1M Trigger)
+    m1_dir = (structures.get("M1") or {}).get("dir", 0)
+    m1_veto_active = False
+    m1_veto_reason = None
+    m1_trigger_status = "NEUTRAL"
+
+    if m15_dir == 1 or setup_dir == 1:
+        if m15_coverage is not None and (m15_coverage > 70 or (m15_range and m15_range.get("status") == "EXHAUSTED_HIGH")):
+            m1_veto_active = True
+            m1_veto_reason = f"15M is overextended in {m15_zone} ({m15_coverage}%). Scalpers must wait for 15M/5M pullback."
+            m1_trigger_status = "WAIT_PULLBACK"
+        elif m1_dir == -1:
+            m1_veto_active = True
+            m1_veto_reason = "1M is in active counter-trend leg. Awaiting 1M displacement shift."
+            m1_trigger_status = "WAIT_SHIFT"
+        else:
+            m1_veto_active = False
+            m1_trigger_status = "APPROVED"
+    elif m15_dir == -1 or setup_dir == -1:
+        if m15_coverage is not None and (m15_coverage < 30 or (m15_range and m15_range.get("status") == "EXHAUSTED_LOW")):
+            m1_veto_active = True
+            m1_veto_reason = f"15M is overextended in {m15_zone} ({m15_coverage}%). Scalpers must wait for 15M/5M pullback."
+            m1_trigger_status = "WAIT_PULLBACK"
+        elif m1_dir == 1:
+            m1_veto_active = True
+            m1_veto_reason = "1M is in active counter-trend leg. Awaiting 1M displacement shift."
+            m1_trigger_status = "WAIT_SHIFT"
+        else:
+            m1_veto_active = False
+            m1_trigger_status = "APPROVED"
+
     # 5. Dynamic Cognitive Synthesis
     if fresh_htf_sweep and fresh_htf_sweep["side"] == -1 and (
         has_resp_bull or setup_dir == 1 or m15_dir == 1
@@ -198,7 +264,6 @@ def evaluate_market_brain(
     elif (
         (has_resp_bull or has_viol_bear or fvg_order_flow == "STRONG_BULLISH_ORDER_FLOW")
         and (not h4_range or h4_range.get("coveragePct", 50) < 75)
-        and (not m15_range or m15_range.get("status") != "EXHAUSTED_HIGH")
         and score > 15
     ):
         verdict = "STRONG_BULLISH_EXPANSION"
@@ -219,7 +284,6 @@ def evaluate_market_brain(
     elif (
         (has_resp_bear or has_viol_bull or fvg_order_flow == "STRONG_BEARISH_ORDER_FLOW")
         and (not h4_range or h4_range.get("coveragePct", 50) > 25)
-        and (not m15_range or m15_range.get("status") != "EXHAUSTED_LOW")
         and score < -15
     ):
         verdict = "STRONG_BEARISH_EXPANSION"
@@ -237,7 +301,7 @@ def evaluate_market_brain(
             action = "READY_FOR_SHORT"
             catalysts.append("15M Gatekeeper confirmed: In Premium with bearish structure alignment")
 
-    elif score > 10 and (is_h4_deep_prem or is_m15_exhaust_high):
+    elif score > 10 and (is_h4_deep_prem or (is_m15_exhaust_high and (not h4_range or h4_range.get("coveragePct", 50) >= 70))):
         verdict = "EXHAUSTED_BULLISH"
         action = "STAND_ASIDE"
         allowed_to_long = False
@@ -245,7 +309,7 @@ def evaluate_market_brain(
         conflicts.append("Bullish momentum present but range coverage is >= 85% exhausted into resistance")
         block_reasons.append("Range exhausted at range ceiling")
 
-    elif score < -10 and (is_h4_deep_disc or is_m15_exhaust_low):
+    elif score < -10 and (is_h4_deep_disc or (is_m15_exhaust_low and (not h4_range or h4_range.get("coveragePct", 50) <= 30))):
         verdict = "EXHAUSTED_BEARISH"
         action = "STAND_ASIDE"
         allowed_to_short = False
@@ -345,7 +409,82 @@ def evaluate_market_brain(
         "m15Zone": m15_zone,
         "fvgOrderFlow": fvg_order_flow,
         "activeCycle": htf_liq.get("activeCycle", "UNKNOWN"),
-        # Day Trader Multi-Timeframe Matrix
+        # 3 Official Horizons Matrix: Swing (1D-1H), Day (4H-15M), Scalp (15M-1M)
+        "horizons": {
+            "SWING": {
+                "horizon": "SWING",
+                "timeframeCombo": "1D-1H",
+                "macroCompass": "BULLISH" if d1_dir == 1 else "BEARISH" if d1_dir == -1 else macro_compass,
+                "compassTf": "1D",
+                "roadmapTf": "4H",
+                "gatekeeperTf": "1H",
+                "roadmap": {
+                    "h4Zone": h4_range.get("zone") if h4_range else None,
+                    "h4CoveragePct": h4_cov,
+                    "h4Status": h4_range.get("status", "NORMAL") if h4_range else "NORMAL",
+                    "h4StructureDir": (structures.get("H4") or {}).get("dir", 0),
+                    "fvgOrderFlow": fvg_order_flow,
+                },
+                "gatekeeper": {
+                    "h1Zone": h1_zone,
+                    "h1CoveragePct": h1_coverage,
+                    "h1StructureDir": h1_dir,
+                    "vetoActive": h1_veto_active,
+                    "vetoReason": h1_veto_reason,
+                    "triggerStatus": h1_trigger_status,
+                },
+            },
+            "DAY": {
+                "horizon": "DAY",
+                "timeframeCombo": "4H-15M",
+                "macroCompass": macro_compass,
+                "macroRationale": macro_rationale,
+                "compassTf": "4H",
+                "roadmapTf": "1H",
+                "gatekeeperTf": "15M",
+                "sessionRoadmap": {
+                    "h1Zone": h1_range.get("zone") if h1_range else None,
+                    "h1CoveragePct": h1_range.get("coveragePct") if h1_range else None,
+                    "h1Status": h1_range.get("status", "NORMAL") if h1_range else "NORMAL",
+                    "h1StructureDir": (structures.get("H1") or {}).get("dir", 0),
+                },
+                "ltfGatekeeper": {
+                    "m15Zone": m15_zone,
+                    "m15CoveragePct": m15_coverage,
+                    "m15StructureDir": m15_dir,
+                    "vetoActive": m15_veto_active,
+                    "vetoReason": m15_veto_reason,
+                    "triggerStatus": m15_trigger_status,
+                },
+                "gatekeeper": {
+                    "m15Zone": m15_zone,
+                    "m15CoveragePct": m15_coverage,
+                    "m15StructureDir": m15_dir,
+                    "vetoActive": m15_veto_active,
+                    "vetoReason": m15_veto_reason,
+                    "triggerStatus": m15_trigger_status,
+                },
+            },
+            "SCALP": {
+                "horizon": "SCALP",
+                "timeframeCombo": "15M-1M",
+                "macroCompass": "BULLISH" if m15_dir == 1 else "BEARISH" if m15_dir == -1 else "NEUTRAL",
+                "compassTf": "15M",
+                "roadmapTf": "5M",
+                "gatekeeperTf": "1M",
+                "roadmap": {
+                    "m5StructureDir": (structures.get("M5") or {}).get("dir", 0),
+                    "m5Range": ranges.get("ranges", {}).get("M5"),
+                },
+                "gatekeeper": {
+                    "m1StructureDir": m1_dir,
+                    "vetoActive": m1_veto_active,
+                    "vetoReason": m1_veto_reason,
+                    "triggerStatus": m1_trigger_status,
+                },
+            },
+        },
+        # Day Trader Multi-Timeframe Matrix (Maintained for backward compatibility)
         "dayTraderContext": {
             "macroCompass": macro_compass,
             "macroRationale": macro_rationale,

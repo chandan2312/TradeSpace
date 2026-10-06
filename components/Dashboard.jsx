@@ -12,15 +12,17 @@ import TimeframePalette from "./TimeframePalette";
 import AlertDialog from "./AlertDialog";
 import ChecklistPanel from "./ChecklistPanel";
 import SaveLayoutModal from "./SaveLayoutModal";
-import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag, LayoutGrid, X } from "lucide-react";
+import { CheckSquare, Maximize2, Minimize2, Play, Pause, SkipBack, SkipForward, Square, ArrowUp, ArrowDown, Flag, LayoutGrid, X, Zap, Activity } from "lucide-react";
 import BiasPanel from "./BiasPanel";
 import MiniBiasHeader from "./MiniBiasHeader";
 import ChartSettingsModal from "./ChartSettingsModal";
 import CorrelatedPairsModal from "./CorrelatedPairsModal";
 import CurrencyStrengthMeter from "./CurrencyStrengthMeter";
+import AutonomousLiveHUD from "./autonomous/AutonomousLiveHUD";
 import { useChartSettings } from "../lib/chartSettings";
 import { LAYOUT_CONFIG } from "../lib/layouts";
 import { sanitizeDrawings } from "../lib/draw/core.js";
+import { canonOf } from "../lib/autonomous/symbols.js";
 
 // Strip un-anchored (pre-time-model) drawings from a stored {symbol:[...]} blob
 // so loading an old layout can't reintroduce drawings that won't place on TF.
@@ -86,7 +88,7 @@ export default function Dashboard() {
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [symbolFlags, setSymbolFlags] = useState({}); // { symbol: "red" | "blue" | "green" | "yellow" }
-  const [indicators, setIndicators] = useState({}); // { patternId: bool } — ƒx pattern toggles
+  const [indicators, setIndicators] = useState({ autoTrades: true }); // { patternId: bool } — ƒx pattern toggles
   
   // Loop Mode State
   const [isLooping, setIsLooping] = useState(false);
@@ -96,6 +98,7 @@ export default function Dashboard() {
 
   const [alerts, setAlerts] = useState([]);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
+  const [autonomousTrades, setAutonomousTrades] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
   const watchlistsRef = useRef(watchlists);
@@ -121,6 +124,7 @@ export default function Dashboard() {
   const [marketBiasOpen, setMarketBiasOpen] = useState(false);
   const [correlatedOpen, setCorrelatedOpen] = useState(false);
   const [strengthOpen, setStrengthOpen] = useState(false);
+  const [autoCockpitOpen, setAutoCockpitOpen] = useState(false);
   const [biasEnabled, setBiasEnabled] = useState(false); // default off to save RAM on RDP
   const [savedLayouts, setSavedLayouts] = useState([]);
   const [loadedLayoutId, setLoadedLayoutId] = useState(null);
@@ -237,7 +241,10 @@ export default function Dashboard() {
         const f = localStorage.getItem("ts_symbol_flags");
         if (f) setSymbolFlags(JSON.parse(f));
         const ind = localStorage.getItem("ts_indicators");
-        if (ind) setIndicators(JSON.parse(ind));
+        if (ind) {
+          const parsed = JSON.parse(ind);
+          setIndicators(prev => ({ autoTrades: true, ...parsed }));
+        }
         const lid = getTabItem("ts_loaded_layout_id");
         if (lid) setLoadedLayoutId(lid);
         const be = localStorage.getItem("ts_bias_enabled");
@@ -268,8 +275,8 @@ export default function Dashboard() {
           localStorage.setItem("ts_symbol_flags", JSON.stringify(d.settings.flags));
         }
         if (d.settings.indicators) {
-          setIndicators(d.settings.indicators);
-          localStorage.setItem("ts_indicators", JSON.stringify(d.settings.indicators));
+          setIndicators(prev => ({ autoTrades: true, ...d.settings.indicators }));
+          localStorage.setItem("ts_indicators", JSON.stringify({ autoTrades: true, ...d.settings.indicators }));
         }
         if (typeof d.settings.biasEnabled === "boolean") {
           setBiasEnabled(d.settings.biasEnabled);
@@ -616,12 +623,14 @@ export default function Dashboard() {
 
   // ---------- WebSockets Subscriptions ----------
   useEffect(() => {
-    const unique = [...new Set(panes.map(p => p.symbol))];
+    const paneSymbols = panes.map(p => p.symbol);
+    const autoSymbols = (autonomousTrades || []).map(t => t.symbol);
+    const unique = [...new Set([...paneSymbols, ...autoSymbols].filter(Boolean))];
     symbolsRef.current = unique;
     if (wsRef.current?.readyState === 1) {
       wsRef.current.send(JSON.stringify({ type: "subscribe", symbols: unique }));
     }
-  }, [panes]);
+  }, [panes, autonomousTrades]);
 
   const showToast = useCallback((text, type = "default") => {
     if (type === "success") sonnerToast.success(text);
@@ -712,11 +721,43 @@ export default function Dashboard() {
     setBiasLoading(false);
   }, [biasEnabled, biasSymbols.join(",")]);
 
+  const loadAutonomousTrades = useCallback(async () => {
+    try {
+      const [autoRes, journalRes] = await Promise.all([
+        api("/api/autonomous"),
+        api("/api/journal").catch(() => null),
+      ]);
+      const autoList = autoRes?.ok ? [
+        ...(Array.isArray(autoRes.activeTrades) ? autoRes.activeTrades : []),
+        ...(Array.isArray(autoRes.executionTrades) ? autoRes.executionTrades : []),
+        ...(Array.isArray(autoRes.recentClosed) ? autoRes.recentClosed : []),
+      ] : [];
+      const journalList = journalRes?.ok && Array.isArray(journalRes.trades) ? journalRes.trades : [];
+      const rawList = [...autoList, ...journalList].filter((t) =>
+        !["invalidated", "cancelled", "expired", "dismissed"].includes(t.status) &&
+        (Boolean(t.filledAt) || Boolean(t.filledPrice) || ["active", "managing", "closing", "closed_tp", "closed_sl", "closed_be"].includes(t.status))
+      );
+      const seen = new Set();
+      const deduped = [];
+      for (const t of rawList) {
+        const id = String(t._id || t.id || t.ticket || `${t.symbol}:${t.createdAt}`);
+        if (!seen.has(id)) {
+          seen.add(id);
+          deduped.push(t);
+        }
+      }
+      setAutonomousTrades(deduped);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     loadAlerts();
     loadWatchlists();
     loadSavedLayouts();
-  }, [loadAlerts, loadWatchlists, loadSavedLayouts]);
+    loadAutonomousTrades();
+    const iv = setInterval(loadAutonomousTrades, 12000);
+    return () => clearInterval(iv);
+  }, [loadAlerts, loadWatchlists, loadSavedLayouts, loadAutonomousTrades]);
 
   useEffect(() => {
     loadBias();
@@ -745,18 +786,29 @@ export default function Dashboard() {
         if (msg.type === "ticks") {
           setTicks((prev) => {
             const nextTicks = { ...prev };
-            for (const [sym, t] of Object.entries(msg.ticks)) {
-              const old = prev[sym];
-              nextTicks[sym] = {
+            const now = Date.now();
+            for (const [sym, t] of Object.entries(msg.ticks || {})) {
+              if (!t || typeof t !== "object") continue;
+              const old = prev[sym] || prev[sym.toUpperCase()];
+              const tickObj = {
                 ...t,
+                receivedAt: now,
                 dir: old ? Math.sign(t.bid - old.bid) || old.dir || 0 : 0,
               };
+              nextTicks[sym] = tickObj;
+              const upper = sym.toUpperCase();
+              nextTicks[upper] = tickObj;
+              const stripped = upper.replace(/\.I$/i, "");
+              if (stripped !== upper) {
+                nextTicks[stripped] = tickObj;
+              }
             }
             return nextTicks;
           });
         }
         if (msg.type === "alerts_changed") loadAlerts();
         if (msg.type === "watchlists_changed") loadWatchlists();
+        if (msg.type === "autonomous_changed") loadAutonomousTrades();
         if (msg.type === "alert_triggered") {
           loadAlerts();
           
@@ -1403,6 +1455,10 @@ export default function Dashboard() {
         onDeleteLayout={deleteLayout}
         onOpenCorrelated={() => setCorrelatedOpen(true)}
         onOpenStrength={() => setStrengthOpen(true)}
+        onOpenAutoCockpit={() => setAutoCockpitOpen((prev) => !prev)}
+        autoCockpitOpen={autoCockpitOpen}
+        autonomousTrades={autonomousTrades}
+        ticks={ticks}
       />
       <div className="layout-row" style={{position: "relative"}}>
         {activeNotesSymbol && (
@@ -1522,6 +1578,96 @@ export default function Dashboard() {
                         <button className="ghost" onClick={() => { setActivePaneId(pane.id); setCorrelatedOpen(true); }} title="View Correlated Pairs" style={{ padding: "4px 8px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                           <LayoutGrid size={14} color="var(--accent)" /> <span className="hide-mobile">Correlated</span>
                         </button>
+                        {/* Autonomous Trades Quick Indicator Toggle */}
+                        <button
+                          className={indicators?.autoTrades !== false ? "primary" : "ghost"}
+                          onClick={() => {
+                            setIndicators((prev) => ({ ...prev, autoTrades: prev?.autoTrades === false ? true : false }));
+                          }}
+                          title="Toggle Autonomous Trades Indicator (RR & Live P&L Overlay)"
+                          style={{
+                            padding: "4px 8px",
+                            background: indicators?.autoTrades !== false ? "var(--accent)" : "var(--panel)",
+                            border: `1px solid ${indicators?.autoTrades !== false ? "var(--accent)" : "var(--border)"}`,
+                            color: indicators?.autoTrades !== false ? "#fff" : "var(--text)",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <Zap size={13} color={indicators?.autoTrades !== false ? "#fff" : "var(--accent)"} />
+                          <span className="hide-mobile">Auto Trades</span>
+                          <span className="hide-desktop">Auto</span>
+                          {(() => {
+                            const isMatch = (t) => {
+                              if (!t || !pane.symbol) return false;
+                              const paneCanon = canonOf(pane.symbol);
+                              const c = (s) => s && canonOf(s) === paneCanon;
+                              return c(t.symbol) || c(t.tradeableSymbol) || c(t.canonicalSymbol);
+                            };
+                            const pTrades = autonomousTrades.filter(isMatch);
+                            const activeCount = pTrades.filter(
+                              (t) =>
+                                ![
+                                  "closed_tp",
+                                  "closed_sl",
+                                  "closed_be",
+                                  "closed",
+                                  "invalidated",
+                                  "cancelled",
+                                  "expired",
+                                  "dismissed",
+                                ].includes(t.status) && !t.closedAt
+                            ).length;
+                            const count =
+                              activeCount > 0
+                                ? activeCount
+                                : pTrades
+                                    .filter(
+                                      (t) =>
+                                        Date.now() -
+                                          new Date(t.closedAt || t.updatedAt || t.createdAt).getTime() <=
+                                        7 * 24 * 3600 * 1000
+                                    )
+                                    .slice(0, 10).length;
+                            return count > 0 ? (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  padding: "1px 5px",
+                                  borderRadius: 8,
+                                  background:
+                                    indicators?.autoTrades !== false
+                                      ? "rgba(255,255,255,0.25)"
+                                      : "var(--accent)",
+                                  color: "#fff",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {count}
+                              </span>
+                            ) : null;
+                          })()}
+                        </button>
+                        <button
+                          className="ghost"
+                          onClick={() => setAutoCockpitOpen(true)}
+                          title="Open Autonomous Live Cockpit Drawer"
+                          style={{
+                            padding: "4px 7px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 11,
+                            color: "var(--accent)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <Activity size={12} />
+                          <span className="hide-mobile">Cockpit</span>
+                        </button>
                       </div>
                     )}
                     <ChartPanel
@@ -1531,6 +1677,12 @@ export default function Dashboard() {
                       tick={ticks[pane.symbol]}
                       alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered" || a.status === "pending_chain"))}
                       barsCache={barsCache}
+                      autonomousTrades={autonomousTrades.filter(t => {
+                        if (!t || !pane.symbol) return false;
+                        const paneCanon = canonOf(pane.symbol);
+                        const c = (s) => s && canonOf(s) === paneCanon;
+                        return c(t.symbol) || c(t.tradeableSymbol) || c(t.canonicalSymbol);
+                      })}
                       onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
                       onAddAlertLayer={addAlertLayer}
                       onDeleteAlert={deleteAlert}
@@ -1772,6 +1924,15 @@ export default function Dashboard() {
           }}
         />
       )}
+
+      {/* Live Autonomous Trades Slide-Over Drawer / Bottom Sheet */}
+      <AutonomousLiveHUD
+        trades={autonomousTrades}
+        ticks={ticks}
+        onRefresh={loadAutonomousTrades}
+        isOpen={autoCockpitOpen}
+        onClose={() => setAutoCockpitOpen(false)}
+      />
     </div>
   );
 }

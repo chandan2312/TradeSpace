@@ -17,6 +17,8 @@ from .lenses import clamp
 from .patterns import avg_range, find_pivots
 
 TF_SETTINGS = {
+    "M1": {"lookback": 60, "left": 3, "right": 3},
+    "M5": {"lookback": 64, "left": 3, "right": 3},
     "M15": {"lookback": 64, "left": 3, "right": 3},
     "H1": {"lookback": 72, "left": 3, "right": 3},
     "H4": {"lookback": 80, "left": 3, "right": 3},
@@ -134,7 +136,7 @@ def compute_dealing_range(bars: Bars, tf: str = "H4", avg: float | None = None) 
 def analyze_all_dealing_ranges(frames: dict, structures: dict | None = None) -> dict:
     structures = structures or {}
     ranges = {}
-    for tf in ("M15", "H1", "H4", "D1"):
+    for tf in ("M1", "M5", "M15", "H1", "H4", "D1"):
         b = frames.get(tf)
         if b is not None and len(b) >= 15:
             r = compute_dealing_range(b, tf)

@@ -1,6 +1,7 @@
 "use client";
 
 import { Terminal } from "lucide-react";
+import DecisionReasons from "./DecisionReasons";
 
 export default function AuditLog({ logs = [] }) {
   return (
@@ -17,6 +18,7 @@ export default function AuditLog({ logs = [] }) {
           display: "flex",
           alignItems: "center",
           gap: 8,
+          flexWrap: "wrap",
           marginBottom: 12,
         }}
       >
@@ -48,8 +50,8 @@ export default function AuditLog({ logs = [] }) {
           </div>
         ) : (
           logs.map((l, i) => {
-            const timeStr = l.createdAt
-              ? new Date(l.createdAt).toLocaleTimeString([], { hour12: false })
+            const timeStr = l.createdAt || l.time
+              ? new Date(l.createdAt || l.time).toLocaleTimeString([], { hour12: false })
               : "--:--:--";
 
             let typeColor = "var(--muted)";
@@ -59,10 +61,12 @@ export default function AuditLog({ logs = [] }) {
             else if (l.type?.includes("BREAKEVEN")) typeColor = "var(--purple)";
 
             return (
-              <div key={i} style={{ display: "flex", gap: 10, lineHeight: 1.4 }}>
+              <div key={l._id || `${l.tradeId || "log"}-${i}`} style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", lineHeight: 1.4, minWidth: 0, overflowWrap: "anywhere" }}>
                 <span style={{ color: "var(--muted)", flexShrink: 0 }}>[{timeStr}]</span>
                 <span style={{ color: typeColor, fontWeight: 700, flexShrink: 0 }}>{l.type}</span>
-                <span style={{ color: "var(--fg)" }}>{l.message}</span>
+                {l.symbol && <span style={{ color: "var(--accent)" }}>{l.symbol}</span>}
+                <span style={{ color: "var(--fg)" }}>{l.message || l.note || "Message unavailable"}</span>
+                {(l.vetoes?.length > 0 || l.details?.vetoes?.length > 0) && <div style={{ width: "100%" }}><DecisionReasons vetoes={l.vetoes || l.details.vetoes} title="Recorded vetoes" /></div>}
               </div>
             );
           })

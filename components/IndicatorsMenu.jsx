@@ -27,21 +27,21 @@ export default function IndicatorsMenu({ indicators, setIndicators }) {
       <button
         className={open || activeCount ? "primary" : "ghost"}
         onClick={() => setOpen(!open)}
-        title="Pattern indicators"
+        title="Indicators & Overlays"
         style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12, flexShrink: 0 }}
       >
-        <Sparkles size={14} /> <span className="hide-mobile">Patterns</span>{activeCount ? ` · ${activeCount}` : ""}
+        <Sparkles size={14} /> <span className="hide-mobile">Indicators</span>{activeCount ? ` · ${activeCount}` : ""}
       </button>
 
       {open && (
         <div style={{
           position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 100,
           background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.5)", padding: 8, width: 260,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)", padding: 8, width: 270,
           display: "flex", flexDirection: "column", gap: 2,
         }}>
           <div style={{ fontSize: 11, opacity: 0.6, padding: "2px 6px 6px", textTransform: "uppercase", fontWeight: 600 }}>
-            Pattern detection
+            Indicators & Overlays
           </div>
           {PATTERN_DEFS.map((d) => (
             <button

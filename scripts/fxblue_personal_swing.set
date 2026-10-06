@@ -1,0 +1,25 @@
+; FX Blue Trade Copier Receiver Settings Preset
+; Target: Personal Growth Account · Swing Macro Portfolio (4H-1D)
+; Compatible with TradeSpace Deterministic Magic Numbers & Structured Comments
+
+Channel=TradeSpace_Master
+; Matches Horizon=2 (Swing) across Assets 1 to 5: 23[Asset]2[Model][Mgt][Tier]
+IncludeMagicNumbers=23120000-23129999,23220000-23229999,23320000-23329999,23420000-23429999,23520000-23529999
+IncludeSymbols=
+IncludeComments=*SWG*,*4H*,*1D*,*T03*
+ExcludeComments=*15M*,*1M*
+
+; Symbol Translation (leave empty if symbol names are identical on slave)
+; CustomSymbolMapping=
+
+; Risk & Execution Parameters
+LotSizeMultiplier=1.00
+UseFixedRiskPerTrade=true
+RiskPercent=1.00
+
+; Trade Management Synchronization
+CopyStopLoss=true
+CopyTakeProfit=true
+CopyPartialCloses=true
+AllowSlippagePips=15
+MaxSpreadPips=40

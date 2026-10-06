@@ -1,328 +1,95 @@
 "use client";
 
-import { X, Brain, Compass, Layers, Shield, CheckCircle, AlertTriangle } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { X, Brain } from "lucide-react";
+import RangeTelemetry from "./RangeTelemetry";
+import ConfluenceBreakdown from "./ConfluenceBreakdown";
+import DecisionReasons from "./DecisionReasons";
+import EvidenceDetails from "./EvidenceDetails";
+import { TelemetryValue, formatPrice, finiteNumber, markPriceFor } from "./TradeTelemetry";
 
-export default function BrainInspectorModal({ pair, onClose }) {
+export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    dialogRef.current?.focus();
+    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); previousFocus?.focus(); };
+  }, [onClose]);
   if (!pair) return null;
-
   const brain = pair.brain || {};
-  const range = pair.range || {};
-  const scenario = pair.scenario || {};
   const staged = pair.stagedLevel;
-  const candidates = staged?.allCandidates || [];
+  const candidates = staged?.allCandidates || pair.entryModel?.allCandidates || [];
+  const panel = { background: "rgba(255,255,255,.03)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, minWidth: 0 };
+  const macroBias = brain.macroBias || brain.macroCompass || brain.htfLiquidity?.macroBias || (pair.dir === 1 ? "BULLISH" : pair.dir === -1 ? "BEARISH" : "NEUTRAL");
+  const dirText = pair.dirLabel || (brain.macroDir === 1 ? "BUY / LONG" : brain.macroDir === -1 ? "SELL / SHORT" : "NEUTRAL");
+  const thesisText = brain.thesisId || pair.thesisId || brain.htfLiquidity?.drawOnLiquidity?.catalyst || "HTF Structural Expansion";
+  const gatekeeperVeto = typeof brain.gatekeeperVeto === "boolean"
+    ? brain.gatekeeperVeto
+    : Boolean(brain.dayTraderContext?.ltfGatekeeper?.vetoActive || brain.horizons?.DAY?.gatekeeper?.vetoActive);
+  const gatekeeperStatus = brain.gatekeeperStatus || brain.dayTraderContext?.ltfGatekeeper?.triggerStatus || brain.horizons?.DAY?.gatekeeper?.triggerStatus || (gatekeeperVeto ? "VETO ACTIVE" : "APPROVED");
+  const modelName = pair.entryModel?.name || staged?.modelName || (pair.status === "WATCHING_RETRACE" ? "Scanning Retracement Entry (FVG / OTE)" : "Scanning Market Structure");
+  const modelRationale = pair.entryModel?.rationale || staged?.rationale || pair.statusReason || "Monitoring 4H/15M order flow and dealing range discount/premium.";
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 200,
-        background: "rgba(0, 0, 0, 0.75)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "var(--panel)",
-          border: "1px solid var(--border)",
-          borderRadius: 14,
-          width: "100%",
-          maxWidth: 720,
-          maxHeight: "90vh",
-          overflowY: "auto",
-          padding: 20,
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-          boxShadow: "0 16px 40px rgba(0, 0, 0, 0.6)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            borderBottom: "1px solid var(--border)",
-            paddingBottom: 12,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Brain size={20} style={{ color: "var(--accent)" }} />
-            <div>
-              <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>
-                {pair.symbol} Institutional Brain Deep Dive
-              </h2>
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                {scenario.label} · Status: {pair.status}
-              </div>
-            </div>
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: "min(4vw, 16px)" }} onClick={onClose}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="brain-inspector-title" tabIndex={-1} style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 14, width: "100%", maxWidth: 760, maxHeight: "90dvh", overflowY: "auto", padding: "clamp(10px, 3vw, 20px)", display: "flex", flexDirection: "column", gap: 16, minWidth: 0, boxSizing: "border-box", overflowWrap: "anywhere" }} onClick={(event) => event.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 id="brain-inspector-title" style={{ fontSize: 16, margin: 0 }}><Brain size={17} style={{ color: "var(--accent)" }} /> {pair.symbol} · Institutional Brain</h2>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{pair.scenario?.label || "Horizon unavailable"} · {pair.status || "State unavailable"}</div>
           </div>
-
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-              padding: 4,
-            }}
-          >
-            <X size={18} />
-          </button>
+          <button onClick={onClose} aria-label="Close brain inspector" style={{ border: "none", background: "transparent", color: "var(--muted)", padding: 5, cursor: "pointer" }}><X size={18} /></button>
         </div>
-
-        {/* Narrative Box */}
-        <div
-          style={{
-            background: "rgba(56, 189, 248, 0.05)",
-            border: "1px solid rgba(56, 189, 248, 0.2)",
-            borderRadius: 8,
-            padding: 12,
-            fontSize: 12,
-            lineHeight: 1.5,
-            color: "var(--fg)",
-          }}
-        >
-          <div style={{ fontWeight: 700, color: "var(--accent)", marginBottom: 4 }}>
-            MARKET BRAIN VERDICT: {brain.verdict?.replace(/_/g, " ")} ({brain.conviction}% Conviction)
-          </div>
-          <div>{brain.narrative || "No narrative generated."}</div>
+        <div style={{ ...panel, background: "rgba(56,189,248,.05)", fontSize: 12, lineHeight: 1.5 }}>
+          <strong style={{ color: "var(--accent)" }}>{brain.verdict?.replaceAll("_", " ") || "Verdict unavailable"} · {finiteNumber(brain.conviction) === null ? "Conviction unavailable" : `${brain.conviction}% conviction`}</strong>
+          <div>{brain.narrative || "Narrative unavailable"}</div>
         </div>
-
-        {/* Day Trader Multi-Timeframe Matrix */}
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase" }}>
-            Multi-Timeframe Division of Labor
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 10 }}>
+          <div style={panel}>
+            <TelemetryValue label="1D / 4H macro bias" value={macroBias} color={pair.dir === 1 ? "var(--green)" : pair.dir === -1 ? "var(--red)" : "var(--accent)"} />
+            <div style={{ fontSize: 11, marginTop: 6 }}>Direction: {dirText}</div>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>Thesis: {thesisText}</div>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: 10,
-            }}
-          >
-            {/* 1D/4H Compass */}
-            <div
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: 10,
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6 }}>
-                <Compass size={13} /> 1D / 4H THE COMPASS
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>
-                {brain.macroCompass || "NEUTRAL"}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                Target DOL: {brain.targetDOL?.name || "None resolved"}
-              </div>
-            </div>
-
-            {/* 1H Session Roadmap */}
-            <div
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: 10,
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--purple)", display: "flex", alignItems: "center", gap: 6 }}>
-                <Layers size={13} /> 1H SESSION ROADMAP
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>
-                {range.h4Zone?.replace(/_/g, " ") || "EQUILIBRIUM"}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                Runway Remaining: {range.remainingRunwayPct}%
-              </div>
-            </div>
-
-            {/* 15M Gatekeeper */}
-            <div
-              style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: 10,
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", display: "flex", alignItems: "center", gap: 6 }}>
-                <Shield size={13} /> 15M GATEKEEPER (VETO)
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: brain.gatekeeperVeto ? "var(--red)" : "var(--green)" }}>
-                {brain.gatekeeperVeto ? "VETO ACTIVE" : "APPROVED"}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                Trigger: {brain.gatekeeperStatus || "NORMAL"}
-              </div>
-            </div>
+          <div style={panel}>
+            <TelemetryValue label="15M gatekeeper" value={gatekeeperVeto ? "VETO ACTIVE" : "GATEKEEPER APPROVED"} color={gatekeeperVeto ? "var(--red)" : "var(--green)"} />
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{gatekeeperStatus}</div>
           </div>
         </div>
-
-        {/* Chosen Entry Model & Time Slot Breakdown */}
-        {pair.entryModel && (
-          <div
-            style={{
-              background: "rgba(16, 185, 129, 0.05)",
-              border: "1px solid rgba(16, 185, 129, 0.2)",
-              borderRadius: 8,
-              padding: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "var(--green)" }}>
-                  SELECTED ENTRY MODEL: {pair.entryModel.name}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                    background: "rgba(16, 185, 129, 0.15)",
-                    color: "var(--green)",
-                  }}
-                >
-                  {pair.entryModel.badge}
-                </span>
-              </div>
-              {pair.activeTimeSlot && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "var(--muted)",
-                    fontFamily: "monospace",
-                    background: "rgba(255, 255, 255, 0.04)",
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                  }}
-                >
-                  {pair.activeTimeSlot.name} ({pair.activeTimeSlot.eetRange || pair.activeTimeSlot.brokerRange || ""})
-                </span>
-              )}
-            </div>
-
-            <div style={{ fontSize: 11, color: "var(--fg)", fontStyle: "italic" }}>
-              "{pair.entryModel.rationale}"
-            </div>
-
-            <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--muted)", fontFamily: "monospace" }}>
-              <span>Confluence: <strong style={{ color: "var(--accent)" }}>{pair.entryModel.confluenceScore}/100</strong></span>
-              <span>Tags: {pair.entryModel.confluenceTags?.join(" · ")}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Dynamic Candidate Levels Table */}
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase" }}>
-            Candidate Institutional Reaction Levels & Evaluated Models
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)", textAlign: "left" }}>
-                  <th style={{ padding: "6px 8px" }}>Model / Level</th>
-                  <th style={{ padding: "6px 8px" }}>Entry</th>
-                  <th style={{ padding: "6px 8px" }}>SL</th>
-                  <th style={{ padding: "6px 8px" }}>TP</th>
-                  <th style={{ padding: "6px 8px" }}>R:R</th>
-                  <th style={{ padding: "6px 8px" }}>Confluence</th>
-                  <th style={{ padding: "6px 8px" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {candidates.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 12, textAlign: "center", color: "var(--muted)" }}>
-                      No candidate models evaluated yet.
-                    </td>
-                  </tr>
-                ) : (
-                  candidates.map((lvl, idx) => (
-                    <tr
-                      key={idx}
-                      style={{
-                        borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-                        background: idx === 0 ? "rgba(56, 189, 248, 0.05)" : "transparent",
-                      }}
-                    >
-                      <td style={{ padding: "6px 8px", fontWeight: idx === 0 ? 700 : 500 }}>
-                        {lvl.name || lvl.label || lvl.type}
-                        {idx === 0 && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 9 }}>[PRIMARY]</span>}
-                      </td>
-                      <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{(lvl.entry || lvl.price)?.toFixed(5)}</td>
-                      <td style={{ padding: "6px 8px", fontFamily: "monospace", color: "var(--red)" }}>{lvl.sl?.toFixed(5) || "—"}</td>
-                      <td style={{ padding: "6px 8px", fontFamily: "monospace", color: "var(--green)" }}>{lvl.tp?.toFixed(5) || "—"}</td>
-                      <td style={{ padding: "6px 8px", fontFamily: "monospace", fontWeight: 700 }}>{lvl.rr ? `${lvl.rr}R` : "—"}</td>
-                      <td style={{ padding: "6px 8px", fontFamily: "monospace", color: "var(--accent)" }}>
-                        {lvl.confluenceScore}/100
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>
-                        <span
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: "1px 5px",
-                            borderRadius: 4,
-                            background: lvl.meetsMinRR !== false ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                            color: lvl.meetsMinRR !== false ? "var(--green)" : "var(--red)",
-                          }}
-                        >
-                          {lvl.meetsMinRR !== false ? "QUALIFIED" : "RR_REJECTED"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div style={panel}><RangeTelemetry brain={brain} range={pair.range || brain.dealingRange || brain.ranges?.H4} dealingRange={pair.dealingRange || brain.dealingRange || brain.ranges?.H4} price={markPriceFor(pair, ticks)} /></div>
+        <DecisionReasons vetoes={pair.vetoes || staged?.vetoes} reason={pair.statusReason} title="Staging / rejection decision" />
+        <div style={panel}>
+          <div style={{ fontWeight: 700, color: "var(--accent)", fontSize: 12 }}>{modelName} · {pair.activeTimeSlot?.name || "Active Session"}</div>
+          <div style={{ fontSize: 11, lineHeight: 1.5, margin: "5px 0 8px" }}>{modelRationale}</div>
+          <ConfluenceBreakdown breakdown={pair.confluenceBreakdown || staged?.confluenceBreakdown} score={staged?.confluenceScore ?? pair.entryModel?.confluenceScore} />
+          <EvidenceDetails evidence={staged?.evidence || pair.evidence} />
         </div>
-
-        {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "6px 16px",
-              borderRadius: 6,
-              background: "rgba(255, 255, 255, 0.08)",
-              border: "1px solid var(--border)",
-              color: "var(--fg)",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Close Inspector
-          </button>
-        </div>
+        <section>
+          <h3 style={{ fontSize: 12, margin: "0 0 8px", color: "var(--muted)" }}>Evaluated institutional candidate levels</h3>
+          {candidates.length === 0 ? (
+            <div style={{ color: "var(--muted)", fontSize: 11, fontStyle: "italic", padding: "8px 0" }}>
+              {pair.status === "WATCHING_RETRACE"
+                ? `Holding ${dirText} bias. No causal limit formed at current price — waiting for liquidity pool sweep or FVG retest.`
+                : "No candidate levels currently meet causal qualification criteria."}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 10 }}>
+              {candidates.map((level, index) => (
+                <article key={level.id || `${level.modelId}-${index}`} style={{ ...panel, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{level.modelName || level.name || level.label || level.type || "Level unavailable"}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 85px), 1fr))", gap: 7 }}>
+                    <TelemetryValue label="Entry" value={formatPrice(level.entry ?? level.price)} /><TelemetryValue label="SL" value={formatPrice(level.sl)} color="var(--red)" /><TelemetryValue label="TP / DOL" value={formatPrice(level.tp)} color="var(--green)" />
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>R:R {finiteNumber(level.rr) === null ? "Unavailable" : `${level.rr.toFixed(2)}R`} · {level.status || (level.meetsMinRR === false ? "RR rejected" : "Qualification unavailable")}</div>
+                  <DecisionReasons vetoes={level.vetoes} reason={level.rejectionReason || level.rationale} title="Candidate decision" />
+                  <ConfluenceBreakdown breakdown={level.confluenceBreakdown} score={level.confluenceScore} />
+                  <EvidenceDetails evidence={level.evidence} />
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

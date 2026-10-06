@@ -5,6 +5,7 @@ import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power,
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
+import { tradeRiskTelemetry, formatR } from "./autonomous/TradeTelemetry";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
@@ -17,7 +18,7 @@ const THEME_LIST = [
 ];
 
 export default function TopBar({ 
-  symbol, tf, setTf, tick, connected, onOpenPalette, onAddAlert, 
+  symbol, tf, setTf, tick, ticks, connected, onOpenPalette, onAddAlert, 
   onOpenAlerts, activeAlertCount, onOpenMarketBias, biasEnabled, onToggleBias,
   onOpenPip, isPipActive,
   layout, setLayout, syncOpts, setSyncOpts,
@@ -25,7 +26,8 @@ export default function TopBar({
   savedLayouts, onLoadLayout, onOpenSaveLayout, onOpenLoop,
   indicators, setIndicators,
   loadedLayoutId, onUpdateLayout, onRenameLayout, onDeleteLayout,
-  onOpenCorrelated, onOpenStrength
+  onOpenCorrelated, onOpenStrength,
+  onOpenAutoCockpit, autoCockpitOpen, autonomousTrades = []
 }) {
   const digits = tick?.digits ?? 5;
   const [settings] = useChartSettings();
@@ -68,6 +70,25 @@ export default function TopBar({
   
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
+  // Autonomous Trades Telemetry for TopBar status badge
+  const activeAutoTrades = (autonomousTrades || []).filter((t) =>
+    ["active", "managing", "closing", "open", "filling", "armed_fill"].includes(t.status)
+  );
+  const stagedAutoTrades = (autonomousTrades || []).filter((t) =>
+    ["staged", "confirming", "armed"].includes(t.status)
+  );
+
+  let autoNetR = 0;
+  let hasAutoR = false;
+  activeAutoTrades.forEach((t) => {
+    const tel = tradeRiskTelemetry(t, ticks || {});
+    if (tel.priceR !== null) {
+      autoNetR += tel.priceR;
+      hasAutoR = true;
+    }
+  });
+  const isAutoNetProfit = autoNetR >= 0;
+
   return (
     <header className="topbar-header" style={{
       display: "flex", alignItems: "center", gap: 12, padding: "8px 14px",
@@ -109,8 +130,11 @@ export default function TopBar({
             <button className="dropdown-btn" onClick={() => { onOpenMarketBias(); setToolsMenuOpen(false); }}>
               <Activity size={14} /> Master Market Bias
             </button>
+            <button className="dropdown-btn" onClick={() => { onOpenAutoCockpit?.(); setToolsMenuOpen(false); }}>
+              <Zap size={14} style={{ color: "var(--accent)" }} /> Live Autonomous Cockpit
+            </button>
             <a href="/autonomous" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
-              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Trader
+              <Activity size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
             </a>
             <a href="/journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
               <BookOpen size={14} /> Trading Journal
@@ -140,9 +164,42 @@ export default function TopBar({
         ))}
       </div>
 
-      <button className="ghost hide-desktop" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ marginLeft: "auto", padding: "4px 8px" }}>
-        {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
+      {/* Mobile Top Controls: Quick Auto Cockpit Button + Hamburger Menu */}
+      <div className="hide-desktop" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+        <button
+          className={autoCockpitOpen ? "primary" : "ghost"}
+          onClick={onOpenAutoCockpit}
+          title="Open Autonomous Cockpit"
+          style={{
+            padding: "4px 8px",
+            fontSize: 11,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            borderRadius: 6,
+            border: activeAutoTrades.length > 0
+              ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.5)" : "rgba(239, 83, 80, 0.5)"}`
+              : "1px solid var(--border)",
+            background: activeAutoTrades.length > 0
+              ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.15)" : "rgba(239, 83, 80, 0.15)")
+              : "transparent",
+            color: activeAutoTrades.length > 0
+              ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
+              : "var(--text)",
+          }}
+        >
+          <Zap size={12} style={{ color: activeAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
+          <span>{activeAutoTrades.length > 0 ? `${activeAutoTrades.length}A` : "Auto"}</span>
+          {activeAutoTrades.length > 0 && hasAutoR && (
+            <span style={{ fontFamily: "monospace", fontSize: 10 }}>{formatR(autoNetR)}</span>
+          )}
+        </button>
+
+        <button className="ghost" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ padding: "4px 8px" }}>
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
 
       <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
         <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 12, display: "flex", alignItems: "center", gap: 8 }}>
@@ -281,6 +338,58 @@ export default function TopBar({
       </div>
 
       <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+        {/* Autonomous Live Cockpit Trigger */}
+        <button
+          className={autoCockpitOpen ? "primary" : "ghost"}
+          onClick={onOpenAutoCockpit}
+          title="Toggle Autonomous Trading Cockpit Drawer"
+          style={{
+            fontSize: 12,
+            padding: "4px 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            borderRadius: 6,
+            border: activeAutoTrades.length > 0
+              ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.45)" : "rgba(239, 83, 80, 0.45)"}`
+              : "1px solid var(--border)",
+            background: activeAutoTrades.length > 0
+              ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.12)" : "rgba(239, 83, 80, 0.12)")
+              : "transparent",
+            color: activeAutoTrades.length > 0
+              ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
+              : "var(--fg)",
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: activeAutoTrades.length > 0
+                ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
+                : stagedAutoTrades.length > 0
+                ? "var(--accent)"
+                : "var(--muted)",
+              boxShadow: activeAutoTrades.length > 0
+                ? (isAutoNetProfit ? "0 0 6px var(--green)" : "0 0 6px var(--red)")
+                : "none",
+            }}
+          />
+          <Zap size={13} style={{ color: activeAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
+          <span>Auto</span>
+          {activeAutoTrades.length > 0 ? (
+            <span style={{ fontFamily: "monospace", fontSize: 11 }}>
+              {activeAutoTrades.length} Active{hasAutoR ? ` · ${formatR(autoNetR)}` : ""}
+            </span>
+          ) : stagedAutoTrades.length > 0 ? (
+            <span style={{ fontSize: 11, color: "var(--accent)" }}>{stagedAutoTrades.length} Staged</span>
+          ) : null}
+        </button>
+
         {layout === "1" && (
           <button 
             className="ghost" 
@@ -441,6 +550,41 @@ export default function TopBar({
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              className="ghost"
+              onClick={() => { setMobileMenuOpen(false); onOpenAutoCockpit?.(); }}
+              style={{
+                fontSize: 12,
+                padding: "8px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                justifyContent: "flex-start",
+                borderRadius: 6,
+                background: activeAutoTrades.length > 0
+                  ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.12)" : "rgba(239, 83, 80, 0.12)")
+                  : "var(--panel-2)",
+                border: "1px solid var(--border)",
+                color: activeAutoTrades.length > 0
+                  ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
+                  : "var(--text)",
+                fontWeight: 600,
+              }}
+            >
+              <Zap size={14} style={{ color: "var(--accent)" }} />
+              <span>Live Autonomous Cockpit</span>
+              {activeAutoTrades.length > 0 ? (
+                <span style={{ marginLeft: "auto", fontFamily: "monospace", fontSize: 11, fontWeight: 700 }}>
+                  {activeAutoTrades.length} Active {hasAutoR ? `(${formatR(autoNetR)})` : ""}
+                </span>
+              ) : stagedAutoTrades.length > 0 ? (
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent)" }}>
+                  {stagedAutoTrades.length} Staged
+                </span>
+              ) : (
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>Idle</span>
+              )}
+            </button>
             <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenStrength(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
               <Activity size={14} /> Currency Strength Meter
             </button>
@@ -456,7 +600,7 @@ export default function TopBar({
               </button>
             )}
             <a href="/autonomous" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
-              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Trader
+              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
             </a>
             <a href="/journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <BookOpen size={14} /> Trading Journal

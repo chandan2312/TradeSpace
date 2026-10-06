@@ -179,6 +179,10 @@ def test_market_brain_scenarios():
     assert brain_unlocked["allowedToLong"] is True
     assert brain_unlocked["action"] == "READY_FOR_LONG"
     assert brain_unlocked["dayTraderContext"]["ltfGatekeeper"]["triggerStatus"] == "APPROVED"
+    assert "horizons" in brain_unlocked
+    assert brain_unlocked["horizons"]["SWING"]["timeframeCombo"] == "1D-1H"
+    assert brain_unlocked["horizons"]["DAY"]["timeframeCombo"] == "4H-15M"
+    assert brain_unlocked["horizons"]["SCALP"]["timeframeCombo"] == "15M-1M"
 
 
 def test_full_engine_integration():

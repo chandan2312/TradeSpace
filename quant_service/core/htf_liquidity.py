@@ -16,9 +16,10 @@ from .bars import Bars
 from .patterns import avg_range, find_pivots
 
 
-def analyze_htf_liquidity(frames: dict) -> dict:
+def analyze_htf_liquidity(frames: dict, structures: dict | None = None) -> dict:
     h4: Bars | None = frames.get("H4")
     d1: Bars | None = frames.get("D1")
+    structures = structures or {}
 
     if h4 is None or len(h4) < 3:
         return {
@@ -184,17 +185,33 @@ def analyze_htf_liquidity(frames: dict) -> dict:
         active_cycle = "ERL_TO_IRL"
         cycle_note = f"Fresh {fresh_sweep['name']} sweep {fresh_sweep['age'] * 4}h ago; rotating into internal liquidity"
 
+    macro_dir = (
+        structures.get("D1", {}).get("dir")
+        or structures.get("H4", {}).get("dir")
+        or (fresh_sweep["reversalDir"] if fresh_sweep else 0)
+    ) if structures else (fresh_sweep["reversalDir"] if fresh_sweep else 0)
+
+    if macro_dir == 0 and len(highs) >= 2 and len(lows) >= 2:
+        if highs[-1]["price"] > highs[-2]["price"] and lows[-1]["price"] > lows[-2]["price"]:
+            macro_dir = 1
+        elif highs[-1]["price"] < highs[-2]["price"] and lows[-1]["price"] < lows[-2]["price"]:
+            macro_dir = -1
+
     draw_on_liquidity = None
     if active_cycle == "ERL_TO_IRL" and fresh_sweep:
         if fresh_sweep["side"] == 1 and ssl:
-            draw_on_liquidity = dict(ssl[0], targetSide="SSL", catalyst=f"Rotation following {fresh_sweep['name']} sweep")
+            draw_on_liquidity = dict(ssl[0], targetSide="SSL", direction=-1, causal=True, confirmationTime=fresh_sweep["time"], catalyst=f"Rotation following {fresh_sweep['name']} sweep")
         elif fresh_sweep["side"] == -1 and bsl:
-            draw_on_liquidity = dict(bsl[0], targetSide="BSL", catalyst=f"Rotation following {fresh_sweep['name']} sweep")
+            draw_on_liquidity = dict(bsl[0], targetSide="BSL", direction=1, causal=True, confirmationTime=fresh_sweep["time"], catalyst=f"Rotation following {fresh_sweep['name']} sweep")
     else:
-        if bsl and (not ssl or bsl[0]["distance"] < ssl[0]["distance"]):
-            draw_on_liquidity = dict(bsl[0], targetSide="BSL", catalyst="Clean Buy-Side Liquidity draw above")
+        if macro_dir == 1 and bsl:
+            draw_on_liquidity = dict(bsl[0], targetSide="BSL", direction=1, causal=True, confirmationTime=bsl[0].get("time") or int(h4.time[-1]), catalyst="Macro Bullish Expansion toward BSL")
+        elif macro_dir == -1 and ssl:
+            draw_on_liquidity = dict(ssl[0], targetSide="SSL", direction=-1, causal=True, confirmationTime=ssl[0].get("time") or int(h4.time[-1]), catalyst="Macro Bearish Expansion toward SSL")
+        elif bsl and (not ssl or bsl[0]["distance"] < ssl[0]["distance"]):
+            draw_on_liquidity = dict(bsl[0], targetSide="BSL", direction=1, causal=True, confirmationTime=bsl[0].get("time") or int(h4.time[-1]), catalyst="Clean Buy-Side Liquidity draw above")
         elif ssl:
-            draw_on_liquidity = dict(ssl[0], targetSide="SSL", catalyst="Clean Sell-Side Liquidity draw below")
+            draw_on_liquidity = dict(ssl[0], targetSide="SSL", direction=-1, causal=True, confirmationTime=ssl[0].get("time") or int(h4.time[-1]), catalyst="Clean Sell-Side Liquidity draw below")
 
     return {
         "activeCycle": active_cycle,

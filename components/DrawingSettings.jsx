@@ -652,6 +652,110 @@ export default function DrawingSettings({ api }) {
             {/* Position tool specific inputs */}
             {isPosition && (
               <>
+                {/* Text Edit Mode for Position Entry, SL, TP, and Target RR */}
+                {(() => {
+                  const isShort = toolKind === "short-position" || selected.rrSide === "short" || style.rrSide === "short";
+                  const dir = isShort ? -1 : 1;
+                  const entryPrice = selected.points?.[0]?.price ?? selected.entry?.price ?? 0;
+                  const currentStopLevel = style.stopLevel ?? (selected.points?.[1] ? Math.abs(selected.points[1].price - entryPrice) : (selected.stop ? Math.abs(entryPrice - selected.stop) : 10));
+                  const currentProfitLevel = style.profitLevel ?? (selected.points?.[1] ? Math.abs(selected.points[1].price - entryPrice) : (selected.target ? Math.abs(selected.target - entryPrice) : 20));
+                  const currentStopPrice = selected.stop ?? Number((entryPrice - dir * currentStopLevel).toFixed(4));
+                  const currentTpPrice = selected.target ?? Number((entryPrice + dir * currentProfitLevel).toFixed(4));
+                  const currentRR = currentStopLevel > 0 ? Math.min(5.0, Math.round((currentProfitLevel / currentStopLevel) * 100) / 100) : (selected.ratio ? Math.min(5.0, selected.ratio) : 2.0);
+
+                  return (
+                    <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--accent)", letterSpacing: 0.5, marginBottom: 8 }}>
+                        Position Parameters (Max 5.0 R:R)
+                      </div>
+
+                      <Row label="Target R:R (Max 5.0R)">
+                        <input
+                          type="number"
+                          step={0.1}
+                          min={0.1}
+                          max={5.0}
+                          value={currentRR}
+                          onChange={(e) => {
+                            const newRR = Math.min(5.0, Math.max(0.1, Number(e.target.value) || 0.1));
+                            const newProfitLevel = newRR * (currentStopLevel || 1);
+                            const newTargetPrice = Number((entryPrice + dir * newProfitLevel).toFixed(4));
+                            set({
+                              style: { ...style, profitLevel: newProfitLevel },
+                              target: newTargetPrice,
+                              ratio: newRR,
+                            });
+                          }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--green)", borderRadius: 4, color: "var(--green)", fontWeight: 700 }}
+                        />
+                      </Row>
+
+                      <Row label="Take Profit (TP) Price">
+                        <input
+                          type="number"
+                          step="any"
+                          value={currentTpPrice}
+                          onChange={(e) => {
+                            const newTp = Number(e.target.value) || 0;
+                            const profitDist = Math.abs(newTp - entryPrice);
+                            const stopDist = currentStopLevel || 1;
+                            const calculatedRR = Math.min(5.0, Math.max(0.1, Math.round((profitDist / stopDist) * 100) / 100));
+                            const clampedProfit = calculatedRR * stopDist;
+                            const finalTp = Number((entryPrice + dir * clampedProfit).toFixed(4));
+                            set({
+                              style: { ...style, profitLevel: clampedProfit },
+                              target: finalTp,
+                              ratio: calculatedRR,
+                            });
+                          }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                        />
+                      </Row>
+
+                      <Row label="Stop Loss (SL) Price">
+                        <input
+                          type="number"
+                          step="any"
+                          value={currentStopPrice}
+                          onChange={(e) => {
+                            const newSl = Number(e.target.value) || 0;
+                            const newStopDist = Math.max(0.0001, Math.abs(entryPrice - newSl));
+                            const clampedProfit = Math.min(5.0 * newStopDist, currentProfitLevel);
+                            const newRR = Math.min(5.0, Math.round((clampedProfit / newStopDist) * 100) / 100);
+                            set({
+                              style: { ...style, stopLevel: newStopDist, profitLevel: clampedProfit },
+                              stop: newSl,
+                              ratio: newRR,
+                            });
+                          }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                        />
+                      </Row>
+
+                      <Row label="Entry Price">
+                        <input
+                          type="number"
+                          step="any"
+                          value={entryPrice}
+                          onChange={(e) => {
+                            const newEntry = Number(e.target.value) || 0;
+                            const newPoints = selected.points ? [{ ...selected.points[0], price: newEntry }, ...(selected.points.slice(1))] : null;
+                            const newTarget = Number((newEntry + dir * currentProfitLevel).toFixed(4));
+                            const newStop = Number((newEntry - dir * currentStopLevel).toFixed(4));
+                            set({
+                              ...(newPoints ? { points: newPoints } : {}),
+                              ...(selected.entry ? { entry: { ...selected.entry, price: newEntry } } : {}),
+                              target: newTarget,
+                              stop: newStop,
+                            });
+                          }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                        />
+                      </Row>
+                    </div>
+                  );
+                })()}
+
                 <Row label="Account Size ($)">
                   <input
                     type="number"

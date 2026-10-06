@@ -231,6 +231,10 @@ const brain15mUnlocked = evaluateMarketBrain({
 assert(brain15mUnlocked.allowedToLong === true, "15M Gatekeeper UNLOCKS long when 15M is in Discount and structure aligns");
 assert(brain15mUnlocked.action === "READY_FOR_LONG", `Action is READY_FOR_LONG (got ${brain15mUnlocked.action})`);
 assert(brain15mUnlocked.dayTraderContext?.ltfGatekeeper?.triggerStatus === "APPROVED", "15M Trigger status is APPROVED");
+assert(brain15mUnlocked.horizons !== undefined, "Brain output contains horizons matrix");
+assert(brain15mUnlocked.horizons.SWING?.timeframeCombo === "1D-1H", "Swing horizon configured as 1D-1H");
+assert(brain15mUnlocked.horizons.DAY?.timeframeCombo === "4H-15M", "Day Trade horizon configured as 4H-15M");
+assert(brain15mUnlocked.horizons.SCALP?.timeframeCombo === "15M-1M", "Scalp horizon configured as 15M-1M");
 
 console.log("\n=======================================================");
 console.log("TEST SUITE 5: Full Engine Integration & Schema Verification");

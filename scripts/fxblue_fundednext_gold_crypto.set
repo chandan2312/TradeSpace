@@ -1,0 +1,24 @@
+; FX Blue Trade Copier Receiver Settings Preset
+; Target: FundedNext 200K · Metals & Crypto (XAUUSD, BTCUSD, ETHUSD)
+; Compatible with TradeSpace Deterministic Magic Numbers & Structured Comments
+
+Channel=TradeSpace_Master
+IncludeMagicNumbers=23200000-23399999
+IncludeSymbols=XAUUSD,GOLD,BTCUSD,ETHUSD,BITCOIN,ETHEREUM
+IncludeComments=*MG4*,*MG1*,*T02*
+ExcludeComments=*SWG*
+
+; Symbol Translation (adjust if slave broker uses suffixes like .pro, c, or micro)
+; CustomSymbolMapping=XAUUSD=GOLD,BTCUSD=BTCUSD.pro
+
+; Risk & Execution Parameters
+LotSizeMultiplier=1.00
+UseFixedRiskPerTrade=true
+RiskPercent=0.25
+
+; Trade Management Synchronization
+CopyStopLoss=true
+CopyTakeProfit=true
+CopyPartialCloses=true
+AllowSlippagePips=10
+MaxSpreadPips=30

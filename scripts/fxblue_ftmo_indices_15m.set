@@ -1,0 +1,24 @@
+; FX Blue Trade Copier Receiver Settings Preset
+; Target: FTMO 100K · Indices 15M-1M Intraday Only
+; Compatible with TradeSpace Deterministic Magic Numbers & Structured Comments
+
+Channel=TradeSpace_Master
+IncludeMagicNumbers=23110000-23119999
+IncludeSymbols=NAS100,US30,DJ30,SP500,US500,GER40
+IncludeComments=*15M*
+ExcludeComments=*SWG*
+
+; Symbol Translation (adjust if your slave broker uses suffixes like .pro or cash)
+; CustomSymbolMapping=NAS100=USTEC,US30=DJ30
+
+; Risk & Execution Parameters
+LotSizeMultiplier=1.00
+UseFixedRiskPerTrade=true
+RiskPercent=0.50
+
+; Trade Management Synchronization
+CopyStopLoss=true
+CopyTakeProfit=true
+CopyPartialCloses=true
+AllowSlippagePips=5
+MaxSpreadPips=15

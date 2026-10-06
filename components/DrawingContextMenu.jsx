@@ -66,13 +66,13 @@ export default function DrawingContextMenu({ api }) {
         {selected.type || selected.kind}
       </div>
       <Item icon={Settings} label="Edit settings" onClick={() => setSettingsOpen(true)} />
-      <Item icon={Copy} label="Clone" onClick={cloneSelected} />
-      <Item icon={BringToFront} label="Bring to front" onClick={bringToFront} />
-      <Item icon={SendToBack} label="Send to back" onClick={sendToBack} />
-      <Item icon={selected.locked ? Unlock : Lock} label={selected.locked ? "Unlock" : "Lock"} onClick={() => toggleLock(selected.id)} />
-      <Item icon={selected.hidden ? Eye : EyeOff} label={selected.hidden ? "Show" : "Hide"} onClick={() => toggleHide(selected.id)} />
+      <Item icon={Copy} label="Clone" onClick={() => cloneSelected(selected?.id)} />
+      <Item icon={BringToFront} label="Bring to front" onClick={() => bringToFront(selected?.id)} />
+      <Item icon={SendToBack} label="Send to back" onClick={() => sendToBack(selected?.id)} />
+      <Item icon={selected.locked ? Unlock : Lock} label={selected.locked ? "Unlock" : "Lock"} onClick={() => toggleLock(selected?.id)} />
+      <Item icon={selected.hidden ? Eye : EyeOff} label={selected.hidden ? "Show" : "Hide"} onClick={() => toggleHide(selected?.id)} />
       <div style={{ height: 1, background: "var(--border)" }} />
-      <Item icon={Trash2} label="Delete (Del)" danger onClick={deleteSelected} />
+      <Item icon={Trash2} label="Delete (Del)" danger onClick={() => deleteSelected(selected?.id)} />
     </div>
   );
 }

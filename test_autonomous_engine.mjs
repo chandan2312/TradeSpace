@@ -28,9 +28,44 @@ import {
 import {
   ENTRY_MODEL_DEFINITIONS,
   evaluateAllEntryModels,
+  evaluateExecutionVetoes,
 } from "./lib/autonomous/models.js";
-import { getSetupFingerprint, getExhaustedTodayFingerprints } from "./lib/autonomous/engine.js";
+import { getSetupFingerprint, getExhaustedTodayFingerprints, createAutonomousEngine } from "./lib/autonomous/engine.js";
 import { getStartOfTradingDay } from "./lib/autonomous/timeslots.js";
+import {
+  calculateHalfTargetLevel,
+  breakevenPrice,
+  calculateOptimalRiskFreeLevel,
+  calculateRiskFreeStop,
+  calculatePropFirmTp,
+  resolveDynamicPropFirmTarget,
+  evaluatePropFirmSafeAction,
+  planFractionalVolumes,
+  determineTerminalStatus,
+} from "./lib/autonomous/management.js";
+import { computeRR } from "./lib/draw/core.js";
+import { TERMINAL_STATES } from "./lib/autonomous/store.js";
+import { calculateRiskSize } from "./lib/autonomous/risk.js";
+import { calculateInstitutionalPositionSize, getMT5State } from "./lib/autonomous/mt5.js";
+import {
+  encodeDecimalMagic,
+  decodeDecimalMagic,
+  formatCopierComment,
+  parseCopierComment,
+  getAssetClass,
+  getHorizonCode,
+  getModelCode,
+  getManagementCode,
+  evaluateCopierEligibility,
+  resolveCopierRouting,
+  DEFAULT_COPIER_PROFILES,
+} from "./lib/autonomous/magicEncoder.js";
+import {
+  calculateSpreadFriction,
+  extractSpreadPrice,
+  isSpreadAcceptable,
+} from "./lib/autonomous/friction.js";
+import { ObjectId } from "mongodb";
 
 let passed = 0;
 let failed = 0;
@@ -49,27 +84,37 @@ console.log("=======================================================");
 console.log("TEST SUITE 1: Autonomous Scenarios & Horizon Resolution");
 console.log("=======================================================");
 
-// 1. Forced Intraday Mode
-const resIntraday = resolveScenarioForPair({
+// 1. Forced Day Trade Mode (4H-15M)
+const resDay = resolveScenarioForPair({
   symbol: "EURUSD",
   brain: { conviction: 85, allowedToLong: true },
   ranges: { ranges: { H4: { coveragePct: 30 } } },
-  config: { horizonMode: "intraday" },
+  config: { horizonMode: "day" },
 });
-assert(resIntraday.scenario.id === "intraday", "Forced intraday mode returns INTRADAY scenario");
-assert(resIntraday.scenario.minRR === 2.0, "Intraday scenario enforces minimum 2.0R");
+assert(resDay.scenario.id === "day", "Forced day mode returns DAY scenario (4H-15M)");
+assert(resDay.scenario.minRR === 2.0, "Day trade scenario enforces minimum 2.0R");
 
-// 2. Forced Swing Mode
+// 2. Forced Scalp Mode (15M-1M)
+const resScalp = resolveScenarioForPair({
+  symbol: "EURUSD",
+  brain: { conviction: 85, allowedToLong: true },
+  ranges: { ranges: { M15: { coveragePct: 30 } } },
+  config: { horizonMode: "scalp" },
+});
+assert(resScalp.scenario.id === "scalp", "Forced scalp mode returns SCALP scenario (15M-1M)");
+assert(resScalp.scenario.minRR === 1.5, "Scalp scenario enforces minimum 1.5R");
+
+// 3. Forced Swing Mode (1D-1H)
 const resSwing = resolveScenarioForPair({
   symbol: "EURUSD",
   brain: { conviction: 85, allowedToLong: true },
   ranges: { ranges: { H4: { coveragePct: 30 } } },
   config: { horizonMode: "swing" },
 });
-assert(resSwing.scenario.id === "swing", "Forced swing mode returns SWING scenario");
+assert(resSwing.scenario.id === "swing", "Forced swing mode returns SWING scenario (1D-1H)");
 assert(resSwing.scenario.minRR === 2.8, "Swing scenario enforces minimum 2.8R");
 
-// 3. Adaptive Mode: High HTF runway + HTF Target DOL + dominant 4H order flow -> SWING
+// 4. Adaptive Mode: High HTF runway + HTF Target DOL + dominant 4H order flow -> SWING
 const resAdaptiveSwing = resolveScenarioForPair({
   symbol: "EURUSD",
   brain: {
@@ -111,6 +156,50 @@ const mockFrames = {
   H4: createImpulseBars(),
   H1: createImpulseBars(),
   M15: createImpulseBars(),
+  M5: createImpulseBars(),
+};
+
+const testCandidate = {
+  id: "ict_2022",
+  name: "ICT 2022 Mentorship Model",
+  badge: "ICT 2022",
+  tf: "M5",
+  entry: 1.0850,
+  sl: 1.0780,
+  tp: 1.1050,
+  rr: 2.85,
+  targetRR: 2.85,
+  meetsMinRR: true,
+  confluenceScore: 78,
+  targets: [
+    { id: "tp1", price: 1.0920, fraction: 0.333 },
+    { id: "tp2", price: 1.1050, fraction: 0.667 },
+  ],
+  evidence: {
+    formationTime: 1700000000,
+    raid: {
+      dir: 1,
+      raidIndex: 10,
+      reclaimIndex: 11,
+      levelPrice: 1.0790,
+      extreme: 1.0770,
+      confirmationTime: 1699990000,
+      raidTime: 1700000000,
+    },
+    mss: {
+      index: 13,
+      displacement: { valid: true },
+      brokenPivot: { price: 1.0820, confirmedAt: 5 },
+    },
+    fvg: {
+      dir: 1,
+      eligible: true,
+      born: 14,
+      top: 1.0860,
+      bottom: 1.0840,
+      state: "VIRGIN",
+    },
+  },
 };
 
 const levelRes = selectOptimalEntryLevel({
@@ -130,7 +219,7 @@ const levelRes = selectOptimalEntryLevel({
     ],
   },
   targetDOL: { name: "4H EQH BSL", price: 1.1050 },
-  config: { minRR: 2.0 },
+  config: { minRR: 2.0, candidate: testCandidate },
 });
 
 assert(levelRes !== null, "Successfully discovered candidate institutional levels");
@@ -296,7 +385,7 @@ const modelsEval = evaluateAllEntryModels({
     ],
   },
   targetDOL: { name: "4H EQH BSL", price: 1.1050 },
-  config: { minRR: 2.0 },
+  config: { minRR: 2.0, candidate: testCandidate },
   brain: { conviction: 82, fvgOrderFlow: "BULLISH_DOMINANT" },
 });
 
@@ -309,6 +398,44 @@ assert(modelsEval.rr >= 2.0, `Calculated model R:R meets minimum threshold (${mo
 assert(modelsEval.confluenceScore >= 50, `Confluence score properly calculated: ${modelsEval.confluenceScore}`);
 assert(modelsEval.timeSlot !== undefined, "Active time slot attached to evaluated model");
 assert(Array.isArray(modelsEval.allCandidates) && modelsEval.allCandidates.length >= 1, "Candidate models list populated");
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 6B: Adversarial Model & Geometry Gates");
+console.log("=======================================================");
+const strictCandidate = { ...testCandidate, modelId: "ict_2022" };
+const disabledModel = evaluateAllEntryModels({
+  symbol: "EURUSD",
+  dir: 1,
+  scenario: SCENARIOS.INTRADAY,
+  frames: mockFrames,
+  ranges: { ranges: { H1: { high: 1.0970, low: 1.0770, tf: "H1" }, H4: { high: 1.0970, low: 1.0770, tf: "H4" } } },
+  targetDOL: { name: "4H EQH BSL", price: 1.1050 },
+  config: { minRR: 2.0, candidate: strictCandidate, enabledModels: { ict_2022: false } },
+  brain: { conviction: 82, fvgOrderFlow: "BULLISH_DOMINANT" },
+});
+assert(disabledModel?.permitted === false, "A disabled entry model cannot be execution-permitted");
+assert(disabledModel?.vetoes?.some((v) => v.code === "MODEL_DISABLED"), "Disabled model emits MODEL_DISABLED veto");
+
+const noEnabledModels = evaluateAllEntryModels({
+  symbol: "EURUSD",
+  dir: 1,
+  scenario: SCENARIOS.INTRADAY,
+  frames: mockFrames,
+  ranges: { ranges: { H1: { high: 1.0970, low: 1.0770, tf: "H1" }, H4: { high: 1.0970, low: 1.0770, tf: "H4" } } },
+  targetDOL: { name: "4H EQH BSL", price: 1.1050 },
+  config: { minRR: 2.0, enabledModels: { ict_2022: false, turtle_soup: false, breaker_block: false, ote_continuation: false, silver_bullet: false } },
+  brain: { conviction: 82, fvgOrderFlow: "BULLISH_DOMINANT" },
+});
+assert(noEnabledModels === null, "Disabling every entry model yields no candidate instead of a diagnostic fallback");
+
+const executionVeto = evaluateExecutionVetoes({
+  symbol: "EURUSD", dir: 1, entry: 1.0850, sl: 1.0820,
+  brain: { macroDir: 1, allowedToLong: true, targetDOL: { price: 1.1050, direction: 1, targetSide: "BSL", state: "UNCONSUMED", causal: true, confirmationTime: 1 } },
+  config: { now: Date.now(), enabledModels: { ict_2022: false } },
+  candidate: { ...strictCandidate },
+});
+assert(executionVeto.permitted === false, "Execution vetoes do not let confluence bypass model authorization");
+assert(executionVeto.vetoes.some((v) => v.code === "MODEL_DISABLED"), "Direct execution gate preserves MODEL_DISABLED evidence");
 
 // 3. Verify selectOptimalEntryLevel outputs model metadata
 const optLevel = selectOptimalEntryLevel({
@@ -328,7 +455,7 @@ const optLevel = selectOptimalEntryLevel({
     ],
   },
   targetDOL: { name: "4H EQH BSL", price: 1.1050 },
-  config: { minRR: 2.0 },
+  config: { minRR: 2.0, candidate: testCandidate },
   brain: { conviction: 82 },
 });
 
@@ -446,8 +573,6 @@ assert(nyPermGer.permitted === false, "isTradingPermittedNow blocks GER40 during
 // =======================================================
 console.log("\n--- TEST SUITE 8: Institutional Position Sizing ---");
 
-import { calculateInstitutionalPositionSize } from "./lib/autonomous/mt5.js";
-
 // Helper: build minimal broker symInfo
 function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0, tick_value = 0 } = {}) {
   return {
@@ -455,7 +580,7 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     volume_max: vol_max,
     volume_step: vol_step,
     trade_tick_size: tick_size,
-    trade_tick_value: tick_value,
+    trade_tick_value_loss: tick_value,
   };
 }
 
@@ -478,14 +603,15 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
 // --- 8.2 XAUUSD Gold — 100oz contract multiplier ---
 {
   // riskUsd=$200, SL dist=2.00 (price move $2 on Gold)
-  // lossPerLot = 2.00 * 100 = $200 per lot
-  // rawLot = 200/200 = 1.00 lot
+  // Broker-provided account-currency loss per lot is explicit; no symbol
+  // multiplier is inferred by the sizing helper.
   const lot = calculateInstitutionalPositionSize({
     symbol: "XAUUSD",
     riskUsd: 200,
     entryPrice: 1950.00,
     slPrice: 1948.00,
     symInfo: symInfo(),   // no tick data → uses contractMult fallback
+    lossPerLot: 200,
     accInfo: { balance: 20000 },
   });
   assert(lot === 1.00, `XAUUSD gold lot sizing (contractMult=100): expected 1.00, got ${lot}`);
@@ -501,6 +627,7 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     entryPrice: 18000,
     slPrice: 17850,
     symInfo: symInfo(),
+    lossPerLot: 150,
     accInfo: { balance: 15000 },
   });
   assert(lot === 1.00, `NAS100 index lot sizing (contractMult=1.0): expected 1.00, got ${lot}`);
@@ -516,12 +643,13 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     entryPrice: 65000,
     slPrice: 63500,
     symInfo: symInfo({ vol_min: 0.01, vol_step: 0.01 }),
+    lossPerLot: 1500,
     accInfo: { balance: 30000 },
   });
   assert(lot === 0.20, `BTCUSD crypto lot sizing: expected 0.20, got ${lot}`);
 }
 
-// --- 8.5 Zero SL distance → returns vol_min ---
+// --- 8.5 Zero SL distance → returns zero (unsafe geometry) ---
 {
   const lot = calculateInstitutionalPositionSize({
     symbol: "EURUSD",
@@ -531,7 +659,7 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     symInfo: symInfo(),
     accInfo: {},
   });
-  assert(lot === 0.01, `Zero SL distance → returns vol_min (0.01), got ${lot}`);
+  assert(lot === 0, `Zero SL distance → returns zero, got ${lot}`);
 }
 
 // --- 8.6 10% Balance Cap Safety ---
@@ -546,6 +674,7 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     entryPrice: 1950.00,
     slPrice: 1945.00,
     symInfo: symInfo(),
+    lossPerLot: 500,
     accInfo: { balance: 1000 },  // tiny account → caps riskUsd to $100
   });
   assert(lot === 0.20, `10% balance cap: capped $500→$100 on $1k XAUUSD, expected 0.20, got ${lot}`);
@@ -561,23 +690,22 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     entryPrice: 18000,
     slPrice: 17920,
     symInfo: symInfo({ vol_min: 0.5, vol_step: 0.5, vol_max: 100 }),
+    lossPerLot: 80,
     accInfo: {},
   });
   assert(lot === 2.00, `GER40 vol_step=0.5 rounding: expected 2.00, got ${lot}`);
 }
 
-// --- 8.8 MT5 Tick Scaling Distortion Guard (NAS100 with inflated tick value) ---
+// --- 8.8 Broker loss evidence is required for non-FX contracts ---
 {
-  // If broker returns tick_value unreasonably large (distorted), engine falls back to contractMult path
-  // tick_size=0.01, tick_value=10000 → pointValueRatio=1,000,000 >> expectedMaxRatio(1*10=10)
-  // → Uses slDist * contractMult = 50 * 1.0 = $50 per lot
-  // riskUsd=100 → rawLot=2.0
+  // The caller supplies the broker's account-currency loss calculation.
   const lot = calculateInstitutionalPositionSize({
     symbol: "NAS100",
     riskUsd: 100,
     entryPrice: 18000,
     slPrice: 17950,
     symInfo: symInfo({ tick_size: 0.01, tick_value: 10000 }),  // distorted feed
+    lossPerLot: 50,
     accInfo: {},
   });
   assert(lot === 2.00, `MT5 distorted tick guard for NAS100: expected 2.00, got ${lot}`);
@@ -592,6 +720,7 @@ function symInfo({ vol_min = 0.01, vol_max = 500, vol_step = 0.01, tick_size = 0
     entryPrice: 39000,
     slPrice: 38960,
     symInfo: symInfo(),
+    lossPerLot: 40,
     accInfo: {},
   });
   assert(lot === 2.00, `DJ30 index lot sizing: expected 2.00, got ${lot}`);
@@ -812,6 +941,1012 @@ console.log("=======================================================");
 }
 
 console.log("\n=======================================================");
+console.log("TEST SUITE 12: Breakeven Metrics & True Win Rate Calculation");
+console.log("=======================================================");
+{
+  // 12.1 Terminal state classification includes closed_be
+  assert(TERMINAL_STATES.includes("closed_be") === true, "TERMINAL_STATES includes closed_be state");
+
+  // 12.2 determineTerminalStatus classifications
+  const mockTradeLong = { dir: 1, entryPrice: 1.0850, slPrice: 1.0820, isBreakeven: true };
+  assert(determineTerminalStatus(mockTradeLong, 0.0, "breakeven") === "closed_be", "determineTerminalStatus flags zero-R trade as closed_be");
+  assert(determineTerminalStatus(mockTradeLong, 0.02, "breakeven") === "closed_be", "determineTerminalStatus flags near-zero R (+0.02R) trade as closed_be");
+  assert(determineTerminalStatus({ ...mockTradeLong, isRiskFree: true }, 0.15, "risk_free") === "closed_be", "determineTerminalStatus flags risk_free trailed trade with small gain (+0.15R) as closed_be");
+  assert(determineTerminalStatus(mockTradeLong, 2.5, "tp") === "closed_tp", "determineTerminalStatus flags +2.5R TP as closed_tp");
+  assert(determineTerminalStatus(mockTradeLong, -1.0, "sl") === "closed_sl", "determineTerminalStatus flags -1.0R SL as closed_sl");
+
+  // 12.3 Metrics calculation isolates breakevens from win rate calculation
+  // 4 Wins, 2 Losses, 2 Breakevens:
+  // Decided = 6 trades (4W, 2L). Win rate MUST be 4/6 = 67%, NOT 4/8 = 50%!
+  const closedDataset = [
+    { status: "closed_tp", realizedR: 2.5 },
+    { status: "closed_tp", realizedR: 3.0 },
+    { status: "closed_tp", realizedR: 1.5 },
+    { status: "closed_tp", realizedR: 4.0 },
+    { status: "closed_sl", realizedR: -1.0 },
+    { status: "closed_sl", realizedR: -1.0 },
+    { status: "closed_be", realizedR: 0.0 },
+    { status: "closed_be", realizedR: 0.02 },
+  ];
+
+  let wins = 0;
+  let losses = 0;
+  let breakevens = 0;
+  let totalR = 0;
+  let grossWinR = 0;
+  let grossLossR = 0;
+
+  for (const t of closedDataset) {
+    const r = t.realizedR ?? (t.status === "closed_tp" ? 2 : (t.status === "closed_be" ? 0 : -1));
+    totalR += r;
+    if (t.status === "closed_be" || Math.abs(r) <= 0.05 || (t.isBreakeven && r >= -0.1 && r <= 0.25)) {
+      breakevens++;
+      if (r > 0) grossWinR += r;
+      else if (r < 0) grossLossR += Math.abs(r);
+    } else if (r > 0.05) {
+      wins++;
+      grossWinR += r;
+    } else {
+      losses++;
+      grossLossR += Math.abs(r);
+    }
+  }
+
+  const decidedClosed = wins + losses;
+  const totalClosed = wins + losses + breakevens;
+  const winRate = decidedClosed > 0 ? Math.round((wins / decidedClosed) * 100) : 0;
+  const beRate = totalClosed > 0 ? Math.round((breakevens / totalClosed) * 100) : 0;
+
+  assert(wins === 4, "Correctly counted 4 winning trades");
+  assert(losses === 2, "Correctly counted 2 losing trades");
+  assert(breakevens === 2, "Correctly counted 2 breakeven trades");
+  assert(decidedClosed === 6, "Decided closed trades equals exactly 6 (4W + 2L)");
+  assert(totalClosed === 8, "Total closed trades equals 8 (4W + 2L + 2BE)");
+  assert(winRate === 67, `Win Rate calculated strictly on decided trades: 67% (got ${winRate}%, not degraded to 50% by BEs)`);
+  assert(beRate === 25, `Breakeven rate tracked accurately: 25% (got ${beRate}%)`);
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 13: Simplified Management: 50% Target & 40% Booking");
+console.log("=======================================================");
+{
+  // 13.1 Volume split into 40% partial and 60% runner
+  const split1Lot = planFractionalVolumes(1.0, { volume_step: 0.01, volume_min: 0.01 }, 0.40);
+  assert(split1Lot.tp1 === 0.40, `1.00 lot position splits 40% to TP1: expected 0.40, got ${split1Lot.tp1}`);
+  assert(split1Lot.runner === 0.60, `1.00 lot position keeps 60% for runner: expected 0.60, got ${split1Lot.runner}`);
+
+  const splitSmall = planFractionalVolumes(0.15, { volume_step: 0.01, volume_min: 0.01 }, 0.40);
+  assert(splitSmall.tp1 === 0.06, `0.15 lot position splits 40%: expected 0.06, got ${splitSmall.tp1}`);
+  assert(splitSmall.runner === 0.09, `0.15 lot position keeps 60% runner: expected 0.09, got ${splitSmall.runner}`);
+
+  const splitMin = planFractionalVolumes(0.01, { volume_step: 0.01, volume_min: 0.01 }, 0.40);
+  assert(splitMin.tp1 === 0, "Minimum lot (0.01) cannot be fractionally divided, held for runner");
+  assert(splitMin.runner === 0.01, "Full 0.01 lot allocated to runner");
+
+  // 13.2 50% Target Milestone Engine (Long trade)
+  // Entry = 1.0850, Initial SL = 1.0820 (distance = 0.0030), Target = 1.0940 (3.0R)
+  const tradeLong = {
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    tpPrice: 1.0940,
+    targetRR: 3.0,
+    initialRiskDistance: 0.0030,
+    symbolSpec: { digits: 5 },
+  };
+  const halfLong = calculateHalfTargetLevel(tradeLong);
+  assert(halfLong.halfRR === 1.5, `50% of 3.0R target is 1.50R: got ${halfLong.halfRR}R`);
+  assert(halfLong.price === 1.0895, `50% target price is 1.0895: got ${halfLong.price}`);
+
+  // 13.3 50% Target Milestone Engine (Short trade)
+  // Entry = 1.1000, Initial SL = 1.1030 (distance = 0.0030), Target = 1.0880 (4.0R)
+  const tradeShort = {
+    dir: -1,
+    entryPrice: 1.1000,
+    slPrice: 1.1030,
+    tpPrice: 1.0880,
+    targetRR: 4.0,
+    initialRiskDistance: 0.0030,
+    symbolSpec: { digits: 5 },
+  };
+  const halfShort = calculateHalfTargetLevel(tradeShort);
+  assert(halfShort.halfRR === 2.0, `50% of 4.0R target is 2.00R: got ${halfShort.halfRR}R`);
+  assert(halfShort.price === 1.0940, `50% short target price is 1.0940: got ${halfShort.price}`);
+
+  // 13.4 Manually Edited Target (5.0R Max ceiling)
+  // Entry = 1.0850, SL = 1.0820, Modified Target = 1.1000 (5.0R)
+  const tradeMaxRR = {
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    tpPrice: 1.1000,
+    targetRR: 5.0,
+    initialRiskDistance: 0.0030,
+    symbolSpec: { digits: 5 },
+  };
+  const halfMaxRR = calculateHalfTargetLevel(tradeMaxRR);
+  assert(halfMaxRR.halfRR === 2.5, `50% of 5.0R target is 2.50R: got ${halfMaxRR.halfRR}R`);
+  assert(halfMaxRR.price === 1.0925, `50% price for 5.0R target is 1.0925: got ${halfMaxRR.price}`);
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 14: Breakeven Stop Transition & Runner Progression");
+console.log("=======================================================");
+{
+  const tradeSim = {
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    tpPrice: 1.0940,
+    targetRR: 3.0,
+    initialRiskDistance: 0.0030,
+    initialVolume: 1.0,
+    remainingVolume: 1.0,
+    symbolSpec: { digits: 5, point: 0.00001 },
+  };
+
+  // 14.1 Breakeven price calculation
+  const bePrice = breakevenPrice(tradeSim, tradeSim.symbolSpec);
+  assert(bePrice >= tradeSim.entryPrice, `Breakeven price is safely at/above entry: ${bePrice} >= ${tradeSim.entryPrice}`);
+  assert(bePrice > tradeSim.slPrice, `Breakeven SL trails strictly forward from initial SL: ${bePrice} > ${tradeSim.slPrice}`);
+
+  // 14.2 Exit Scenario A: Retracement to Breakeven after 40% booked at 50% target
+  // 40% was booked at +1.5R -> banked profit = 0.40 * 1.5R = +0.60R
+  // Stopped out at Breakeven SL -> realizedR on runner = 0
+  const tradeAfterBE = {
+    ...tradeSim,
+    halfTargetBooked: true,
+    isBreakeven: true,
+    realizedR: 0.60,
+  };
+  const termStatusBE = determineTerminalStatus(tradeAfterBE, 0.60, "breakeven");
+  assert(termStatusBE === "closed_be", "Trade stopped at BE after 40% partial is accurately categorized as closed_be");
+
+  // 14.3 Exit Scenario B: Runner continues to full target (3.0R)
+  // 40% booked at 1.5R (+0.60R), 60% runner booked at 3.0R (+1.80R) -> Total Realized = +2.40R
+  const termStatusTP = determineTerminalStatus(tradeSim, 2.40, "runner");
+  assert(termStatusTP === "closed_tp", "Runner hitting full target is categorized as closed_tp");
+
+  // 14.4 Exit Scenario C: Direct SL hit before reaching 50% target
+  const termStatusSL = determineTerminalStatus(tradeSim, -1.0, "stop");
+  assert(termStatusSL === "closed_sl", "Position stopped out at initial SL is categorized as closed_sl");
+
+  // 14.5 Model 2: Prop-Firm Safe Mode Progression (1.0R risk halved -> 1.5R BE -> TP exit)
+  const propTrade = {
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    initialSlPrice: 1.0820,
+    tpPrice: 1.0910, // 2.0R
+    targetRR: 2.0,
+    initialRiskDistance: 0.0030,
+    managementLogic: "prop_firm_safe",
+    symbolSpec: { digits: 5, point: 0.00001 },
+  };
+
+  // Test calculatePropFirmTp clamping to [1.5, 2.5]
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 1.2, 5).targetRR === 1.5, "Prop-firm TP clamps below 1.5R to 1.5R");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 1.2, 5).tpPrice === 1.0895, "Prop-firm TP price clamps below 1.5R to 1.0895");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 3.5, 5).targetRR === 2.5, "Prop-firm TP clamps above 2.5R to 2.5R");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 3.5, 5).tpPrice === 1.0925, "Prop-firm TP price clamps above 2.5R to 1.0925");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 2.0, 5).targetRR === 2.0, "Prop-firm TP retains valid 2.0R");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 2.0, 5).tpPrice === 1.0910, "Prop-firm TP retains valid 2.0R price 1.0910");
+
+  // Step 1: Price reaches 1.0R (1.0880) -> SL moves to half risk (1.0835)
+  const action1R = evaluatePropFirmSafeAction(propTrade, 1.0880, 1.0, propTrade.symbolSpec);
+  assert(action1R.action === "reduce_sl_half", `At 1.0R price move, action is reduce_sl_half: got ${action1R.action}`);
+  assert(action1R.newSl === 1.0835, `Half risk SL is 1.0835 (-0.5R initial risk): got ${action1R.newSl}`);
+
+  // Step 2: Price reaches 1.5R (1.0895) -> SL moves to breakeven
+  const propTradeAtHalfRisk = { ...propTrade, slHalfMoved: true, slPrice: 1.0835 };
+  const action1_5R = evaluatePropFirmSafeAction(propTradeAtHalfRisk, 1.0895, 1.5, propTrade.symbolSpec);
+  assert(action1_5R.action === "breakeven", `At 1.5R price move, action is breakeven: got ${action1_5R.action}`);
+  assert(action1_5R.newSl >= 1.0850, `Breakeven SL is at/above entry: got ${action1_5R.newSl}`);
+
+  // Step 3: Special rule: If TP itself is 1.5R, full quantity booked at 1.5R
+  const propTradeTP1_5 = { ...propTrade, tpPrice: 1.0895, targetRR: 1.5 };
+  const actionTP1_5 = evaluatePropFirmSafeAction(propTradeTP1_5, 1.0895, 1.5, propTrade.symbolSpec);
+  assert(actionTP1_5.action === "exit_full_tp", `When TP is 1.5R, reaching 1.5R triggers full exit_full_tp: got ${actionTP1_5.action}`);
+
+  // Step 4: Price reaches 2.0R TP (1.0910) -> full exit take profit
+  const propTradeAtBE = { ...propTrade, isBreakeven: true, slPrice: 1.0850 };
+  const actionTP = evaluatePropFirmSafeAction(propTradeAtBE, 1.0910, 2.0, propTrade.symbolSpec);
+  assert(actionTP.action === "exit_full_tp", `At full TP price (1.0910), action is exit_full_tp: got ${actionTP.action}`);
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 15: Max 5.0 RR Enforcement Across Models, Tools & Engine");
+console.log("=======================================================");
+{
+  // 15.1 Drawing Tool RR calculation clamp
+  // Long drawing: Entry=100, Stop=90 (Risk=10), Target=180 (Reward=80 -> Raw RR = 8.0)
+  const drawing8R = {
+    entry: { price: 100 },
+    stop: 90,
+    target: 180,
+  };
+  const clampedDrawRR = computeRR(drawing8R);
+  assert(clampedDrawRR === 5.0, `computeRR clamps 8.0R drawing to max 5.0R: got ${clampedDrawRR}`);
+
+  const drawing3R = {
+    entry: { price: 100 },
+    stop: 90,
+    target: 130,
+  };
+  assert(computeRR(drawing3R) === 3.0, `computeRR permits 3.0R drawing within 5.0R limit: got ${computeRR(drawing3R)}`);
+
+  // 15.2 modifyTradeTarget clamps targetRR and calculates proportional TP
+  const tradeDoc = {
+    _id: new ObjectId("650000000000000000000001"),
+    symbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    tpPrice: 1.0940,
+    targetRR: 3.0,
+    initialRiskDistance: 0.0030,
+    symbolSpec: { digits: 5 },
+    status: "staged",
+  };
+
+  const mockDbTrades = new Map([[String(tradeDoc._id), { ...tradeDoc }]]);
+  const mockTradesCol = {
+    findOne: async (query) => {
+      const id = String(query._id);
+      return mockDbTrades.get(id) ? { ...mockDbTrades.get(id) } : null;
+    },
+    updateOne: async (query, update) => {
+      const id = String(query._id);
+      const doc = mockDbTrades.get(id);
+      if (doc) {
+        if (update.$set) Object.assign(doc, update.$set);
+        return { modifiedCount: 1 };
+      }
+      return { modifiedCount: 0 };
+    },
+  };
+
+  const testEngine = createAutonomousEngine({
+    autonomousCols: async () => ({ tradesCol: mockTradesCol }),
+  });
+
+  // Request targetRR = 8.0 -> must be clamped to 5.0R (TP = 1.0850 + 5.0*0.0030 = 1.1000)
+  const resClamp = await testEngine.modifyTradeTarget(tradeDoc._id, { targetRR: 8.0 });
+  assert(resClamp.ok === true, "modifyTradeTarget succeeds with high RR request");
+  const updatedDoc1 = mockDbTrades.get(String(tradeDoc._id));
+  assert(updatedDoc1.targetRR === 5.0, `modifyTradeTarget clamped 8.0R to 5.0R: got ${updatedDoc1.targetRR}`);
+  assert(updatedDoc1.tpPrice === 1.1000, `modifyTradeTarget adjusted TP to 1.1000: got ${updatedDoc1.tpPrice}`);
+
+  // Request tpPrice = 1.1150 (raw RR = (1.1150 - 1.0850) / 0.0030 = 10.0R) -> clamped to 5.0R
+  const resClampTp = await testEngine.modifyTradeTarget(tradeDoc._id, { tpPrice: 1.1150 });
+  assert(resClampTp.ok === true, "modifyTradeTarget succeeds with high TP price");
+  const updatedDoc2 = mockDbTrades.get(String(tradeDoc._id));
+  assert(updatedDoc2.targetRR === 5.0, `modifyTradeTarget clamped high TP price to 5.0R: got ${updatedDoc2.targetRR}`);
+  assert(updatedDoc2.tpPrice === 1.1000, `modifyTradeTarget clamped TP price to 1.1000: got ${updatedDoc2.tpPrice}`);
+
+  // Request targetRR = 3.5 -> permits within 5.0R ceiling (TP = 1.0850 + 3.5*0.0030 = 1.0955)
+  const resNormal = await testEngine.modifyTradeTarget(tradeDoc._id, { targetRR: 3.5 });
+  assert(resNormal.ok === true, "modifyTradeTarget succeeds with normal RR request");
+  const updatedDoc3 = mockDbTrades.get(String(tradeDoc._id));
+  assert(updatedDoc3.targetRR === 3.5, `modifyTradeTarget sets valid RR to 3.5R: got ${updatedDoc3.targetRR}`);
+  assert(updatedDoc3.tpPrice === 1.0955, `modifyTradeTarget sets valid TP to 1.0955: got ${updatedDoc3.tpPrice}`);
+
+  // 15.3 Swing Trading Exemption: Swing setups (1D-1H) are strictly NOT clamped by the 5.0R limit
+  const swingTradeDoc = {
+    _id: new ObjectId("650000000000000000000077"),
+    symbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    tpPrice: 1.0940,
+    targetRR: 3.0,
+    initialRiskDistance: 0.0030,
+    symbolSpec: { digits: 5 },
+    status: "staged",
+    scenario: { id: "swing", horizon: "1D-1H" },
+    horizon: "1D-1H",
+    horizonCode: 1,
+  };
+  mockDbTrades.set(String(swingTradeDoc._id), { ...swingTradeDoc });
+  const resSwing = await testEngine.modifyTradeTarget(swingTradeDoc._id, { targetRR: 8.5 });
+  assert(resSwing.ok === true, "modifyTradeTarget succeeds for swing trade with 8.5R target");
+  const updatedSwingDoc = mockDbTrades.get(String(swingTradeDoc._id));
+  assert(updatedSwingDoc.targetRR === 8.5, `Swing trading is exempt from 5.0R clamp: targetRR is ${updatedSwingDoc.targetRR}R`);
+  assert(updatedSwingDoc.tpPrice === 1.1105, `Swing TP accurately set to 8.5R price (1.1105): got ${updatedSwingDoc.tpPrice}`);
+
+  // 15.4 Prop-Firm Safe Model Clamping: Strictly clamped to [1.5, 2.5] bracket
+  const propTradeDoc = {
+    _id: new ObjectId("650000000000000000000078"),
+    symbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0820,
+    tpPrice: 1.0910,
+    targetRR: 2.0,
+    initialRiskDistance: 0.0030,
+    symbolSpec: { digits: 5 },
+    status: "staged",
+    managementLogic: "prop_firm_safe",
+  };
+  mockDbTrades.set(String(propTradeDoc._id), { ...propTradeDoc });
+  const resPropClamp = await testEngine.modifyTradeTarget(propTradeDoc._id, { targetRR: 4.0 });
+  assert(resPropClamp.ok === true, "modifyTradeTarget succeeds for prop-firm safe trade");
+  const updatedPropDoc = mockDbTrades.get(String(propTradeDoc._id));
+  assert(updatedPropDoc.targetRR === 2.5, `Prop-firm trade clamped to 2.5R upper limit: got ${updatedPropDoc.targetRR}R`);
+  assert(updatedPropDoc.tpPrice === 1.0925, `Prop-firm TP clamped to 2.5R price (1.0925): got ${updatedPropDoc.tpPrice}`);
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 16: Adversarial Risk & Broker Boundaries");
+console.log("=======================================================");
+{
+  const brokerSpec = {
+    volume_min: 0.01,
+    volume_max: 100,
+    volume_step: 0.01,
+    trade_tick_size: 0.00001,
+    trade_tick_value_loss: 0.10,
+  };
+  const zeroBudget = calculateRiskSize({ riskUsd: 0, entryPrice: 1.0850, slPrice: 1.0820, symInfo: brokerSpec });
+  assert(zeroBudget.lotSize === 0, "Zero risk budget produces zero lots");
+  assert(calculateInstitutionalPositionSize({ riskUsd: 0, entryPrice: 1.0850, slPrice: 1.0820, symInfo: brokerSpec, accInfo: { balance: 50000 } }) === 0, "Institutional sizing never substitutes a minimum lot for zero risk");
+
+  const zeroStop = calculateRiskSize({ riskUsd: 500, entryPrice: 1.0850, slPrice: 1.0850, symInfo: brokerSpec });
+  assert(zeroStop.lotSize === 0, "Zero stop distance produces zero lots");
+  assert(calculateInstitutionalPositionSize({ riskUsd: 500, entryPrice: 1.0850, slPrice: 1.0850, symInfo: brokerSpec, accInfo: { balance: 50000 } }) === 0, "Institutional sizing blocks zero stop distance");
+
+  const originalFetch = globalThis.fetch;
+  const originalRemoteUrl = process.env.AUTONOMOUS_MT5_REMOTE_URL;
+  process.env.AUTONOMOUS_MT5_REMOTE_URL = "https://remote-broker.example.test";
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({
+    ok: true,
+    account: { login: 7, balance: 50000, equity: 50000 },
+    positions: [], orders: [], history: [], requests: [], order_history: [],
+    dailyPnl: 0, dayStartEquity: 50000, at: 1700212400,
+    // brokerDayStart intentionally omitted: this snapshot is incomplete.
+  }) });
+  try {
+    const incomplete = await getMT5State();
+    assert(incomplete.ok === false && /Incomplete/.test(incomplete.error), "Incomplete broker snapshots are rejected before reconciliation");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRemoteUrl === undefined) delete process.env.AUTONOMOUS_MT5_REMOTE_URL;
+    else process.env.AUTONOMOUS_MT5_REMOTE_URL = originalRemoteUrl;
+  }
+
+  const liveTrade = {
+    _id: new ObjectId("650000000000000000000002"),
+    symbol: "EURUSD", dir: 1, entryPrice: 1.0850, slPrice: 1.0820, tpPrice: 1.0940,
+    targetRR: 3.0, initialRiskDistance: 0.0030, symbolSpec: { digits: 5 },
+    status: "active", isLive: true, ticket: 88, brokerAccountLogin: 7,
+  };
+  const liveMap = new Map([[String(liveTrade._id), liveTrade]]);
+  const liveCol = {
+    findOne: async (query) => liveMap.get(String(query._id)) ? { ...liveMap.get(String(query._id)) } : null,
+    updateOne: async (query, update) => {
+      const doc = liveMap.get(String(query._id));
+      if (!doc) return { modifiedCount: 0 };
+      if (update.$set) Object.assign(doc, update.$set);
+      return { modifiedCount: 1 };
+    },
+  };
+  let failedBrokerCalls = 0;
+  const failingBrokerEngine = createAutonomousEngine({
+    autonomousCols: async () => ({ tradesCol: liveCol }),
+    modifyMT5Order: async () => { failedBrokerCalls++; return { ok: false, ambiguous: false, error: "Broker rejected target modification" }; },
+  });
+  const failedTarget = await failingBrokerEngine.modifyTradeTarget(liveTrade._id, { targetRR: 4.0 });
+  assert(failedBrokerCalls === 1, "Live target modification dispatches exactly one broker operation");
+  assert(failedTarget.ok === false, "Broker target-operation failure is surfaced to the caller");
+  assert(liveMap.get(String(liveTrade._id)).targetRR === 3.0, "Rejected broker target modification does not mutate local target state");
+}
+
+// =======================================================
+// TEST SUITE 17: Deterministic Magic Number, Structured Comment & Copier Multi-Account Routing Engine
+// =======================================================
+console.log("\n=======================================================");
+console.log("TEST SUITE 17: Deterministic Magic Number, Structured Comment & Copier Multi-Account Routing");
+console.log("=======================================================");
+
+// --- 17.1 Asset Class Categorization ---
+{
+  assert(getAssetClass("NAS100").key === "index" && getAssetClass("NAS100").code === 1, "NAS100 maps to index (code 1)");
+  assert(getAssetClass("US30").key === "index" && getAssetClass("US30").code === 1, "US30 maps to index (code 1)");
+  assert(getAssetClass("DJ30").key === "index" && getAssetClass("DJ30").code === 1, "DJ30 maps to index (code 1)");
+  assert(getAssetClass("SP500").key === "index" && getAssetClass("SP500").code === 1, "SP500 maps to index (code 1)");
+  assert(getAssetClass("XAUUSD").key === "metal" && getAssetClass("XAUUSD").code === 2, "XAUUSD maps to metal (code 2)");
+  assert(getAssetClass("GOLD").key === "metal" && getAssetClass("GOLD").code === 2, "GOLD alias maps to metal (code 2)");
+  assert(getAssetClass("BTCUSD").key === "crypto" && getAssetClass("BTCUSD").code === 3, "BTCUSD maps to crypto (code 3)");
+  assert(getAssetClass("EURUSD").key === "fx_major" && getAssetClass("EURUSD").code === 4, "EURUSD maps to fx_major (code 4)");
+}
+
+// --- 17.2 Horizon Code Categorization ---
+{
+  assert(getHorizonCode("swing").code === 1 && getHorizonCode("1D-1H").code === 1 && getHorizonCode("1D").code === 1, "1D-1H Swing maps to horizon code 1");
+  assert(getHorizonCode("day").code === 2 && getHorizonCode("4H-15M").code === 2 && getHorizonCode("15M").code === 2, "4H-15M Day Trade maps to horizon code 2");
+  assert(getHorizonCode("scalp").code === 3 && getHorizonCode("15M-1M").code === 3 && getHorizonCode("1M").code === 3, "15M-1M Scalp maps to horizon code 3");
+}
+
+// --- 17.3 Entry Model & Management Code Categorization ---
+{
+  assert(getModelCode("ict_2022").code === 1 && getModelCode("ict_2022").short === "M1", "ICT 2022 maps to code 1 (M1)");
+  assert(getModelCode("turtle_soup").code === 2 && getModelCode("turtle_soup").short === "M2", "Turtle Soup maps to code 2 (M2)");
+  assert(getModelCode("breaker_block").code === 3 && getModelCode("breaker_block").short === "M3", "Breaker Block maps to code 3 (M3)");
+  assert(getModelCode("ote_continuation").code === 4 && getModelCode("ote_continuation").short === "M4", "OTE Trend maps to code 4 (M4)");
+  assert(getModelCode("silver_bullet").code === 5 && getModelCode("silver_bullet").short === "M5", "Silver Bullet maps to code 5 (M5)");
+
+  assert(getManagementCode("milestone_50").code === 1 && getManagementCode("milestone_50").short === "MG1", "50% Milestone + BE maps to management code 1 (MG1)");
+  assert(getManagementCode("prop_firm_safe").code === 2 && getManagementCode("prop_firm_safe").short === "MG2", "Prop-Firm Safe maps to code 2 (MG2)");
+  assert(getManagementCode("runner").code === 1, "Legacy runner alias maps to code 1 (MG1)");
+}
+
+// --- 17.4 Deterministic Decimal Magic Number Encoding & Decoding ---
+{
+  // Example 1: NAS100 4H-15M Day Trade with ICT 2022, 50% Milestone Management, FTMO Account Tier 01
+  const magic1 = encodeDecimalMagic({
+    symbol: "NAS100",
+    horizon: "4H-15M",
+    modelId: "ict_2022",
+    management: "milestone_50",
+    accountTier: 1,
+  });
+  assert(magic1 === 23121101, `NAS100 Day Trade ICT2022 Milestone50 Tier 1: expected 23121101, got ${magic1}`);
+
+  const decoded1 = decodeDecimalMagic(magic1);
+  assert(decoded1.valid === true, "Decoded magic1 is valid");
+  assert(decoded1.prefix === 23, "Decoded prefix is 23");
+  assert(decoded1.asset.key === "index", "Decoded asset is index");
+  assert(decoded1.horizon.key === "day", "Decoded horizon is day");
+  assert(decoded1.model.key === "ict_2022", "Decoded model is ict_2022");
+  assert(decoded1.management.key === "milestone_50", "Decoded management is milestone_50");
+  assert(decoded1.accountTier === 1, "Decoded accountTier is 1");
+
+  // Example 2: XAUUSD 1D-1H Swing with Turtle Soup, Prop-Firm Safe Management (Code 2), FundedNext Tier 02
+  const magic2 = encodeDecimalMagic({
+    symbol: "XAUUSD",
+    horizon: "1D-1H",
+    modelId: "turtle_soup",
+    management: "prop_firm_safe",
+    accountTier: 2,
+  });
+  assert(magic2 === 23212202, `XAUUSD Swing TurtleSoup PropFirmSafe Tier 2: expected 23212202, got ${magic2}`);
+  const decoded2 = decodeDecimalMagic(magic2);
+  assert(decoded2.asset.key === "metal" && decoded2.horizon.key === "swing" && decoded2.management.key === "prop_firm_safe", "Decoded magic2 dimensions match");
+
+  // Example 3: BTCUSD 15M-1M Scalp Silver Bullet Runner Universal Tier 00
+  const magic3 = encodeDecimalMagic({
+    symbol: "BTCUSD",
+    horizon: "15M-1M",
+    modelId: "silver_bullet",
+    management: "runner",
+    accountTier: 0,
+  });
+  assert(magic3 === 23335100, `BTCUSD Scalp SilverBullet Runner Universal: expected 23335100, got ${magic3}`);
+}
+
+// --- 17.5 Structured MT5 Comment Formatting & Parsing ---
+{
+  const comment1 = formatCopierComment({
+    symbol: "NAS100",
+    tf: "15M",
+    modelId: "ict_2022",
+    management: "milestone_50",
+    accountTier: 1,
+  });
+  assert(comment1 === "TS:NAS:15M:M1:MG1:T01", `Formatted comment: expected 'TS:NAS:15M:M1:MG1:T01', got '${comment1}'`);
+  assert(comment1.length <= 31, `MT5 comment length strictly <= 31 chars (got ${comment1.length})`);
+
+  const parsed = parseCopierComment(comment1);
+  assert(parsed !== null, "Comment successfully parsed");
+  assert(parsed.prefix === "TS", "Parsed prefix is TS");
+  assert(parsed.symbolTag === "NAS", "Parsed symbolTag is NAS");
+  assert(parsed.tf === "15M", "Parsed tf is 15M");
+  assert(parsed.modelTag === "M1", "Parsed modelTag is M1");
+  assert(parsed.managementTag === "MG1", "Parsed managementTag is MG1");
+  assert(parsed.tierTag === "T01", "Parsed tierTag is T01");
+}
+
+// --- 17.6 Multi-Account Diversification & Copier Eligibility Routing ---
+{
+  // Scenario A: Trader wants Day Trade (4H-15M) on NAS100/DJ30/SP500 on FTMO funded account
+  const nas100Trade = {
+    symbol: "NAS100",
+    canonicalSymbol: "NAS100",
+    tf: "15M",
+    scenario: { id: "day" },
+    entryModel: { id: "ict_2022" },
+    managementLogic: "milestone_50",
+  };
+  const routingNas = resolveCopierRouting(nas100Trade, DEFAULT_COPIER_PROFILES);
+
+  assert(routingNas.magicNumber === 23121101, `NAS100 routing magic is 23121101 (got ${routingNas.magicNumber})`);
+  assert(routingNas.eligibleAccounts.length === 1, `Exactly 1 account eligible for NAS100 15M (got ${routingNas.eligibleAccounts.length})`);
+  assert(routingNas.eligibleAccounts[0].profileId === "ftmo_indices_day", "FTMO Indices profile is eligible");
+  assert(routingNas.eligibleAccounts[0].riskOverridePct === 0.5, "FTMO profile enforces 0.5% risk override");
+
+  const blockedOnFundedNext = routingNas.filteredAccounts.find((a) => a.profileId === "fundednext_metals_crypto");
+  assert(blockedOnFundedNext !== undefined, "FundedNext Metals/Crypto correctly filtered out NAS100");
+  assert(blockedOnFundedNext.reasons.some((r) => r.includes("Asset class 'index'")), "FundedNext filtered out NAS100 due to asset class");
+
+  const blockedOnPersonal = routingNas.filteredAccounts.find((a) => a.profileId === "personal_swing_macro");
+  assert(blockedOnPersonal !== undefined, "Personal Swing account correctly filtered out Day Trade setup");
+  assert(blockedOnPersonal.reasons.some((r) => r.includes("Horizon 'day'")), "Personal filtered out Day Trade setup due to swing restriction");
+
+  // Scenario B: Trader wants propfirm risk management method on XAUUSD / BTCUSD on FundedNext
+  const goldTrade = {
+    symbol: "XAUUSD",
+    canonicalSymbol: "XAUUSD",
+    tf: "15M",
+    scenario: { id: "intraday" },
+    entryModel: { id: "turtle_soup" },
+    managementLogic: "prop_firm_safe",
+  };
+  const routingGold = resolveCopierRouting(goldTrade, DEFAULT_COPIER_PROFILES);
+  assert(routingGold.eligibleAccounts.some((a) => a.profileId === "fundednext_metals_crypto"), "FundedNext is eligible for Gold Prop-Firm trade");
+  assert(routingGold.filteredAccounts.some((a) => a.profileId === "ftmo_indices_day"), "FTMO Indices strictly filtered out Gold trade");
+
+  // Scenario C: Personal macro swing trade
+  const btcSwingTrade = {
+    symbol: "BTCUSD",
+    canonicalSymbol: "BTCUSD",
+    tf: "4H",
+    scenario: { id: "swing" },
+    entryModel: { id: "breaker_block" },
+    managementLogic: "runner",
+  };
+  const routingBtc = resolveCopierRouting(btcSwingTrade, DEFAULT_COPIER_PROFILES);
+  assert(routingBtc.eligibleAccounts.some((a) => a.profileId === "personal_swing_macro"), "Personal Swing account is eligible for BTC 4H Swing trade");
+  assert(routingBtc.filteredAccounts.some((a) => a.profileId === "ftmo_indices_day"), "FTMO Indices strictly filtered out BTC trade");
+}
+
+// --- 17.7 Engine Live Dispatch Integration with Dynamic Magic & Comment ---
+{
+  const tradeDoc = {
+    _id: new ObjectId("650000000000000000000099"),
+    symbol: "NAS100",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    tpPrice: 18150,
+    initialSlPrice: 17950,
+    initialRiskDistance: 50,
+    targetRR: 3.0,
+    status: "armed",
+    executionMode: "auto",
+    brokerAccountLogin: 1001,
+    isLive: true,
+    lotSize: 1.0,
+    initialRiskUsd: 100,
+    riskUsd: 100,
+    symbolSpec: { digits: 2, point: 0.01, trade_tick_value_loss: 1, trade_tick_size: 0.01, volume_min: 0.01, volume_max: 100, volume_step: 0.01 },
+    scenario: { id: "day" },
+    tf: "15M",
+    entryModel: { id: "ict_2022" },
+    modelId: "ict_2022",
+    managementLogic: "milestone_50",
+  };
+
+  const tradeMap = new Map([[String(tradeDoc._id), { ...tradeDoc }]]);
+  const mockCol = {
+    findOne: async (q) => tradeMap.get(String(q._id)) ? { ...tradeMap.get(String(q._id)) } : null,
+    find: () => ({ toArray: async () => Array.from(tradeMap.values()) }),
+    updateOne: async (q, u) => {
+      const doc = tradeMap.get(String(q._id));
+      if (!doc) return { modifiedCount: 0 };
+      if (u.$set) Object.assign(doc, u.$set);
+      return { modifiedCount: 1 };
+    },
+  };
+
+  let dispatchedOrder = null;
+  const mockEngine = createAutonomousEngine({
+    autonomousCols: async () => ({
+      tradesCol: mockCol,
+      controlCol: { findOne: async () => null, updateOne: async () => ({}) },
+      logsCol: { insertOne: async () => ({}) },
+    }),
+    getConfig: async () => ({
+      enabled: true,
+      liveTrading: true,
+      executionMode: "auto",
+      riskPerTradePct: 1.0,
+      accountSize: 50000,
+      maxDailyLossPct: 3.0,
+      maxConcurrentTrades: 5,
+      pendingExpiryMinutes: 60,
+      accountFreshnessMs: 30000,
+      copierProfiles: DEFAULT_COPIER_PROFILES,
+    }),
+    getMainWatchlistSymbols: async () => ["NAS100"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    getDailyBaseline: async (_, fb) => fb,
+    logEvent: async () => {},
+    getMT5State: async () => ({
+      ok: true,
+      account: { login: 1001, balance: 50000, equity: 50000 },
+      positions: [],
+      orders: [],
+      history: [],
+      order_history: [],
+      requests: [],
+      dailyPnl: 0,
+      dayStartEquity: 50000,
+      at: Date.now() / 1000,
+      brokerDayStart: Date.now() / 1000 - 3600,
+    }),
+    getMT5Symbol: async () => ({ ok: true, symbol: tradeDoc.symbolSpec }),
+    executeMT5Order: async (payload) => {
+      dispatchedOrder = payload;
+      return { ok: true, status: "order-pending", ticket: 999123 };
+    },
+    reserveTradeCapacity: async () => true,
+    releaseTradeCapacity: async () => true,
+  });
+
+  // Trigger tick to place order
+  await mockEngine.autonomousOnTicks({
+    NAS100: { ask: 18010, bid: 18008, time: Date.now() },
+  });
+
+  assert(dispatchedOrder !== null, "Order was dispatched to broker");
+  assert(dispatchedOrder.magic === 23121101, `Dispatched magic is 23121101 (got ${dispatchedOrder?.magic})`);
+  assert(dispatchedOrder.comment === "TS:NAS:15M:M1:MG1:T01", `Dispatched comment is TS:NAS:15M:M1:MG1:T01 (got ${dispatchedOrder?.comment})`);
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 18: Dual Execution Capacity & Sibling Guard Integrity");
+console.log("=======================================================");
+
+{
+  // 18.1 Guard capacity permits sibling legs of the same groupId with maxConcurrentTrades = 1
+  const leg1Doc = {
+    _id: new ObjectId("650000000000000000000101"),
+    groupId: "grp_nas_dual_01",
+    symbol: "NAS100",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    tpPrice: 18150,
+    initialSlPrice: 17950,
+    initialRiskDistance: 50,
+    status: "armed",
+    executionMode: "auto",
+    isLive: false,
+    lotSize: 1.0,
+    initialRiskUsd: 100,
+    riskUsd: 100,
+    scenario: { id: "day" },
+    tf: "15M",
+    managementLogic: "milestone_50",
+  };
+
+  const leg2Doc = {
+    _id: new ObjectId("650000000000000000000102"),
+    groupId: "grp_nas_dual_01",
+    symbol: "NAS100",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    tpPrice: 18100,
+    initialSlPrice: 17950,
+    initialRiskDistance: 50,
+    status: "staged",
+    executionMode: "auto",
+    isLive: false,
+    lotSize: 1.0,
+    initialRiskUsd: 100,
+    riskUsd: 100,
+    scenario: { id: "day" },
+    tf: "15M",
+    managementLogic: "prop_firm_safe",
+  };
+
+  const alienDoc = {
+    _id: new ObjectId("650000000000000000000103"),
+    groupId: "grp_nas_alien_02",
+    symbol: "NAS100",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    tpPrice: 18150,
+    initialSlPrice: 17950,
+    initialRiskDistance: 50,
+    status: "staged",
+    executionMode: "auto",
+    isLive: false,
+    lotSize: 1.0,
+    initialRiskUsd: 100,
+    riskUsd: 100,
+    scenario: { id: "day" },
+    tf: "15M",
+    managementLogic: "milestone_50",
+  };
+
+  const dbMap = new Map([
+    [String(leg1Doc._id), { ...leg1Doc }],
+    [String(leg2Doc._id), { ...leg2Doc }],
+    [String(alienDoc._id), { ...alienDoc }],
+  ]);
+
+  const mockTradesCol = {
+    findOne: async (q) => dbMap.get(String(q._id)) ? { ...dbMap.get(String(q._id)) } : null,
+    find: () => ({ toArray: async () => Array.from(dbMap.values()) }),
+    updateOne: async (q, u) => {
+      const doc = dbMap.get(String(q._id));
+      if (!doc) return { modifiedCount: 0 };
+      if (u.$set) Object.assign(doc, u.$set);
+      return { modifiedCount: 1 };
+    },
+  };
+
+  const guardEngine = createAutonomousEngine({
+    autonomousCols: async () => ({
+      tradesCol: mockTradesCol,
+      controlCol: { findOne: async () => null, updateOne: async () => ({}) },
+      logsCol: { insertOne: async () => ({}) },
+    }),
+    getConfig: async () => ({
+      enabled: true,
+      liveTrading: false,
+      executionMode: "auto",
+      riskPerTradePct: 1.0,
+      accountSize: 50000,
+      maxDailyLossPct: 3.0,
+      maxConcurrentTrades: 1, // STRICT 1 SETUP CAPACITY!
+      pendingExpiryMinutes: 60,
+      accountFreshnessMs: 30000,
+    }),
+    getMainWatchlistSymbols: async () => ["NAS100"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    getDailyBaseline: async (_, fb) => fb,
+  });
+
+  const leg2Guard = await guardEngine.guard(leg2Doc, {
+    enabled: true,
+    liveTrading: false,
+    executionMode: "auto",
+    riskPerTradePct: 1.0,
+    accountSize: 50000,
+    maxDailyLossPct: 3.0,
+    maxConcurrentTrades: 1,
+    pendingExpiryMinutes: 60,
+    accountFreshnessMs: 30000,
+  });
+
+  assert(leg2Guard.permitted === true, "Guard permits sibling leg 2 when maxConcurrentTrades is 1");
+  assert(!leg2Guard.vetoes.some((v) => v.code === "CAPACITY"), "Sibling leg 2 has no CAPACITY veto");
+
+  const alienGuard = await guardEngine.guard(alienDoc, {
+    enabled: true,
+    liveTrading: false,
+    executionMode: "auto",
+    riskPerTradePct: 1.0,
+    accountSize: 50000,
+    maxDailyLossPct: 3.0,
+    maxConcurrentTrades: 1,
+    pendingExpiryMinutes: 60,
+    accountFreshnessMs: 30000,
+  });
+
+  assert(alienGuard.permitted === false, "Guard rejects alien setup when maxConcurrentTrades is 1");
+  assert(alienGuard.vetoes.some((v) => v.code === "CAPACITY"), "Alien setup receives CAPACITY veto");
+}
+
+{
+  // 18.2 In-memory simulation of reserveTradeCapacity sibling vs alien conflict
+  const slots = [];
+  function simulateReserve(trade, cfg, riskUsd) {
+    const tradeId = String(trade._id);
+    const tradeSymbol = trade.canonicalSymbol || trade.symbol;
+    const groupId = trade.groupId || null;
+
+    // Sibling detection
+    const isSibling = Boolean(groupId && slots.some((s) => s.groupId === groupId));
+    const hasAlienConflict = slots.some((s) => s.symbol === tradeSymbol && (!groupId || s.groupId !== groupId));
+    if (hasAlienConflict) return false;
+
+    const distinctGroups = new Set();
+    let distinctSetupCount = 0;
+    for (const s of slots) {
+      if (s.groupId) {
+        if (!distinctGroups.has(s.groupId)) {
+          distinctGroups.add(s.groupId);
+          distinctSetupCount++;
+        }
+      } else {
+        distinctSetupCount++;
+      }
+    }
+    if (!isSibling && distinctSetupCount >= cfg.maxConcurrentTrades) return false;
+
+    slots.push({ tradeId, groupId, symbol: tradeSymbol, riskUsd });
+    return true;
+  }
+
+  const tDefault = { _id: "1", groupId: "grp_100", symbol: "NAS100" };
+  const tProp = { _id: "2", groupId: "grp_100", symbol: "NAS100" };
+  const tAlienSameSym = { _id: "3", groupId: "grp_200", symbol: "NAS100" };
+  const tAlienDiffSym = { _id: "4", groupId: "grp_300", symbol: "BTCUSD" };
+
+  const r1 = simulateReserve(tDefault, { maxConcurrentTrades: 1 }, 100);
+  assert(r1 === true, "Simulated reserve allows Leg 1 of setup grp_100");
+
+  const r2 = simulateReserve(tProp, { maxConcurrentTrades: 1 }, 100);
+  assert(r2 === true, "Simulated reserve allows Leg 2 sibling of setup grp_100 on same symbol NAS100");
+
+  const r3 = simulateReserve(tAlienSameSym, { maxConcurrentTrades: 2 }, 100);
+  assert(r3 === false, "Simulated reserve blocks alien setup grp_200 on same symbol NAS100");
+
+  const r4 = simulateReserve(tAlienDiffSym, { maxConcurrentTrades: 1 }, 100);
+  assert(r4 === false, "Simulated reserve blocks distinct setup grp_300 when maxConcurrentTrades is 1");
+
+  const r5 = simulateReserve(tAlienDiffSym, { maxConcurrentTrades: 2 }, 100);
+  assert(r5 === true, "Simulated reserve permits distinct setup grp_300 when maxConcurrentTrades is 2");
+}
+
+{
+  // 18.3 Dynamic Prop-Firm TP Selection between 1.5R and 2.5R
+  const entry = 1.0850;
+  const sl = 1.0820; // risk = 0.0030
+  const dir = 1;
+
+  // Case A: Structural targets array has a target at 1.8R (1.0850 + 1.8 * 0.0030 = 1.0904)
+  const resStructural = resolveDynamicPropFirmTarget({
+    entry,
+    sl,
+    dir,
+    targets: [
+      { id: "tp1", price: 1.0904, source: "H4 FVG" }, // exactly 1.8R
+      { id: "runner", price: 1.1000, source: "DOL" }, // 5.0R (outside bracket)
+    ],
+  });
+  assert(resStructural.targetRR === 1.8, `Structural target selected: expected 1.8R, got ${resStructural.targetRR}R`);
+  assert(resStructural.tpPrice === 1.0904, `Structural target price matched: expected 1.0904, got ${resStructural.tpPrice}`);
+
+  // Case B: Multiple targets in range (1.6R and 2.1R) -> picks closest to 2.0R sweet spot (2.1R)
+  const resSweetSpot = resolveDynamicPropFirmTarget({
+    entry,
+    sl,
+    dir,
+    targets: [
+      { id: "tp1", price: 1.0898, source: "Internal High" }, // 1.6R (diff to 2.0 = 0.4)
+      { id: "tp2", price: 1.0913, source: "EQH Pool" },      // 2.1R (diff to 2.0 = 0.1)
+    ],
+  });
+  assert(resSweetSpot.targetRR === 2.1, `Closest to 2.0R selected: expected 2.1R, got ${resSweetSpot.targetRR}R`);
+  assert(resSweetSpot.tpPrice === 1.0913, `Closest price matched: expected 1.0913, got ${resSweetSpot.tpPrice}`);
+
+  // Case C: Dealing Range EQ is at 2.2R (1.0850 + 2.2 * 0.0030 = 1.0916)
+  const resEQ = resolveDynamicPropFirmTarget({
+    entry,
+    sl,
+    dir,
+    targets: [{ id: "runner", price: 1.1000 }], // 5.0R (outside)
+    dealingRange: { eq: 1.0916 },
+  });
+  assert(resEQ.targetRR === 2.2, `Dealing Range EQ selected: expected 2.2R, got ${resEQ.targetRR}R`);
+  assert(resEQ.tpPrice === 1.0916, `Dealing Range EQ price matched: expected 1.0916, got ${resEQ.tpPrice}`);
+
+  // Case D: Horizon Defaults when no structural target in [1.5, 2.5]
+  const resScalp = resolveDynamicPropFirmTarget({ entry, sl, dir, scenario: { id: "scalp" } });
+  assert(resScalp.targetRR === 1.75, `Scalp horizon defaults to 1.75R: got ${resScalp.targetRR}R`);
+
+  const resDay = resolveDynamicPropFirmTarget({ entry, sl, dir, scenario: { id: "day" } });
+  assert(resDay.targetRR === 2.0, `Day trade horizon defaults to 2.0R: got ${resDay.targetRR}R`);
+
+  const resSwing = resolveDynamicPropFirmTarget({ entry, sl, dir, scenario: { id: "swing" } });
+  assert(resSwing.targetRR === 2.5, `Swing horizon defaults to 2.5R upper bracket: got ${resSwing.targetRR}R`);
+
+  // Case E: Strict Clamp Limits
+  const resUnder = resolveDynamicPropFirmTarget({ entry, sl, dir, targetRR: 1.1 });
+  assert(resUnder.targetRR === 1.5, `Clamps lower bound to 1.5R: got ${resUnder.targetRR}R`);
+
+  const resOver = resolveDynamicPropFirmTarget({ entry, sl, dir, targetRR: 4.8 });
+  assert(resOver.targetRR === 2.5, `Clamps upper bound to 2.5R: got ${resOver.targetRR}R`);
+}
+
+// =========================================================================
+// TEST SUITE 19: CFD Bid/Ask Spread Friction & Microstructure Mitigation Engine
+// =========================================================================
+console.log("\n=======================================================");
+console.log("TEST SUITE 19: CFD Bid/Ask Spread Friction & Microstructure Mitigation Engine");
+console.log("=======================================================");
+
+{
+  // 19.1 Spread Extraction from Live Ticks & Specs
+  const liveTick = { ask: 1.08520, bid: 1.08505 };
+  const spec = { digits: 5, point: 0.00001, spread: 15 };
+  const extractedLive = extractSpreadPrice(liveTick, spec);
+  assert(extractedLive === 0.00015, `Live tick spread extracted: expected 0.00015, got ${extractedLive}`);
+
+  const syntheticTick = { ask: 0, bid: 0 };
+  const extractedSynthetic = extractSpreadPrice(syntheticTick, spec);
+  assert(extractedSynthetic === 0.00015, `Synthetic spec spread extracted: expected 0.00015, got ${extractedSynthetic}`);
+
+  // 19.2 Buyside CFD Spread Friction & 60%-70% Institutional Recovery
+  // Long Trade: Entry 1.08500, SL 1.08300 (Risk = 20 pips), TP 1.09100 (Target = 60 pips -> 3.00R Nominal)
+  // Spread = 2 pips (0.00020)
+  const longFriction = calculateSpreadFriction({
+    dir: 1,
+    entryPrice: 1.08500,
+    slPrice: 1.08300,
+    tpPrice: 1.09100,
+    spread: 0.00020,
+    digits: 5,
+  });
+
+  assert(longFriction.idleRR === 3.0, `Nominal chart geometry is 3.00R: got ${longFriction.idleRR}R`);
+  // Naive retail drag: risk = 22 pips, target = 58 pips -> 58/22 = 2.64R (drag = 0.36R)
+  assert(longFriction.naiveCoveredRR === 2.64, `Naive covered RR is 2.64R: got ${longFriction.naiveCoveredRR}R`);
+  assert(longFriction.naiveDrag === 0.36, `Naive friction penalty is 0.36R: got ${longFriction.naiveDrag}R`);
+
+  // Mitigated institutional drag:
+  // - Entry front-run by +0.35 * spread (+0.00007)
+  // - Target adjusted by -0.30 * spread (-0.00006)
+  // - Mitigated risk = 0.00207, mitigated target = 0.00594 -> coveredRR = 2.87R
+  assert(longFriction.coveredRR === 2.87, `Institutional covered RR is 2.87R: got ${longFriction.coveredRR}R`);
+  assert(longFriction.frictionDragR === 0.13, `Institutional drag is reduced to 0.13R: got ${longFriction.frictionDragR}R`);
+  assert(longFriction.recoveryPct >= 55.0 && longFriction.recoveryPct <= 70.0, `Mitigation recovers 55%-70% of spread penalty: got ${longFriction.recoveryPct}%`);
+
+  // Broker execution levels
+  assert(longFriction.brokerLevels.entry === 1.08507, `Buy limit front-run by +35% spread: got ${longFriction.brokerLevels.entry}`);
+  assert(longFriction.brokerLevels.sl === 1.08300, `Buy SL unchanged at structure: got ${longFriction.brokerLevels.sl}`);
+  assert(longFriction.brokerLevels.tp === 1.09094, `Buy TP adjusted by -30% spread: got ${longFriction.brokerLevels.tp}`);
+
+  // 19.3 Sellside CFD Spread Friction & Ask-Wick Stopout Protection
+  // Short Trade: Entry 1.08500, SL 1.08700 (Risk = 20 pips), TP 1.07900 (Target = 60 pips -> 3.00R Nominal)
+  // Spread = 2 pips (0.00020)
+  const shortFriction = calculateSpreadFriction({
+    dir: -1,
+    entryPrice: 1.08500,
+    slPrice: 1.08700,
+    tpPrice: 1.07900,
+    spread: 0.00020,
+    digits: 5,
+  });
+
+  assert(shortFriction.idleRR === 3.0, `Short nominal chart geometry is 3.00R: got ${shortFriction.idleRR}R`);
+  assert(shortFriction.coveredRR === 2.74, `Short institutional covered RR is 2.74R: got ${shortFriction.coveredRR}R`);
+  assert(shortFriction.brokerLevels.entry === 1.08493, `Sell limit front-run by -35% spread: got ${shortFriction.brokerLevels.entry}`);
+  assert(shortFriction.brokerLevels.sl === 1.08710, `Sell SL buffered by +50% spread to prevent Ask-wick stopout: got ${shortFriction.brokerLevels.sl}`);
+  assert(shortFriction.brokerLevels.tp === 1.07906, `Sell TP adjusted by -30% spread: got ${shortFriction.brokerLevels.tp}`);
+
+  // 19.4 Spread-to-Risk Gatekeeper
+  // 10% spread-to-risk (2 pips on 20 pips) -> acceptable
+  assert(isSpreadAcceptable(0.00020, 0.00200, 0.15) === true, "Spread of 10% risk is acceptable");
+  assert(longFriction.isFrictionExcessive === false, "Friction is not excessive for 10% spread-to-risk");
+
+  // 37.5% spread-to-risk (1.5 pips on 4 pips scalp) -> excessive
+  const excessiveFriction = calculateSpreadFriction({
+    dir: 1,
+    entryPrice: 1.08500,
+    slPrice: 1.08460, // 4 pips SL
+    tpPrice: 1.08620, // 12 pips TP
+    spread: 0.00015,  // 1.5 pips spread (37.5% of risk!)
+    digits: 5,
+  });
+  assert(isSpreadAcceptable(0.00015, 0.00040, 0.15) === false, "Spread of 37.5% risk is vetoed by gatekeeper");
+  assert(excessiveFriction.isFrictionExcessive === true, "Friction is flagged as excessive for > 15% spread-to-risk");
+  assert(excessiveFriction.spreadToRiskPct === 37.5, `Spread-to-risk is 37.5%: got ${excessiveFriction.spreadToRiskPct}%`);
+
+  // 19.5 Spread Buffer on Breakeven Price
+  const tradeWithSpread = {
+    entryPrice: 1.08500,
+    slPrice: 1.08300,
+    dir: 1,
+    spreadPrice: 0.00020,
+  };
+  const beWithSpread = breakevenPrice(tradeWithSpread, spec);
+  assert(beWithSpread >= 1.08510, `Breakeven covers spread buffer: expected >= 1.08510, got ${beWithSpread}`);
+}
+
+console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
 console.log("=======================================================");
 
@@ -820,4 +1955,3 @@ if (failed > 0) {
 } else {
   console.log("🎯 ALL AUTONOMOUS ENGINE TESTS PASSED WITH 100% SUCCESS!\n");
 }
-

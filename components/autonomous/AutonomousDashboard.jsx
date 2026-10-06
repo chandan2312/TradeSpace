@@ -1,6 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Zap,
+  Activity,
+  Compass,
+  BarChart2,
+  FileText,
+  TrendingUp,
+  Target,
+  ShieldCheck,
+  DollarSign,
+  Layers,
+  AlertCircle,
+  Radio,
+  History,
+} from "lucide-react";
 import AutonomousHeader from "./AutonomousHeader";
 import AutonomousKpis from "./AutonomousKpis";
 import PairRadar from "./PairRadar";
@@ -9,248 +24,885 @@ import ActivePositions from "./ActivePositions";
 import BrainInspectorModal from "./BrainInspectorModal";
 import ControlConsole from "./ControlConsole";
 import AuditLog from "./AuditLog";
+import CockpitTelemetry from "./CockpitTelemetry";
+import ExecutionDiagnostics from "./ExecutionDiagnostics";
+import ClosedHistory from "./ClosedHistory";
+import {
+  tradeRiskTelemetry,
+  formatPrice,
+  formatR,
+  formatUsd,
+  formatIR,
+  formatAR,
+  finiteNumber,
+} from "./TradeTelemetry";
 
 export default function AutonomousDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState("cockpit"); // "cockpit" | "radar" | "analytics" | "audit"
   const [inspectedPair, setInspectedPair] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [ticks, setTicks] = useState({});
+  const [socketState, setSocketState] = useState("connecting");
+  const [stateError, setStateError] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const actionRef = useRef(null);
   const wsRef = useRef(null);
+  const stateAbortRef = useRef(null);
+  const stateRequestRef = useRef(0);
+  const symbolsRef = useRef([]);
+
+  const closeInspector = useCallback(() => setInspectedPair(null), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   // Fetch full state from /api/autonomous
   const loadState = useCallback(async () => {
+    const requestId = ++stateRequestRef.current;
+    stateAbortRef.current?.abort();
+    const controller = new AbortController();
+    stateAbortRef.current = controller;
     try {
-      const res = await fetch("/api/autonomous", { cache: "no-store" });
+      const res = await fetch("/api/autonomous", { cache: "no-store", signal: controller.signal });
       const json = await res.json();
-      if (json.ok) {
+      if (requestId === stateRequestRef.current && json.ok) {
         setData(json);
+        setStateError(null);
+      } else if (requestId === stateRequestRef.current && !json.ok) {
+        setStateError(json.error || "Autonomous state unavailable");
       }
     } catch (err) {
-      console.error("[AutonomousDashboard fetch error]", err);
+      if (err.name !== "AbortError" && requestId === stateRequestRef.current) {
+        setStateError(err.message || "Autonomous state unavailable");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === stateRequestRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadState();
     const iv = setInterval(loadState, 12_000);
-    return () => clearInterval(iv);
+    return () => {
+      clearInterval(iv);
+      stateAbortRef.current?.abort();
+      stateRequestRef.current++;
+    };
   }, [loadState]);
 
-  // WebSocket for instantaneous tick and state updates
+  const symbolKey = Array.from(new Set([
+    ...(data?.openTrades || [...(data?.activeTrades || []), ...(data?.stagedTrades || [])]).flatMap((t) => [t.symbol, t.tradeableSymbol, t.canonicalSymbol]),
+    ...((data?.leaderboard?.rankedPairs || []).filter((p) => p.isInMainWatchlist || p.symbol === inspectedPair?.symbol).flatMap((p) => [p.symbol, p.tradeableSymbol])),
+  ].filter(Boolean).map(String))).sort().join(",");
+
+  // Single WebSocket connection for dashboard tick telemetry
   useEffect(() => {
     let dead = false;
+    let reconnectTimer;
     const connect = () => {
       if (dead) return;
       try {
         const proto = window.location.protocol === "https:" ? "wss" : "ws";
         const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
         wsRef.current = ws;
+        setSocketState("connecting");
 
         ws.onopen = () => {
-          // Subscribe to open active/staged symbols if any
-          if (data?.activeTrades?.length || data?.stagedTrades?.length) {
-            const syms = [
-              ...(data?.activeTrades || []).map((t) => t.symbol),
-              ...(data?.stagedTrades || []).map((t) => t.symbol),
-            ];
-            ws.send(JSON.stringify({ type: "subscribe", symbols: Array.from(new Set(syms)) }));
-          }
+          if (dead || ws !== wsRef.current) return;
+          setSocketState("connected");
+          ws.send(JSON.stringify({ type: "subscribe", symbols: symbolsRef.current }));
         };
 
         ws.onmessage = (ev) => {
+          if (dead || ws !== wsRef.current) return;
           try {
             const m = JSON.parse(ev.data);
-            if (m.type === "autonomous_changed") {
+            if (m.type === "ticks" && m.ticks && typeof m.ticks === "object") {
+              const now = Date.now();
+              const batch = {};
+              for (const [symbol, tick] of Object.entries(m.ticks)) {
+                if (!tick || typeof tick !== "object") continue;
+                const symUpper = symbol.toUpperCase();
+                const symClean = symUpper.replace(/\.I$/i, "");
+                const isSubscribed = symbolsRef.current.length === 0 || symbolsRef.current.some((s) => {
+                  const su = String(s).toUpperCase();
+                  return su === symUpper || su === symClean || su.replace(/\.I$/i, "") === symClean;
+                });
+                if (isSubscribed) {
+                  const tickObj = { ...tick, receivedAt: now };
+                  batch[symbol] = tickObj;
+                  batch[symUpper] = tickObj;
+                  batch[symClean] = tickObj;
+                }
+              }
+              setTicks((prev) => ({ ...prev, ...batch }));
+            } else if (m.type === "autonomous_changed") {
               loadState();
             }
           } catch {}
         };
 
         ws.onclose = () => {
-          if (!dead) setTimeout(connect, 3000);
+          if (!dead && ws === wsRef.current) {
+            setSocketState("reconnecting");
+            setTicks({});
+            reconnectTimer = setTimeout(connect, 3000);
+          }
         };
-      } catch {}
+        ws.onerror = () => { if (!dead && ws === wsRef.current) setSocketState("error"); };
+      } catch {
+        setSocketState("error");
+        reconnectTimer = setTimeout(connect, 3000);
+      }
     };
 
     connect();
     return () => {
       dead = true;
-      if (wsRef.current) wsRef.current.close();
+      clearTimeout(reconnectTimer);
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws) ws.close();
     };
-  }, [loadState, data?.activeTrades, data?.stagedTrades]);
+  }, [loadState]);
 
-  // Actions
-  const handleTogglePower = async () => {
+  useEffect(() => {
+    const symbols = symbolKey ? symbolKey.split(",") : [];
+    symbolsRef.current = symbols;
+    setTicks((previous) => Object.fromEntries(Object.entries(previous).filter(([symbol]) => symbols.includes(symbol))));
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "subscribe", symbols }));
+  }, [symbolKey]);
+
+  const mutate = async (body, path = "/api/autonomous") => {
+    if (actionRef.current) throw new Error("An autonomous action is already pending");
+    actionRef.current = body.action || "config";
+    setPendingAction(actionRef.current);
+    setActionError(null);
     try {
-      await fetch("/api/autonomous", {
+      const response = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle" }),
+        body: JSON.stringify(body),
       });
-      loadState();
+      const result = await response.json();
+      if (!response.ok || result.ok === false) throw new Error(result.error || result.reason || "Autonomous action failed");
+      await loadState();
+      return result;
     } catch (err) {
-      console.error(err);
+      setActionError(err.message);
+      loadState();
+      throw err;
+    } finally {
+      actionRef.current = null;
+      setPendingAction(null);
     }
   };
 
-  const handleScanNow = async () => {
-    try {
-      await fetch("/api/autonomous", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "scan" }),
-      });
-      loadState();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleApproveTrade = async (tradeId) => {
-    try {
-      await fetch("/api/autonomous", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", tradeId }),
-      });
-      loadState();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDismissTrade = async (tradeId) => {
-    try {
-      await fetch("/api/autonomous", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "dismiss", tradeId }),
-      });
-      loadState();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleCloseActiveTrade = async (tradeId) => {
-    try {
-      await fetch("/api/autonomous", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "close", tradeId }),
-      });
-      loadState();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleSaveConfig = async (patch) => {
-    try {
-      await fetch("/api/autonomous/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      loadState();
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const handleTogglePower = () => mutate({ action: "toggle" }).catch(() => {});
+  const handleToggleLiveTrading = () => mutate({ action: "toggleLive" }).catch(() => {});
+  const handleScanNow = () => mutate({ action: "scan" }).catch(() => {});
+  const handleApproveTrade = (tradeId) => mutate({ action: "approve", tradeId }).catch(() => {});
+  const handleDismissTrade = (tradeId) => mutate({ action: "dismiss", tradeId }).catch(() => {});
+  const handleCloseActiveTrade = (tradeId, opts = {}) => mutate({ action: "close", tradeId, ...opts }).catch(() => {});
+  const handleModifyTradeTarget = (tradeId, { targetRR, tpPrice }) => mutate({ action: "modify_target", tradeId, targetRR, tpPrice });
+  const handleSaveConfig = (patch) => mutate(patch, "/api/autonomous/config");
 
   const handleToggleWhitelist = async (sym) => {
     if (!data?.config) return;
     const current = new Set(data.config.whitelist || []);
     if (current.has(sym)) current.delete(sym);
     else current.add(sym);
-    await handleSaveConfig({ whitelist: Array.from(current) });
+    await handleSaveConfig({ whitelist: Array.from(current) }).catch(() => {});
   };
 
   const config = data?.config || {};
   const metrics = data?.metrics || {};
+  const brokerAccount = data?.brokerAccount || null;
   const activeTrades = data?.activeTrades || [];
   const stagedTrades = data?.stagedTrades || [];
+  const recentClosed = data?.recentClosed || [];
   const rankedPairs = data?.leaderboard?.rankedPairs || [];
   const logs = data?.logs || [];
 
+  // Live aggregate floating telemetry across all active positions
+  const aggregateTelemetry = useMemo(() => {
+    let totalUsd = 0;
+    let totalActualR = 0;
+    let totalIdealR = 0;
+    let validCount = 0;
+
+    activeTrades.forEach((trade) => {
+      const tel = tradeRiskTelemetry(trade, ticks);
+      if (tel.totalUsd !== null || tel.floatingUsd !== null) {
+        totalUsd += (tel.totalUsd ?? tel.floatingUsd ?? 0);
+        validCount++;
+      }
+      if (tel.actualR !== null) {
+        totalActualR += tel.actualR;
+      }
+      if (tel.idealR !== null) {
+        totalIdealR += tel.idealR;
+      }
+    });
+
+    return {
+      totalUsd: validCount > 0 ? totalUsd : null,
+      totalActualR: validCount > 0 ? totalActualR : null,
+      totalIdealR: validCount > 0 ? totalIdealR : null,
+      count: activeTrades.length,
+    };
+  }, [activeTrades, ticks]);
+
+  const isBrokerLive = Number(brokerAccount?.equity ?? brokerAccount?.balance) > 0;
+  const effectiveEquity = isBrokerLive ? Number(brokerAccount.equity ?? brokerAccount.balance) : finiteNumber(config?.accountSize);
+  const isNetProfit = (aggregateTelemetry.totalUsd ?? 0) >= 0;
+
   return (
     <div
+      className="autonomous-page-container"
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         background: "var(--bg)",
         color: "var(--fg)",
-        padding: "16px 20px",
+        overflowY: "auto",
+        overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
         fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
       }}
     >
-      {/* Top Header */}
-      <AutonomousHeader
-        config={config}
-        onTogglePower={handleTogglePower}
-        onScanNow={handleScanNow}
-        isScanning={data?.isScanning}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-
-      {/* KPIs Row */}
-      <AutonomousKpis metrics={metrics} config={config} />
-
-      {/* Main Grid: Active Positions & Staged Queue */}
+      {/* Centered anti-stretching container */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
+          maxWidth: 1380,
+          margin: "0 auto",
+          width: "100%",
+          padding: "clamp(10px, 2.5vw, 20px)",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
           gap: 16,
-          marginBottom: 16,
         }}
       >
-        {/* Active Positions */}
-        <ActivePositions
-          activeTrades={activeTrades}
-          onCloseTrade={handleCloseActiveTrade}
-        />
-
-        {/* Staged Setups Queue */}
-        <StagedQueue
-          stagedTrades={stagedTrades}
-          onApproveTrade={handleApproveTrade}
-          onDismissTrade={handleDismissTrade}
-          executionMode={config.executionMode}
-        />
-      </div>
-
-      {/* Pair Radar & Universe Scanner */}
-      <div style={{ marginBottom: 16 }}>
-        <PairRadar
-          pairs={rankedPairs}
-          onInspectPair={(p) => setInspectedPair(p)}
-          onToggleWhitelist={handleToggleWhitelist}
-          whitelist={config.whitelist || []}
-        />
-      </div>
-
-      {/* Execution Audit Trail & Cognitive Logs */}
-      <div>
-        <AuditLog logs={logs} />
-      </div>
-
-      {/* Modals */}
-      {inspectedPair && (
-        <BrainInspectorModal
-          pair={inspectedPair}
-          onClose={() => setInspectedPair(null)}
-        />
-      )}
-
-      {settingsOpen && (
-        <ControlConsole
+        {/* 1. COMPACT TOP HEADER */}
+        <AutonomousHeader
           config={config}
-          onSaveConfig={handleSaveConfig}
-          onClose={() => setSettingsOpen(false)}
+          brokerAccount={brokerAccount}
+          onTogglePower={handleTogglePower}
+          onToggleLiveTrading={handleToggleLiveTrading}
+          onScanNow={handleScanNow}
+          isScanning={data?.isScanning || pendingAction === "scan"}
+          onOpenSettings={() => setSettingsOpen(true)}
+          pendingAction={pendingAction}
         />
-      )}
+
+        {/* System Error Banner if present */}
+        {(actionError || stateError) && (
+          <div
+            role="alert"
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "var(--red)",
+              fontSize: 12,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <AlertCircle size={15} />
+            <span>{actionError || stateError}</span>
+          </div>
+        )}
+
+        {/* 2. MINIMAL FOCUS HERO COMMAND STRIP (4 Compact Focused Cards) */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
+            gap: 12,
+          }}
+        >
+          {/* Card 1: Active Positions & Floating P&L */}
+          <div
+            style={{
+              background: "var(--panel)",
+              border: `1px solid ${
+                activeTrades.length > 0
+                  ? isNetProfit
+                    ? "rgba(34, 197, 94, 0.3)"
+                    : "rgba(239, 68, 68, 0.3)"
+                  : "var(--border)"
+              }`,
+              borderRadius: 12,
+              padding: "14px 16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+                Active Positions
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background:
+                    activeTrades.length > 0
+                      ? isNetProfit
+                        ? "rgba(34, 197, 94, 0.15)"
+                        : "rgba(239, 68, 68, 0.15)"
+                      : "rgba(255, 255, 255, 0.05)",
+                  color:
+                    activeTrades.length > 0
+                      ? isNetProfit
+                        ? "var(--green)"
+                        : "var(--red)"
+                      : "var(--muted)",
+                }}
+              >
+                {activeTrades.length > 0 ? (isNetProfit ? "PROFIT" : "DRAWDOWN") : "IDLE"}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: 20,
+                  fontWeight: 800,
+                  color:
+                    activeTrades.length > 0
+                      ? isNetProfit
+                        ? "var(--green)"
+                        : "var(--red)"
+                      : "var(--fg)",
+                }}
+              >
+                {activeTrades.length > 0
+                  ? aggregateTelemetry.totalUsd !== null
+                    ? formatUsd(aggregateTelemetry.totalUsd)
+                    : `${activeTrades.length} Active`
+                  : "0 Open"}
+              </span>
+              {activeTrades.length > 0 && aggregateTelemetry.totalActualR !== null && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 5,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: isNetProfit ? "var(--green)" : "var(--red)",
+                    }}
+                  >
+                    AR {formatR(aggregateTelemetry.totalActualR)}
+                  </span>
+                  {aggregateTelemetry.totalIdealR !== null && Math.abs(aggregateTelemetry.totalIdealR - aggregateTelemetry.totalActualR) >= 0.05 && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--muted)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      (IR {formatR(aggregateTelemetry.totalIdealR)})
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+              {activeTrades.length} / {config.maxConcurrentTrades || 3} Max capacity · Live tick mark
+            </div>
+          </div>
+
+          {/* Card 2: Staged Setups Queue */}
+          <div
+            style={{
+              background: "var(--panel)",
+              border: `1px solid ${stagedTrades.length > 0 ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
+              borderRadius: 12,
+              padding: "14px 16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+                Action Queue
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: stagedTrades.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                  color: stagedTrades.length > 0 ? "var(--accent)" : "var(--muted)",
+                }}
+              >
+                {stagedTrades.length > 0 ? "ARMED" : "SCANNING"}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace" }}>
+                {stagedTrades.length} {stagedTrades.length === 1 ? "Setup" : "Setups"}
+              </span>
+              {stagedTrades.length > 0 && (
+                <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700 }}>
+                  Ready to Fire
+                </span>
+              )}
+            </div>
+
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+              {stagedTrades.length > 0
+                ? `Lead: ${stagedTrades[0]?.symbol || "SMC"} (${stagedTrades[0]?.modelId || "A+"})`
+                : "Scanner loop active · Refreshes every 3m"}
+            </div>
+          </div>
+
+          {/* Card 3: Win Rate & Realized Edge */}
+          <div
+            style={{
+              background: "var(--panel)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+                Performance Edge
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: (metrics.winRate || 0) >= 50 ? "rgba(34, 197, 94, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                  color: (metrics.winRate || 0) >= 50 ? "var(--green)" : "var(--muted)",
+                }}
+              >
+                {formatR(metrics.totalR)} NET
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  fontFamily: "monospace",
+                  color: (metrics.winRate || 0) >= 50 ? "var(--green)" : "var(--fg)",
+                }}
+              >
+                {finiteNumber(metrics.winRate) !== null ? `${metrics.winRate}%` : "0%"} WR
+              </span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                PF: {metrics.profitFactor ?? "1.00"}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+              {metrics.wins || 0}W · {metrics.losses || 0}L · {metrics.breakevens || 0}BE Decided trades
+            </div>
+          </div>
+
+          {/* Card 4: Broker & Risk Governor */}
+          <div
+            style={{
+              background: "var(--panel)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+                {config.liveTrading ? "MT5 Broker Equity" : "Paper Simulation"}
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: config.liveTrading ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)",
+                  color: config.liveTrading ? "var(--green)" : "var(--orange)",
+                }}
+              >
+                {config.liveTrading ? "LIVE LINK" : "SIM"}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace" }}>
+                {formatUsd(effectiveEquity)}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+              Risk: {config.riskPerTradePct || 1}%/trade · Circuit breaker: -{config.maxDailyLossPct || 2}%
+            </div>
+          </div>
+        </div>
+
+        {/* 3. MULTI-SECTION NAVIGATION TABS (Sleek Segmented Pill Bar) */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 10,
+            borderBottom: "1px solid var(--border)",
+            paddingBottom: 4,
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              padding: 4,
+              overflowX: "auto",
+              maxWidth: "100%",
+            }}
+          >
+            {/* Tab 1: Live Cockpit (Primary Focus) */}
+            <button
+              onClick={() => setSection("cockpit")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 7,
+                fontSize: 12,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                background: section === "cockpit" ? "var(--accent)" : "transparent",
+                color: section === "cockpit" ? "#fff" : "var(--muted)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Zap size={14} />
+              <span>Live Cockpit</span>
+              {activeTrades.length > 0 && (
+                <span
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: 10,
+                    background: section === "cockpit" ? "rgba(255, 255, 255, 0.25)" : "var(--accent)",
+                    color: "#fff",
+                  }}
+                >
+                  {activeTrades.length}
+                </span>
+              )}
+            </button>
+
+            {/* Tab: Trade History */}
+            <button
+              onClick={() => setSection("history")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 7,
+                fontSize: 12,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                background: section === "history" ? "var(--accent)" : "transparent",
+                color: section === "history" ? "#fff" : "var(--muted)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <History size={14} />
+              <span>History</span>
+              {recentClosed.length > 0 && (
+                <span
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: 10,
+                    background: section === "history" ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
+                    color: section === "history" ? "#fff" : "var(--muted)",
+                  }}
+                >
+                  {recentClosed.length}
+                </span>
+              )}
+            </button>
+
+            {/* Tab 2: Market Radar */}
+            <button
+              onClick={() => setSection("radar")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 7,
+                fontSize: 12,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                background: section === "radar" ? "var(--accent)" : "transparent",
+                color: section === "radar" ? "#fff" : "var(--muted)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Compass size={14} />
+              <span>Market Radar</span>
+              <span
+                style={{
+                  padding: "1px 6px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  background: section === "radar" ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
+                  color: section === "radar" ? "#fff" : "var(--muted)",
+                }}
+              >
+                {rankedPairs.length}
+              </span>
+            </button>
+
+            {/* Tab 3: Risk & Analytics */}
+            <button
+              onClick={() => setSection("analytics")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 7,
+                fontSize: 12,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                background: section === "analytics" ? "var(--accent)" : "transparent",
+                color: section === "analytics" ? "#fff" : "var(--muted)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <BarChart2 size={14} />
+              <span>Risk & Analytics</span>
+            </button>
+
+            {/* Tab 4: Audit Trail */}
+            <button
+              onClick={() => setSection("audit")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 7,
+                fontSize: 12,
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                background: section === "audit" ? "var(--accent)" : "transparent",
+                color: section === "audit" ? "#fff" : "var(--muted)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <FileText size={14} />
+              <span>Audit Trail</span>
+              {logs.length > 0 && (
+                <span
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: 10,
+                    background: section === "audit" ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
+                    color: section === "audit" ? "#fff" : "var(--muted)",
+                  }}
+                >
+                  {logs.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Quick socket status telemetry */}
+          <div
+            style={{
+              fontSize: 11,
+              fontFamily: "monospace",
+              color: socketState === "connected" ? "var(--green)" : "var(--orange)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Radio size={13} />
+            <span>
+              {socketState === "connected" ? "STREAM LIVE" : socketState.toUpperCase()} ·{" "}
+              {Object.keys(ticks).length} Live feeds
+            </span>
+          </div>
+        </div>
+
+        {/* 4. DYNAMIC SECTION CONTENTS */}
+
+        {/* SECTION 1: LIVE COCKPIT (First View Minimal Focus) */}
+        {section === "cockpit" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Active Positions Cards */}
+            <ActivePositions
+              activeTrades={activeTrades}
+              onCloseTrade={handleCloseActiveTrade}
+              ticks={ticks}
+              pendingAction={pendingAction}
+            />
+
+            {/* Staged Opportunities Cards */}
+            <StagedQueue
+              stagedTrades={stagedTrades}
+              onApproveTrade={handleApproveTrade}
+              onDismissTrade={handleDismissTrade}
+              onModifyTrade={handleModifyTradeTarget}
+              executionMode={config.executionMode}
+              ticks={ticks}
+              pendingAction={pendingAction}
+            />
+
+            {/* Compact Diagnostics */}
+            <ExecutionDiagnostics
+              trades={data?.executionTrades || []}
+              diagnostics={data?.executionDiagnostics}
+            />
+
+            {/* Closed History in Cockpit */}
+            {recentClosed.length > 0 && (
+              <ClosedHistory closedTrades={recentClosed} />
+            )}
+          </div>
+        )}
+
+        {/* SECTION: TRADE HISTORY */}
+        {section === "history" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <ClosedHistory closedTrades={recentClosed} />
+          </div>
+        )}
+
+        {/* SECTION 2: OPPORTUNITY RADAR */}
+        {section === "radar" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <CockpitTelemetry
+              activeTrades={activeTrades}
+              rankedPairs={rankedPairs}
+              ticks={ticks}
+              socketState={socketState}
+              error={actionError || stateError}
+              loading={loading}
+            />
+
+            <PairRadar
+              pairs={rankedPairs}
+              onInspectPair={(p) => setInspectedPair(p)}
+              onToggleWhitelist={handleToggleWhitelist}
+              whitelist={config.whitelist || []}
+              ticks={ticks}
+            />
+          </div>
+        )}
+
+        {/* SECTION 3: RISK & ANALYTICS */}
+        {section === "analytics" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <AutonomousKpis
+              metrics={metrics}
+              config={config}
+              brokerAccount={brokerAccount}
+            />
+
+            <ExecutionDiagnostics
+              trades={data?.executionTrades || []}
+              diagnostics={data?.executionDiagnostics}
+            />
+
+            <CockpitTelemetry
+              activeTrades={activeTrades}
+              rankedPairs={rankedPairs}
+              ticks={ticks}
+              socketState={socketState}
+              error={actionError || stateError}
+              loading={loading}
+            />
+          </div>
+        )}
+
+        {/* SECTION 4: AUDIT TRAIL */}
+        {section === "audit" && (
+          <div>
+            <AuditLog
+              logs={[...logs, ...(data?.events || [])].sort(
+                (a, b) => new Date(b.createdAt || b.time) - new Date(a.createdAt || a.time)
+              )}
+            />
+          </div>
+        )}
+
+        {/* MODALS */}
+        {inspectedPair && (
+          <BrainInspectorModal
+            pair={rankedPairs.find((pair) => pair.symbol === inspectedPair.symbol) || inspectedPair}
+            ticks={ticks}
+            onClose={closeInspector}
+          />
+        )}
+
+        {settingsOpen && (
+          <ControlConsole
+            config={config}
+            brokerAccount={brokerAccount}
+            allTimeSlots={data?.allTimeSlots}
+            allEntryModels={data?.allEntryModels}
+            onSaveConfig={handleSaveConfig}
+            onClose={closeSettings}
+          />
+        )}
+      </div>
     </div>
   );
 }

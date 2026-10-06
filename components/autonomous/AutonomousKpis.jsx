@@ -1,57 +1,65 @@
 "use client";
 
 import { Activity, ShieldCheck, TrendingUp, Zap, Target, DollarSign } from "lucide-react";
+import { finiteNumber, formatR, formatUsd } from "./TradeTelemetry";
 
-export default function AutonomousKpis({ metrics, config }) {
-  const activeCount = metrics?.activeCount ?? 0;
-  const maxConcurrent = config?.maxConcurrentTrades ?? 3;
-  const stagedCount = metrics?.stagedCount ?? 0;
-  const winRate = metrics?.winRate ?? 0;
-  const wins = metrics?.wins ?? 0;
-  const losses = metrics?.losses ?? 0;
-  const totalR = metrics?.totalR ?? 0;
-  const profitFactor = metrics?.profitFactor ?? 0;
-  const maxDailyLoss = config?.maxDailyLossPct ?? 3.0;
+export default function AutonomousKpis({ metrics, config, brokerAccount }) {
+  const activeCount = finiteNumber(metrics?.activeCount);
+  const maxConcurrent = finiteNumber(config?.maxConcurrentTrades);
+  const stagedCount = finiteNumber(metrics?.stagedCount);
+  const winRate = finiteNumber(metrics?.winRate);
+  const wins = finiteNumber(metrics?.wins);
+  const losses = finiteNumber(metrics?.losses);
+  const breakevens = finiteNumber(metrics?.breakevens);
+  const totalR = finiteNumber(metrics?.totalR);
+  const profitFactor = finiteNumber(metrics?.profitFactor);
+  const maxDailyLoss = finiteNumber(config?.maxDailyLossPct);
+  const isBrokerLive = Number(brokerAccount?.equity ?? brokerAccount?.balance) > 0;
+  const effectiveEquity = isBrokerLive ? Number(brokerAccount.equity ?? brokerAccount.balance) : finiteNumber(config?.accountSize);
+  const riskPct = finiteNumber(config?.riskPerTradePct) ?? 1;
+  const unavailable = "Unavailable";
 
   const cards = [
     {
       label: "Active Positions",
-      value: `${activeCount} / ${maxConcurrent}`,
-      sub: `${maxConcurrent - activeCount} slots open`,
+      value: activeCount !== null && maxConcurrent !== null ? `${activeCount} / ${maxConcurrent}` : unavailable,
+      sub: "Open capacity includes pending reservations",
       icon: Activity,
       color: activeCount > 0 ? "var(--green)" : "var(--muted)",
     },
     {
-      label: "Staged Setups",
-      value: stagedCount,
-      sub: "Qualified by Brain",
+      label: "Staged / Pending",
+      value: stagedCount ?? unavailable,
+      sub: "Includes broker reconciliation",
       icon: Zap,
       color: stagedCount > 0 ? "var(--accent)" : "var(--muted)",
     },
     {
       label: "Win Rate",
-      value: `${winRate}%`,
-      sub: `${wins}W · ${losses}L closed`,
+      value: winRate !== null ? `${winRate}%` : unavailable,
+      sub: wins !== null && losses !== null ? `${wins}W · ${losses}L${breakevens !== null ? ` · ${breakevens}BE` : ""} closed` : "Closed metrics unavailable",
       icon: Target,
       color: winRate >= 50 ? "var(--green)" : winRate > 0 ? "var(--orange)" : "var(--muted)",
     },
     {
       label: "Net Realized R",
-      value: `${totalR >= 0 ? "+" : ""}${totalR}R`,
-      sub: `Profit Factor: ${profitFactor}`,
+      value: formatR(totalR),
+      sub: `Profit Factor: ${profitFactor ?? unavailable}`,
       icon: TrendingUp,
       color: totalR >= 0 ? "var(--green)" : "var(--red)",
     },
     {
-      label: "Simulated Account",
-      value: `$${(config?.accountSize || 50000).toLocaleString()}`,
-      sub: `Risk/trade: ${config?.riskPerTradePct || 1}% ($${Math.round((config?.accountSize || 50000) * ((config?.riskPerTradePct || 1) / 100))})`,
+      label: isBrokerLive ? "Live Broker Equity" : "Configured Account Size",
+      value: formatUsd(effectiveEquity),
+      sub: isBrokerLive
+        ? `Risk/trade: ${riskPct}% (${formatUsd(effectiveEquity * riskPct / 100)}) · ${brokerAccount.server || "MT5"} #${brokerAccount.login}`
+        : (effectiveEquity !== null ? `Risk/trade: ${riskPct}% (${formatUsd(effectiveEquity * riskPct / 100)}) · Paper Sim` : "Risk configuration unavailable"),
       icon: DollarSign,
-      color: "var(--fg)",
+      color: isBrokerLive ? "var(--green)" : "var(--fg)",
     },
     {
       label: "Daily Circuit Breaker",
-      value: `Max -${maxDailyLoss}%`,
+      value: maxDailyLoss !== null ? `Max -${maxDailyLoss}%` : unavailable,
       sub: "Auto-halt safeguard",
       icon: ShieldCheck,
       color: "var(--purple)",
@@ -62,7 +70,7 @@ export default function AutonomousKpis({ metrics, config }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))",
         gap: 12,
         marginBottom: 16,
       }}

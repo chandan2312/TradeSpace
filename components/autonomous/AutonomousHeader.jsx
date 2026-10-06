@@ -11,16 +11,20 @@ import {
   Clock,
   Layers,
   ArrowLeft,
+  BookOpen,
 } from "lucide-react";
 
 import { getCurrentTimeSlot, getEetTime } from "../../lib/autonomous/timeslots.js";
 
 export default function AutonomousHeader({
   config,
+  brokerAccount,
   onTogglePower,
+  onToggleLiveTrading,
   onScanNow,
   isScanning,
   onOpenSettings,
+  pendingAction,
 }) {
   const [eetTime, setEetTime] = useState("");
   const [activeSession, setActiveSession] = useState("");
@@ -49,8 +53,9 @@ export default function AutonomousHeader({
   }, []);
 
   const isRunning = !!config?.enabled;
-  const execMode = (config?.executionMode || "paper").toUpperCase();
-  const horizonMode = (config?.horizonMode || "adaptive").toUpperCase();
+  const configAvailable = typeof config?.enabled === "boolean";
+  const execMode = (config?.executionMode || "unavailable").toUpperCase();
+  const horizonMode = (config?.horizonMode || "unavailable").toUpperCase();
 
   return (
     <header
@@ -64,11 +69,11 @@ export default function AutonomousHeader({
         background: "var(--panel)",
         border: "1px solid var(--border)",
         borderRadius: 12,
-        marginBottom: 16,
+        marginBottom: 0,
       }}
     >
       {/* Brand & Status */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", minWidth: 0 }}>
         <a
           href="/"
           style={{
@@ -87,7 +92,26 @@ export default function AutonomousHeader({
           <ArrowLeft size={14} /> Charts
         </a>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <a
+          href="/journal"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            color: "var(--accent)",
+            textDecoration: "none",
+            fontSize: 13,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid rgba(41, 98, 255, 0.3)",
+            background: "rgba(41, 98, 255, 0.1)",
+          }}
+          title="Open Autonomous Trading Journal"
+        >
+          <BookOpen size={14} /> Journal
+        </a>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
           <div
             style={{
               width: 10,
@@ -146,8 +170,10 @@ export default function AutonomousHeader({
           <Layers size={13} /> MODE: {execMode}
         </div>
 
-        {/* MT5 Broker Execution Status */}
-        <div
+        {/* MT5 Broker Execution Status (1-Click Toggle) */}
+        <button
+          onClick={onToggleLiveTrading}
+          disabled={pendingAction === "toggleLive"}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -156,13 +182,18 @@ export default function AutonomousHeader({
             borderRadius: 8,
             fontSize: 11,
             fontWeight: 700,
+            cursor: "pointer",
             background: config?.liveTrading
-              ? "rgba(16, 185, 129, 0.15)"
+              ? "rgba(16, 185, 129, 0.2)"
               : "rgba(255, 255, 255, 0.05)",
             color: config?.liveTrading ? "#10b981" : "var(--muted)",
-            border: `1px solid ${config?.liveTrading ? "rgba(16, 185, 129, 0.3)" : "var(--border)"}`,
+            border: `1px solid ${config?.liveTrading ? "rgba(16, 185, 129, 0.4)" : "var(--border)"}`,
           }}
-          title={config?.liveTrading ? "Orders execute live on MT5 broker terminal" : "Orders are simulated in paper trading mode"}
+          title={
+            config?.liveTrading
+              ? `MT5 LIVE ENABLED: Connected to ${brokerAccount?.server || "MT5"} (#${brokerAccount?.login || ""}) - Click to switch to Paper Sim`
+              : "PAPER SIM ACTIVE: Click to toggle LIVE MT5 broker execution"
+          }
         >
           <span
             style={{
@@ -173,8 +204,13 @@ export default function AutonomousHeader({
               boxShadow: config?.liveTrading ? "0 0 8px #10b981" : "none",
             }}
           />
-          {config?.liveTrading ? "MT5 LIVE" : "PAPER SIM"}
-        </div>
+          {config?.liveTrading ? "MT5 LIVE: ON" : "MT5 LIVE: OFF (PAPER)"}
+          {brokerAccount && (
+            <span style={{ fontSize: 10, opacity: 0.85, fontFamily: "monospace" }}>
+              · ${Number(brokerAccount.equity || brokerAccount.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          )}
+        </button>
 
         {/* Horizon Mode */}
         <div
@@ -261,11 +297,11 @@ export default function AutonomousHeader({
       </div>
 
       {/* Control Buttons */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {/* Scan Now */}
         <button
           onClick={onScanNow}
-          disabled={isScanning}
+          disabled={isScanning || !!pendingAction || !configAvailable}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -287,6 +323,7 @@ export default function AutonomousHeader({
         {/* Settings */}
         <button
           onClick={onOpenSettings}
+          disabled={!!pendingAction || !configAvailable}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -308,6 +345,7 @@ export default function AutonomousHeader({
         {/* Master Power Toggle */}
         <button
           onClick={onTogglePower}
+          disabled={!!pendingAction || !configAvailable}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -323,7 +361,7 @@ export default function AutonomousHeader({
           }}
         >
           {isRunning ? <Pause size={14} /> : <Play size={14} />}
-          {isRunning ? "HALT ENGINE" : "ENGAGE ENGINE"}
+          {!configAvailable ? "ENGINE UNAVAILABLE" : isRunning ? "HALT ENGINE" : "ENGAGE ENGINE"}
         </button>
       </div>
     </header>
