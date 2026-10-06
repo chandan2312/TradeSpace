@@ -54,8 +54,8 @@ export async function GET(req) {
     const framesMap = {};
     const errors = {};
     
-    // We fetch in chunks to avoid overwhelming the bridge if ALL is requested
-    const CHUNK_SIZE = 5;
+    // We fetch in chunks of 2 to avoid overwhelming the bridge lock if ALL is requested
+    const CHUNK_SIZE = 2;
     for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
       const chunk = symbols.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map(async (sym) => {

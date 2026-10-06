@@ -430,8 +430,9 @@ def handle_rates(payload):
     except Exception:
         pass
 
-    # Try fetching with backoff retry to allow MT5 to download historical candles from the broker
-    for attempt_idx in range(3):
+    # Try fetching with progressive backoff retry to allow MT5 to download historical candles from the broker
+    delays = [0.15, 0.25, 0.5, 0.75, 1.0]
+    for attempt_idx in range(len(delays)):
         for req_count in (count, max(20, count // 2) if count > 50 else count):
             for attempt in (
                 lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, req_count),
@@ -447,7 +448,7 @@ def handle_rates(payload):
                 break
         if rates is not None and len(rates) > 0:
             break
-        time.sleep(0.12)
+        time.sleep(delays[attempt_idx])
 
     if rates is None or len(rates) == 0:
         return {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}
