@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 import secrets
 import threading
 import math
@@ -424,16 +425,29 @@ def handle_rates(payload):
 
     rates = None
     now_ts = int(datetime.now(timezone.utc).timestamp())
-    for attempt in (
-        lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
-        lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
-    ):
-        try:
-            rates = attempt()
-        except Exception:
-            rates = None
+    try:
+        mt5.symbol_select(symbol, True)
+    except Exception:
+        pass
+
+    # Try fetching with backoff retry to allow MT5 to download historical candles from the broker
+    for attempt_idx in range(3):
+        for req_count in (count, max(20, count // 2) if count > 50 else count):
+            for attempt in (
+                lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, req_count),
+                lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, req_count) if offset == 0 else None,
+            ):
+                try:
+                    rates = attempt()
+                except Exception:
+                    rates = None
+                if rates is not None and len(rates) > 0:
+                    break
+            if rates is not None and len(rates) > 0:
+                break
         if rates is not None and len(rates) > 0:
             break
+        time.sleep(0.12)
 
     if rates is None or len(rates) == 0:
         return {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}

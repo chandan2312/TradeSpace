@@ -9,7 +9,6 @@ import "dotenv/config";
 import fs from "fs";
 import http from "http";
 import https from "https";
-import { parse } from "url";
 import next from "next";
 import { WebSocketServer } from "ws";
 
@@ -49,7 +48,13 @@ async function main() {
 
   const requestListener = async (req, res) => {
     try {
-      const parsedUrl = parse(req.url, true);
+      const parsed = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const parsedUrl = {
+        pathname: parsed.pathname,
+        query: Object.fromEntries(parsed.searchParams),
+        search: parsed.search,
+        href: parsed.href,
+      };
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error("[http error]", req.url, err);
