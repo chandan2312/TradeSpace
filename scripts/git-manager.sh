@@ -116,6 +116,7 @@ function push_dev() {
     branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
     echo -e "${CYAN}🚀 Pushing branch '${BOLD}$branch${RESET}${CYAN}' to DEV repository (TradeSpace_DEV)...${RESET}"
     git push dev "$branch" "$@"
+    git push origin "$branch" "$@" 2>/dev/null || true
     echo -e "${GREEN}✓ Successfully pushed to TradeSpace_DEV!${RESET}"
 }
 
