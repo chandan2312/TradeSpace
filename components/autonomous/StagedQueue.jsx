@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Zap,
   Check,
@@ -27,7 +27,7 @@ import {
   finiteNumber,
   markPriceFor,
 } from "./TradeTelemetry";
-import { resolveCopierRouting, decodeDecimalMagic } from "../../lib/autonomous/magicEncoder.js";
+import { resolveCopierRouting } from "../../lib/autonomous/magicEncoder.js";
 
 const actionStyle = {
   display: "inline-flex",
@@ -43,6 +43,70 @@ const actionStyle = {
   transition: "all 0.15s ease",
 };
 
+/**
+ * Combines sibling legs of the same trade opportunity (e.g. Default milestone + Prop Safe)
+ * into a single unified setup card, while preserving multi-leg execution telemetry.
+ */
+export function groupStagedTrades(trades = []) {
+  if (!Array.isArray(trades) || trades.length === 0) return [];
+
+  const groups = new Map();
+
+  for (const trade of trades) {
+    if (!trade) continue;
+    const entryStr = Number(trade.entryPrice ?? trade.levelDetails?.entry ?? 0).toFixed(5);
+    const slStr = Number(trade.initialSlPrice ?? trade.slPrice ?? trade.levelDetails?.sl ?? 0).toFixed(5);
+    const key = trade.groupId || `${trade.symbol}_${trade.dir}_${entryStr}_${slStr}`;
+
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(trade);
+  }
+
+  const unified = [];
+
+  for (const [key, items] of groups.entries()) {
+    if (items.length === 1) {
+      const item = items[0];
+      unified.push({
+        ...item,
+        groupKey: key,
+        isDualLeg: false,
+        primaryTrade: item,
+        tradeIds: [item._id],
+        primaryId: item._id,
+        defaultLeg: item.managementLogic !== "prop_firm_safe" ? item : null,
+        propLeg: item.managementLogic === "prop_firm_safe" ? item : null,
+        legs: [item],
+      });
+    } else {
+      const defaultLeg = items.find((t) => t.legId === "default" || t.managementLogic === "milestone_50") || items[0];
+      const propLeg = items.find((t) => t.legId === "prop_firm" || t.managementLogic === "prop_firm_safe") || items.find((t) => t !== defaultLeg) || items[1];
+      const primaryTrade = defaultLeg || items[0];
+
+      const armed = items.some((t) => t.status === "armed");
+      const confirming = items.some((t) => t.status === "confirming");
+      const status = armed ? "armed" : confirming ? "confirming" : primaryTrade.status;
+
+      unified.push({
+        ...primaryTrade,
+        groupKey: key,
+        isDualLeg: true,
+        status,
+        primaryTrade,
+        tradeIds: items.map((t) => t._id),
+        primaryId: primaryTrade._id,
+        defaultLeg,
+        propLeg,
+        legs: [defaultLeg, propLeg].filter(Boolean),
+      });
+    }
+  }
+
+  return unified;
+}
+
 export default function StagedQueue({
   stagedTrades = [],
   onApproveTrade,
@@ -57,8 +121,35 @@ export default function StagedQueue({
   const [editTp, setEditTp] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const openDetails = (trade) => {
-    setSelectedTrade(trade);
+  const unifiedSetups = useMemo(() => groupStagedTrades(stagedTrades), [stagedTrades]);
+
+  const handleApprove = async (setup) => {
+    if (!onApproveTrade) return;
+    const primaryId = setup.primaryId || setup._id;
+    await onApproveTrade(primaryId);
+    if (!setup.groupId && Array.isArray(setup.tradeIds)) {
+      const remainingIds = setup.tradeIds.filter((id) => id !== primaryId);
+      for (const id of remainingIds) {
+        await onApproveTrade(id);
+      }
+    }
+  };
+
+  const handleDismiss = async (setup) => {
+    if (!onDismissTrade) return;
+    const primaryId = setup.primaryId || setup._id;
+    await onDismissTrade(primaryId);
+    if (!setup.groupId && Array.isArray(setup.tradeIds)) {
+      const remainingIds = setup.tradeIds.filter((id) => id !== primaryId);
+      for (const id of remainingIds) {
+        await onDismissTrade(id);
+      }
+    }
+  };
+
+  const openDetails = (setup) => {
+    setSelectedTrade(setup);
+    const trade = setup.primaryTrade || setup;
     const level = trade.levelDetails || trade.stagedLevel || {};
     setEditingId(null);
     const isSwing = trade.scenario?.id === "swing" || trade.horizon === "swing" || trade.horizonCode === 1;
@@ -74,33 +165,53 @@ export default function StagedQueue({
     setSaving(false);
   };
 
-  const saveEdit = async (trade, level) => {
+  const saveEdit = async (targetTrade, overrideRR, overrideTp) => {
     setSaving(true);
     try {
-      const isSwing = trade.scenario?.id === "swing" || trade.horizon === "swing" || trade.horizonCode === 1;
-      const isProp = trade.managementLogic === "prop_firm_safe";
+      const tradeToEdit = targetTrade || selectedTrade?.primaryTrade || selectedTrade;
+      const isSwing = tradeToEdit.scenario?.id === "swing" || tradeToEdit.horizon === "swing" || tradeToEdit.horizonCode === 1;
+      const isProp = tradeToEdit.managementLogic === "prop_firm_safe";
+      const rrToUse = overrideRR != null ? overrideRR : editRR;
+      const tpToUse = overrideTp != null ? overrideTp : editTp;
+
       const clampedRR = isSwing
-        ? Math.max(0.5, Number(editRR) || 2.0)
+        ? Math.max(0.5, Number(rrToUse) || 2.0)
         : isProp
-        ? Math.min(2.5, Math.max(1.5, Number(editRR) || 2.0))
-        : Math.min(5.0, Math.max(0.5, Number(editRR) || 2.0));
-      const parsedTp = editTp ? Number(editTp) : undefined;
+        ? Math.min(2.5, Math.max(1.5, Number(rrToUse) || 2.0))
+        : Math.min(5.0, Math.max(0.5, Number(rrToUse) || 2.0));
+      const parsedTp = tpToUse ? Number(tpToUse) : undefined;
+
       if (onModifyTrade) {
-        await onModifyTrade(trade._id, { targetRR: clampedRR, tpPrice: parsedTp });
+        await onModifyTrade(tradeToEdit._id, { targetRR: clampedRR, tpPrice: parsedTp });
       } else {
         await fetch("/api/autonomous", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "modify_target", tradeId: trade._id, targetRR: clampedRR, tpPrice: parsedTp }),
+          body: JSON.stringify({ action: "modify_target", tradeId: tradeToEdit._id, targetRR: clampedRR, tpPrice: parsedTp }),
         });
       }
       setEditingId(null);
+
       // update selectedTrade in memory
-      setSelectedTrade((prev) =>
-        prev && prev._id === trade._id
-          ? { ...prev, targetRR: clampedRR, tpPrice: parsedTp }
-          : prev
-      );
+      setSelectedTrade((prev) => {
+        if (!prev) return null;
+        if (prev._id === tradeToEdit._id) {
+          return { ...prev, targetRR: clampedRR, tpPrice: parsedTp };
+        }
+        if (prev.defaultLeg && prev.defaultLeg._id === tradeToEdit._id) {
+          return {
+            ...prev,
+            defaultLeg: { ...prev.defaultLeg, targetRR: clampedRR, tpPrice: parsedTp },
+          };
+        }
+        if (prev.propLeg && prev.propLeg._id === tradeToEdit._id) {
+          return {
+            ...prev,
+            propLeg: { ...prev.propLeg, targetRR: clampedRR, tpPrice: parsedTp },
+          };
+        }
+        return prev;
+      });
     } catch (err) {
       console.error("Failed to modify trade target:", err);
     } finally {
@@ -141,11 +252,11 @@ export default function StagedQueue({
               fontWeight: 700,
               padding: "2px 8px",
               borderRadius: 10,
-              background: stagedTrades.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.05)",
-              color: stagedTrades.length > 0 ? "var(--accent)" : "var(--muted)",
+              background: unifiedSetups.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.05)",
+              color: unifiedSetups.length > 0 ? "var(--accent)" : "var(--muted)",
             }}
           >
-            {stagedTrades.length}
+            {unifiedSetups.length}
           </span>
         </div>
 
@@ -155,7 +266,7 @@ export default function StagedQueue({
       </div>
 
       {/* Main Grid of Minimal Cards */}
-      {stagedTrades.length === 0 ? (
+      {unifiedSetups.length === 0 ? (
         <div
           style={{
             textAlign: "center",
@@ -180,27 +291,32 @@ export default function StagedQueue({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
             gap: 12,
           }}
         >
-          {stagedTrades.map((trade) => {
+          {unifiedSetups.map((setup) => {
+            const trade = setup.primaryTrade || setup;
             const level = trade.levelDetails || trade.stagedLevel || {};
-            const armed = trade.status === "armed";
-            const confirming = trade.status === "confirming";
+            const defaultLeg = setup.defaultLeg;
+            const propLeg = setup.propLeg;
+            const armed = setup.status === "armed";
+            const confirming = setup.status === "confirming";
             const vetoes = trade.vetoes || level.vetoes;
             const hasVeto = Array.isArray(vetoes) && vetoes.length > 0;
             const entryVal = Number(trade.entryPrice ?? level.entry);
             const slVal = Number(trade.initialSlPrice ?? trade.slPrice ?? level.sl);
-            const tpVal = Number(trade.tpPrice ?? level.tp);
-            const rrVal = finiteNumber(trade.targetRR ?? level.rr);
+            const dist = Math.abs(entryVal - slVal);
             const confluence = trade.confluenceScore ?? level.confluenceScore ?? 85;
-            const routing = trade.copierRouting || resolveCopierRouting(trade);
+            const routingDefault = defaultLeg ? (defaultLeg.copierRouting || resolveCopierRouting(defaultLeg)) : null;
+            const routingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
+            const routingSingle = !setup.isDualLeg ? (trade.copierRouting || resolveCopierRouting(trade)) : null;
+            const isApproving = setup.tradeIds?.some((id) => pendingAction === id) || pendingAction === setup._id;
 
             return (
               <article
-                key={trade._id}
-                onClick={() => openDetails(trade)}
+                key={setup.groupKey || setup._id}
+                onClick={() => openDetails(setup)}
                 style={{
                   background: armed
                     ? "rgba(34, 197, 94, 0.03)"
@@ -234,16 +350,17 @@ export default function StagedQueue({
                   e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
-                {/* Top Row: Symbol, Direction, Status Badge, Confluence */}
+                {/* Top Row: Symbol, Direction, Mode, Status */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 6,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <strong style={{ fontSize: 15 }}>{trade.symbol}</strong>
                     <span
                       style={{
@@ -263,7 +380,24 @@ export default function StagedQueue({
                     <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "monospace" }}>
                       {trade.scenario?.badge || trade.tf || "15M"}
                     </span>
-                    {trade.managementLogic && (
+                    {setup.isDualLeg ? (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: 3,
+                          background: "rgba(168, 85, 247, 0.15)",
+                          color: "var(--purple, #c084fc)",
+                          border: "1px solid rgba(168, 85, 247, 0.3)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <Layers size={10} /> DUAL EXECUTION (50% + PROP)
+                      </span>
+                    ) : trade.managementLogic && (
                       <span
                         style={{
                           fontSize: 9,
@@ -341,14 +475,14 @@ export default function StagedQueue({
                   </span>
                 </div>
 
-                {/* Minimal Key Levels Chip Grid */}
+                {/* Shared Key Levels: Entry & Stop Loss */}
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gridTemplateColumns: "repeat(2, 1fr)",
                     gap: 6,
                     background: "rgba(0, 0, 0, 0.25)",
-                    padding: "6px 8px",
+                    padding: "6px 10px",
                     borderRadius: 6,
                     fontFamily: "monospace",
                     fontSize: 10,
@@ -356,99 +490,170 @@ export default function StagedQueue({
                   }}
                 >
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: 9 }}>ENTRY</div>
+                    <div style={{ color: "var(--muted)", fontSize: 9 }}>PLANNED ENTRY</div>
                     <div style={{ fontWeight: 700, color: "var(--fg)" }}>{formatPrice(entryVal)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: 9 }}>STOP LOSS</div>
+                    <div style={{ color: "var(--muted)", fontSize: 9 }}>STRUCTURAL SL</div>
                     <div style={{ fontWeight: 700, color: "var(--red)" }}>{formatPrice(slVal)}</div>
                   </div>
-                  <div>
-                    <div style={{ color: "var(--muted)", fontSize: 9 }}>TARGET ({rrVal ? `${rrVal.toFixed(1)}R` : "TP"})</div>
-                    <div style={{ fontWeight: 700, color: "var(--green)" }}>{formatPrice(tpVal)}</div>
-                  </div>
                 </div>
 
-                {/* Target Landmark Badge (if resolved from Bias Engine) */}
-                {(trade.targetLandmark || trade.propTarget?.source) && (
-                  <div
-                    style={{
-                      fontSize: 10,
-                      padding: "4px 8px",
-                      borderRadius: 5,
-                      background: "rgba(168, 85, 247, 0.1)",
-                      border: "1px solid rgba(168, 85, 247, 0.25)",
-                      color: "var(--purple, #c084fc)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    <span>🎯</span>
-                    <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      Landmark: {trade.targetLandmark || trade.propTarget?.source}
-                    </span>
-                  </div>
-                )}
+                {/* Targets and Execution: DUAL LEG vs SINGLE LEG */}
+                {setup.isDualLeg ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {/* Leg 1: Default Milestone */}
+                    {defaultLeg && (
+                      <div
+                        style={{
+                          background: "rgba(56, 189, 248, 0.04)",
+                          border: "1px solid rgba(56, 189, 248, 0.2)",
+                          borderRadius: 6,
+                          padding: "6px 8px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                          fontSize: 10,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+                          <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9 }}>
+                            LEG 1 · DEFAULT (50% + RUNNER)
+                          </span>
+                          <span style={{ fontWeight: 700, color: "var(--green)" }}>
+                            TARGET: {formatPrice(defaultLeg.tpPrice)} ({Number(defaultLeg.targetRR || 5.0).toFixed(1)}R)
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
+                          <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{defaultLeg.coveredRR || `${Number(defaultLeg.targetRR || 5.0).toFixed(1)}`}R</strong></span>
+                          {(defaultLeg.magicNumber || routingDefault?.magicNumber) && (
+                            <span style={{ color: "var(--accent)", fontWeight: 700 }}>⚡ MT5 #{defaultLeg.magicNumber || routingDefault?.magicNumber}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                {/* CFD Spread Friction Telemetry Chip */}
-                {trade.coveredRR && (
-                  <div
-                    style={{
-                      fontSize: 10,
-                      padding: "4px 8px",
-                      borderRadius: 5,
-                      background: "rgba(0, 176, 255, 0.08)",
-                      border: "1px solid rgba(0, 176, 255, 0.25)",
-                      color: "var(--accent, #00b0ff)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    <span>🛡️ Net Covered R: <strong>{trade.coveredRR}R</strong></span>
-                    <span style={{ color: "var(--muted)" }}>
-                      Spread {trade.spreadPrice ?? 0} (drag -{trade.frictionDragR ?? "0.00"}R · {trade.recoveryPct ?? 64}% recov)
-                    </span>
+                    {/* Leg 2: Prop-Firm Safe */}
+                    {propLeg && (
+                      <div
+                        style={{
+                          background: "rgba(168, 85, 247, 0.04)",
+                          border: "1px solid rgba(168, 85, 247, 0.2)",
+                          borderRadius: 6,
+                          padding: "6px 8px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                          fontSize: 10,
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+                          <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>
+                            LEG 2 · PROP-FIRM SAFE
+                          </span>
+                          <span style={{ fontWeight: 700, color: "var(--green)" }}>
+                            TARGET: {formatPrice(propLeg.tpPrice)} ({Number(propLeg.targetRR || 2.2).toFixed(1)}R)
+                          </span>
+                        </div>
+                        {(propLeg.targetLandmark || propLeg.propTarget?.source) && (
+                          <div style={{ color: "var(--purple, #c084fc)", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            🎯 Landmark: {propLeg.targetLandmark || propLeg.propTarget?.source}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
+                          <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{propLeg.coveredRR || `${Number(propLeg.targetRR || 2.2).toFixed(1)}`}R</strong></span>
+                          {(propLeg.magicNumber || routingProp?.magicNumber) && (
+                            <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700 }}>⚡ MT5 #{propLeg.magicNumber || routingProp?.magicNumber}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-
-                {/* Minimal Copier & Magic Telemetry Strip */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 10,
-                    fontFamily: "monospace",
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    background: "rgba(255, 255, 255, 0.03)",
-                    border: "1px solid rgba(255, 255, 255, 0.05)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <span style={{ color: "var(--accent)", fontWeight: 700 }}>⚡ #{trade.magicNumber || routing.magicNumber}</span>
-                    <span style={{ color: "var(--muted)", fontSize: 9 }}>({trade.brokerComment || routing.comment})</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontSize: 9, color: "var(--muted)" }}>Copier:</span>
-                    <span
+                ) : (
+                  <>
+                    <div
                       style={{
-                        fontSize: 9,
-                        fontWeight: 700,
-                        padding: "1px 5px",
-                        borderRadius: 4,
-                        background: routing.eligibleAccounts?.length > 0 ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                        color: routing.eligibleAccounts?.length > 0 ? "var(--green)" : "var(--red)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        background: "rgba(0, 0, 0, 0.25)",
+                        padding: "6px 8px",
+                        borderRadius: 6,
+                        fontFamily: "monospace",
+                        fontSize: 10,
                       }}
                     >
-                      {routing.eligibleAccounts?.length > 0 ? `${routing.eligibleAccounts.length} Acct${routing.eligibleAccounts.length > 1 ? "s" : ""}` : "Filtered"}
-                    </span>
-                  </div>
-                </div>
+                      <span style={{ color: "var(--muted)" }}>TARGET ({trade.targetRR ? `${Number(trade.targetRR).toFixed(1)}R` : "TP"})</span>
+                      <span style={{ fontWeight: 700, color: "var(--green)" }}>{formatPrice(trade.tpPrice ?? level.tp)}</span>
+                    </div>
+
+                    {(trade.targetLandmark || trade.propTarget?.source) && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          padding: "4px 8px",
+                          borderRadius: 5,
+                          background: "rgba(168, 85, 247, 0.1)",
+                          border: "1px solid rgba(168, 85, 247, 0.25)",
+                          color: "var(--purple, #c084fc)",
+                          fontFamily: "monospace",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        🎯 Landmark: {trade.targetLandmark || trade.propTarget?.source}
+                      </div>
+                    )}
+
+                    {trade.coveredRR && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          padding: "4px 8px",
+                          borderRadius: 5,
+                          background: "rgba(0, 176, 255, 0.08)",
+                          border: "1px solid rgba(0, 176, 255, 0.25)",
+                          color: "var(--accent, #00b0ff)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        <span>🛡️ Net Covered R: <strong>{trade.coveredRR}R</strong></span>
+                        <span style={{ color: "var(--muted)", fontSize: 9 }}>drag -{trade.frictionDragR ?? "0.00"}R</span>
+                      </div>
+                    )}
+
+                    {(trade.magicNumber || routingSingle?.magicNumber) && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          fontSize: 10,
+                          fontFamily: "monospace",
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          background: "rgba(255, 255, 255, 0.03)",
+                          border: "1px solid rgba(255, 255, 255, 0.05)",
+                        }}
+                      >
+                        <span style={{ color: "var(--accent)", fontWeight: 700 }}>
+                          ⚡ MT5 #{trade.magicNumber || routingSingle?.magicNumber}
+                        </span>
+                        {(trade.brokerComment || routingSingle?.comment) && (
+                          <span style={{ color: "var(--muted)", fontSize: 9 }}>
+                            {trade.brokerComment || routingSingle?.comment}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {/* Action Buttons Row */}
                 <div
@@ -463,7 +668,7 @@ export default function StagedQueue({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
-                    onClick={() => openDetails(trade)}
+                    onClick={() => openDetails(setup)}
                     style={{
                       ...actionStyle,
                       padding: "4px 8px",
@@ -478,10 +683,10 @@ export default function StagedQueue({
                   </button>
 
                   <div style={{ display: "flex", gap: 6 }}>
-                    {trade.status === "staged" && (
+                    {setup.status === "staged" && (
                       <button
-                        disabled={hasVeto || !!pendingAction}
-                        onClick={() => onApproveTrade(trade._id)}
+                        disabled={hasVeto || isApproving}
+                        onClick={() => handleApprove(setup)}
                         style={{
                           ...actionStyle,
                           padding: "4px 10px",
@@ -494,13 +699,13 @@ export default function StagedQueue({
                         }}
                       >
                         <Check size={12} />
-                        <span>Approve</span>
+                        <span>{isApproving ? "Approving..." : setup.isDualLeg ? "Approve Dual Setup" : "Approve"}</span>
                       </button>
                     )}
 
                     <button
-                      disabled={!!pendingAction}
-                      onClick={() => onDismissTrade(trade._id)}
+                      disabled={isApproving}
+                      onClick={() => handleDismiss(setup)}
                       style={{
                         ...actionStyle,
                         padding: "4px 8px",
@@ -508,7 +713,7 @@ export default function StagedQueue({
                         color: "var(--muted)",
                         fontSize: 11,
                       }}
-                      title="Dismiss setup"
+                      title={setup.isDualLeg ? "Dismiss dual setup" : "Dismiss setup"}
                     >
                       <X size={12} />
                     </button>
@@ -522,21 +727,23 @@ export default function StagedQueue({
 
       {/* 2. ON-CLICK SETUP DETAILS POPUP MODAL */}
       {selectedTrade && (() => {
-        const trade = selectedTrade;
+        const setup = selectedTrade;
+        const trade = setup.primaryTrade || setup;
+        const isDual = setup.isDualLeg;
+        const defaultLeg = setup.defaultLeg;
+        const propLeg = setup.propLeg;
         const level = trade.levelDetails || trade.stagedLevel || {};
         const brain = trade.brainSnapshot || trade.brain || {};
-        const armed = trade.status === "armed";
-        const confirming = trade.status === "confirming";
+        const armed = setup.status === "armed";
+        const confirming = setup.status === "confirming";
         const vetoes = trade.vetoes || level.vetoes;
         const hasVeto = Array.isArray(vetoes) && vetoes.length > 0;
-        const isEditing = editingId === trade._id;
         const entryVal = Number(trade.entryPrice ?? level.entry);
         const slVal = Number(trade.initialSlPrice ?? trade.slPrice ?? level.sl);
         const dist = Math.abs(entryVal - slVal);
-        const isSwing = trade.scenario?.id === "swing" || trade.horizon === "swing" || trade.horizonCode === 1;
-        const isProp = trade.managementLogic === "prop_firm_safe";
+        const modalRoutingDefault = defaultLeg ? (defaultLeg.copierRouting || resolveCopierRouting(defaultLeg)) : null;
+        const modalRoutingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
         const modalRouting = trade.copierRouting || resolveCopierRouting(trade);
-        const modalMagicDecoded = decodeDecimalMagic(trade.magicNumber || modalRouting.magicNumber);
 
         return (
           <div
@@ -585,9 +792,9 @@ export default function StagedQueue({
                 }}
               >
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>
-                      {trade.symbol} · Setup Details
+                      {trade.symbol} · {isDual ? "Dual-Leg Setup Details" : "Setup Details"}
                     </h2>
                     <span
                       style={{
@@ -604,6 +811,24 @@ export default function StagedQueue({
                     >
                       {trade.dir === 1 ? "BUY SETUP" : "SELL SETUP"}
                     </span>
+                    {isDual && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          background: "rgba(168, 85, 247, 0.18)",
+                          color: "var(--purple, #c084fc)",
+                          border: "1px solid rgba(168, 85, 247, 0.3)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <Layers size={11} /> DUAL EXECUTION (50% + PROP)
+                      </span>
+                    )}
                     <span
                       style={{
                         fontSize: 10,
@@ -660,7 +885,7 @@ export default function StagedQueue({
                 <RangeTelemetry brain={brain} range={trade.range} dealingRange={trade.dealingRange} price={markPriceFor(trade, ticks)} compact />
               </div>
 
-              {/* Execution Levels Overview */}
+              {/* Shared Execution Levels Overview */}
               <div
                 style={{
                   display: "grid",
@@ -672,169 +897,331 @@ export default function StagedQueue({
                 }}
               >
                 <TelemetryValue label="Planned Entry" value={formatPrice(trade.entryPrice ?? level.entry)} />
-                <TelemetryValue label="Initial SL" value={formatPrice(trade.initialSlPrice ?? trade.slPrice ?? level.sl)} color="var(--red)" />
-                <TelemetryValue label="Target TP / DOL" value={formatPrice(trade.tpPrice ?? level.tp)} color="var(--green)" />
+                <TelemetryValue label="Structural SL" value={formatPrice(trade.initialSlPrice ?? trade.slPrice ?? level.sl)} color="var(--red)" />
+                <TelemetryValue label="Risk Distance" value={`${dist.toFixed(5)} (${trade.riskPips ? `${trade.riskPips} pips` : `${Math.round(dist * 10000)} pts`})`} color="var(--accent)" />
                 <TelemetryValue label="Initial Risk USD" value={formatUsd(trade.initialRiskUsd ?? trade.riskUsd)} color="var(--orange)" />
               </div>
 
-              {/* Target Ladder & Risk Sizing */}
-              <TargetLadder targets={trade.targets || level.targets} legacyTarget={trade.tpPrice} />
-
-              {/* Target Landmark Telemetry (if available) */}
-              {(trade.targetLandmark || trade.propTarget?.source) && (
-                <div
-                  style={{
-                    background: "rgba(168, 85, 247, 0.08)",
-                    border: "1px solid rgba(168, 85, 247, 0.25)",
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    fontSize: 11,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    color: "var(--purple, #c084fc)",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>🎯</span>
-                  <div>
-                    <span style={{ fontWeight: 700 }}>Institutional Target Landmark: </span>
-                    <span>{trade.targetLandmark || trade.propTarget?.source}</span>
-                    {trade.propTarget?.landmarkType && (
-                      <span style={{ color: "var(--muted)", marginLeft: 6, fontSize: 10 }}>
-                        ({trade.propTarget.landmarkType} · {trade.propTarget.tf || trade.tf})
-                      </span>
-                    )}
+              {/* Dual Leg Targets or Single Leg Target Ladder */}
+              {isDual ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)" }}>
+                    Combined Dual-Leg Execution Targets
                   </div>
+
+                  {/* Leg 1 Target Box */}
+                  {defaultLeg && (() => {
+                    const legTrade = defaultLeg;
+                    const legLevel = legTrade.levelDetails || legTrade.stagedLevel || {};
+                    const isEditingThis = editingId === legTrade._id;
+                    return (
+                      <div
+                        style={{
+                          background: "rgba(56, 189, 248, 0.04)",
+                          border: "1px solid rgba(56, 189, 248, 0.25)",
+                          borderRadius: 8,
+                          padding: 12,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                          <div>
+                            <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 11 }}>
+                              LEG 1 · DEFAULT (50% MILESTONE + RUNNER)
+                            </span>
+                            <div style={{ fontSize: 11, fontFamily: "monospace", marginTop: 2 }}>
+                              Target: <strong style={{ color: "var(--green)" }}>{formatPrice(legTrade.tpPrice ?? legLevel.tp)}</strong> (
+                              {finiteNumber(legTrade.targetRR ?? legLevel.rr) === null ? "5.0" : `${legTrade.targetRR ?? legLevel.rr}R`})
+                              {legTrade.coveredRR && <span style={{ color: "var(--muted)", marginLeft: 6 }}>· Net Covered: {legTrade.coveredRR}R</span>}
+                            </div>
+                          </div>
+
+                          {!isEditingThis && (
+                            <button
+                              onClick={() => {
+                                setEditingId(legTrade._id);
+                                setEditRR(Number(legTrade.targetRR ?? legLevel.rr ?? 5.0));
+                                setEditTp(legTrade.tpPrice ?? legLevel.tp ?? "");
+                              }}
+                              style={{
+                                ...actionStyle,
+                                padding: "3px 8px",
+                                fontSize: 10,
+                                color: "var(--accent)",
+                                background: "rgba(56, 189, 248, 0.1)",
+                                border: "1px solid rgba(56, 189, 248, 0.3)",
+                              }}
+                            >
+                              <Edit3 size={11} /> Modify Leg 1 Target
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditingThis && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 100 }}>
+                                Target R:R (Default Leg — Max 5.0R)
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="0.5"
+                                  max="5.0"
+                                  value={editRR}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value) || 0.1;
+                                    const r = Math.min(5.0, Math.max(0.1, raw));
+                                    setEditRR(r);
+                                    if (dist > 0) setEditTp(Number((entryVal + trade.dir * r * dist).toFixed(5)));
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.4)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 4,
+                                    padding: "6px 8px",
+                                    fontSize: 12,
+                                    color: "var(--green)",
+                                    fontWeight: 700,
+                                  }}
+                                />
+                              </label>
+
+                              <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 120 }}>
+                                Target TP Price
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={editTp}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditTp(val);
+                                    const parsed = Number(val);
+                                    if (dist > 0 && parsed > 0) {
+                                      const rawRR = (trade.dir * (parsed - entryVal)) / dist;
+                                      const rounded = Math.round(rawRR * 10) / 10;
+                                      setEditRR(Math.min(5.0, Math.max(0.1, rounded)));
+                                    }
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.4)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 4,
+                                    padding: "6px 8px",
+                                    fontSize: 12,
+                                    color: "var(--fg)",
+                                  }}
+                                />
+                              </label>
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                              <button
+                                disabled={saving}
+                                onClick={() => saveEdit(legTrade, editRR, editTp)}
+                                style={{
+                                  ...actionStyle,
+                                  padding: "5px 12px",
+                                  background: "var(--green)",
+                                  color: "#fff",
+                                  border: "none",
+                                }}
+                              >
+                                <Save size={11} /> {saving ? "Saving..." : "Apply Leg 1 Target"}
+                              </button>
+                              <button
+                                disabled={saving}
+                                onClick={() => setEditingId(null)}
+                                style={{
+                                  ...actionStyle,
+                                  padding: "5px 10px",
+                                  background: "rgba(255, 255, 255, 0.05)",
+                                  color: "var(--muted)",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Leg 2 Target Box */}
+                  {propLeg && (() => {
+                    const legTrade = propLeg;
+                    const legLevel = legTrade.levelDetails || legTrade.stagedLevel || {};
+                    const isEditingThis = editingId === legTrade._id;
+                    return (
+                      <div
+                        style={{
+                          background: "rgba(168, 85, 247, 0.04)",
+                          border: "1px solid rgba(168, 85, 247, 0.25)",
+                          borderRadius: 8,
+                          padding: 12,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                          <div>
+                            <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 11 }}>
+                              LEG 2 · PROP-FIRM SAFE (1.5R–2.5R BRACKET)
+                            </span>
+                            <div style={{ fontSize: 11, fontFamily: "monospace", marginTop: 2 }}>
+                              Target: <strong style={{ color: "var(--green)" }}>{formatPrice(legTrade.tpPrice ?? legLevel.tp)}</strong> (
+                              {finiteNumber(legTrade.targetRR ?? legLevel.rr) === null ? "2.2" : `${legTrade.targetRR ?? legLevel.rr}R`})
+                              {legTrade.coveredRR && <span style={{ color: "var(--muted)", marginLeft: 6 }}>· Net Covered: {legTrade.coveredRR}R</span>}
+                            </div>
+                            {(legTrade.targetLandmark || legTrade.propTarget?.source) && (
+                              <div style={{ fontSize: 10, color: "var(--purple, #c084fc)", marginTop: 2 }}>
+                                🎯 Landmark: {legTrade.targetLandmark || legTrade.propTarget?.source}
+                              </div>
+                            )}
+                          </div>
+
+                          {!isEditingThis && (
+                            <button
+                              onClick={() => {
+                                setEditingId(legTrade._id);
+                                setEditRR(Number(legTrade.targetRR ?? legLevel.rr ?? 2.2));
+                                setEditTp(legTrade.tpPrice ?? legLevel.tp ?? "");
+                              }}
+                              style={{
+                                ...actionStyle,
+                                padding: "3px 8px",
+                                fontSize: 10,
+                                color: "var(--purple, #c084fc)",
+                                background: "rgba(168, 85, 247, 0.1)",
+                                border: "1px solid rgba(168, 85, 247, 0.3)",
+                              }}
+                            >
+                              <Edit3 size={11} /> Modify Leg 2 Target
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditingThis && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 100 }}>
+                                Target R:R (Prop-Firm Safe: 1.5R–2.5R)
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="1.5"
+                                  max="2.5"
+                                  value={editRR}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value) || 1.5;
+                                    const r = Math.min(2.5, Math.max(1.5, raw));
+                                    setEditRR(r);
+                                    if (dist > 0) setEditTp(Number((entryVal + trade.dir * r * dist).toFixed(5)));
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.4)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 4,
+                                    padding: "6px 8px",
+                                    fontSize: 12,
+                                    color: "var(--green)",
+                                    fontWeight: 700,
+                                  }}
+                                />
+                              </label>
+
+                              <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 120 }}>
+                                Target TP Price
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={editTp}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditTp(val);
+                                    const parsed = Number(val);
+                                    if (dist > 0 && parsed > 0) {
+                                      const rawRR = (trade.dir * (parsed - entryVal)) / dist;
+                                      const rounded = Math.round(rawRR * 10) / 10;
+                                      setEditRR(Math.min(2.5, Math.max(1.5, rounded)));
+                                    }
+                                  }}
+                                  style={{
+                                    background: "rgba(0, 0, 0, 0.4)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 4,
+                                    padding: "6px 8px",
+                                    fontSize: 12,
+                                    color: "var(--fg)",
+                                  }}
+                                />
+                              </label>
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                              <button
+                                disabled={saving}
+                                onClick={() => saveEdit(legTrade, editRR, editTp)}
+                                style={{
+                                  ...actionStyle,
+                                  padding: "5px 12px",
+                                  background: "var(--green)",
+                                  color: "#fff",
+                                  border: "none",
+                                }}
+                              >
+                                <Save size={11} /> {saving ? "Saving..." : "Apply Leg 2 Target"}
+                              </button>
+                              <button
+                                disabled={saving}
+                                onClick={() => setEditingId(null)}
+                                style={{
+                                  ...actionStyle,
+                                  padding: "5px 10px",
+                                  background: "rgba(255, 255, 255, 0.05)",
+                                  color: "var(--muted)",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
-              )}
+              ) : (
+                <>
+                  <TargetLadder targets={trade.targets || level.targets} legacyTarget={trade.tpPrice} />
 
-              {/* Interactive Target RR & TP Adjustment */}
-              <div
-                style={{
-                  background: "rgba(255, 255, 255, 0.02)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>
-                    Target Risk-to-Reward:{" "}
-                    <span style={{ color: "var(--green)", fontFamily: "monospace" }}>
-                      {finiteNumber(trade.targetRR ?? level.rr) === null ? "2.2" : `${trade.targetRR ?? level.rr}R`}
-                    </span>
-                  </div>
-
-                  {!isEditing && (
-                    <button
-                      onClick={() => setEditingId(trade._id)}
+                  {(trade.targetLandmark || trade.propTarget?.source) && (
+                    <div
                       style={{
-                        ...actionStyle,
-                        padding: "3px 8px",
-                        fontSize: 10,
-                        color: "var(--accent)",
-                        background: "rgba(56, 189, 248, 0.1)",
-                        border: "1px solid rgba(56, 189, 248, 0.3)",
+                        background: "rgba(168, 85, 247, 0.08)",
+                        border: "1px solid rgba(168, 85, 247, 0.25)",
+                        borderRadius: 8,
+                        padding: "8px 12px",
+                        fontSize: 11,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        color: "var(--purple, #c084fc)",
+                        fontFamily: "monospace",
                       }}
                     >
-                      <Edit3 size={11} /> Modify Target RR / TP {isSwing ? "(Swing — No 5R Limit)" : isProp ? "(Prop-Firm: 1.5R–2.5R)" : "(Max 5.0R)"}
-                    </button>
+                      <span style={{ fontSize: 14 }}>🎯</span>
+                      <div>
+                        <span style={{ fontWeight: 700 }}>Institutional Target Landmark: </span>
+                        <span>{trade.targetLandmark || trade.propTarget?.source}</span>
+                      </div>
+                    </div>
                   )}
-                </div>
-
-                {isEditing && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 100 }}>
-                        {isSwing ? "Target R:R (Swing Mode — No 5R Limit)" : isProp ? "Target R:R (Prop-Firm Safe: 1.5R–2.5R)" : "Target R:R (Max 5.0R)"}
-                        <input
-                          type="number"
-                          step="0.1"
-                          min={isProp ? "1.5" : "0.5"}
-                          max={isSwing ? undefined : isProp ? "2.5" : "5.0"}
-                          value={editRR}
-                          onChange={(e) => {
-                            const raw = Number(e.target.value) || 0.1;
-                            const r = isSwing ? Math.max(0.1, raw) : isProp ? Math.min(2.5, Math.max(1.5, raw)) : Math.min(5.0, Math.max(0.1, raw));
-                            setEditRR(r);
-                            if (dist > 0) {
-                              setEditTp(Number((entryVal + trade.dir * r * dist).toFixed(5)));
-                            }
-                          }}
-                          style={{
-                            background: "rgba(0, 0, 0, 0.4)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            padding: "6px 8px",
-                            fontSize: 12,
-                            color: "var(--green)",
-                            fontWeight: 700,
-                          }}
-                        />
-                      </label>
-
-                      <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 120 }}>
-                        Target TP Price
-                        <input
-                          type="number"
-                          step="any"
-                          value={editTp}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setEditTp(val);
-                            const parsed = Number(val);
-                            if (dist > 0 && parsed > 0) {
-                              const rawRR = (trade.dir * (parsed - entryVal)) / dist;
-                              const rounded = Math.round(rawRR * 10) / 10;
-                              setEditRR(isSwing ? Math.max(0.1, rounded) : isProp ? Math.min(2.5, Math.max(1.5, rounded)) : Math.min(5.0, Math.max(0.1, rounded)));
-                            }
-                          }}
-                          style={{
-                            background: "rgba(0, 0, 0, 0.4)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            padding: "6px 8px",
-                            fontSize: 12,
-                            color: "var(--fg)",
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                      <button
-                        disabled={saving}
-                        onClick={() => saveEdit(trade, level)}
-                        style={{
-                          ...actionStyle,
-                          padding: "5px 12px",
-                          background: "var(--green)",
-                          color: "#fff",
-                          border: "none",
-                        }}
-                      >
-                        <Save size={11} /> {saving ? "Saving..." : "Apply New Target"}
-                      </button>
-                      <button
-                        disabled={saving}
-                        onClick={() => setEditingId(null)}
-                        style={{
-                          ...actionStyle,
-                          padding: "5px 10px",
-                          background: "rgba(255, 255, 255, 0.05)",
-                          color: "var(--muted)",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </>
+              )}
 
               {/* Confluence Breakdown */}
               <ConfluenceBreakdown
@@ -852,7 +1239,7 @@ export default function StagedQueue({
               {/* Evidence Details */}
               <EvidenceDetails evidence={trade.evidence || level.evidence} />
 
-              {/* Trade Copier & Multi-Account Diversification Matrix */}
+              {/* Direct MT5 Order Submission Credentials */}
               <div
                 style={{
                   background: "rgba(255, 255, 255, 0.02)",
@@ -861,118 +1248,58 @@ export default function StagedQueue({
                   padding: 12,
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  gap: 8,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Zap size={14} style={{ color: "var(--accent)" }} />
-                    <strong style={{ fontSize: 12 }}>Trade Copier & Multi-Account Diversification Matrix</strong>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontFamily: "monospace",
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      background: "rgba(56, 189, 248, 0.12)",
-                      color: "var(--accent)",
-                      border: "1px solid rgba(56, 189, 248, 0.25)",
-                    }}
-                  >
-                    Magic: {trade.magicNumber || modalRouting.magicNumber} · Comment: {trade.brokerComment || modalRouting.comment}
-                  </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Zap size={14} style={{ color: "var(--accent)" }} />
+                  <strong style={{ fontSize: 12 }}>Direct MT5 Order Submission Credentials</strong>
                 </div>
 
-                {/* Magic Number Positional Breakdown */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                    gap: 6,
-                    background: "rgba(0, 0, 0, 0.25)",
-                    padding: 8,
-                    borderRadius: 6,
-                    fontSize: 10,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  <div>
-                    <span style={{ color: "var(--muted)", fontSize: 9 }}>ASSET CLASS</span>
-                    <div style={{ fontWeight: 700, color: "var(--fg)" }}>{modalMagicDecoded.asset?.label || "Asset"}</div>
+                {isDual ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: 8, fontFamily: "monospace", fontSize: 11 }}>
+                    <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "6px 8px", borderRadius: 5 }}>
+                      <span style={{ color: "var(--accent)", fontWeight: 700 }}>Leg 1 (Default): </span>
+                      <span>Magic #{defaultLeg?.magicNumber || modalRoutingDefault?.magicNumber}</span>
+                      <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 2 }}>Comment: {defaultLeg?.brokerComment || modalRoutingDefault?.comment}</div>
+                    </div>
+                    <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "6px 8px", borderRadius: 5 }}>
+                      <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700 }}>Leg 2 (Prop Safe): </span>
+                      <span>Magic #{propLeg?.magicNumber || modalRoutingProp?.magicNumber}</span>
+                      <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 2 }}>Comment: {propLeg?.brokerComment || modalRoutingProp?.comment}</div>
+                    </div>
                   </div>
-                  <div>
-                    <span style={{ color: "var(--muted)", fontSize: 9 }}>HORIZON</span>
-                    <div style={{ fontWeight: 700, color: "var(--accent)" }}>{modalMagicDecoded.horizon?.label || "15M-1M"}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--muted)", fontSize: 9 }}>ENTRY MODEL</span>
-                    <div style={{ fontWeight: 700, color: "var(--fg)" }}>{modalMagicDecoded.model?.badge || "ICT 2022"}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--muted)", fontSize: 9 }}>MANAGEMENT</span>
-                    <div style={{ fontWeight: 700, color: "var(--green)" }}>{modalMagicDecoded.management?.label || "50% Milestone"}</div>
-                  </div>
-                </div>
-
-                {/* Receiver Accounts Routing Status */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>
-                    Receiver Account Routing ({modalRouting.eligibleCount} of {modalRouting.allAccountsCount} Accounts Will Copy):
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {modalRouting.evaluations.map((evalItem) => (
-                      <div
-                        key={evalItem.profileId}
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "monospace", fontSize: 11 }}>
+                    {(trade.magicNumber || modalRouting?.magicNumber) && (
+                      <span
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          padding: "8px 10px",
-                          borderRadius: 6,
-                          background: evalItem.eligible ? "rgba(34, 197, 94, 0.06)" : "rgba(255, 255, 255, 0.02)",
-                          border: `1px solid ${evalItem.eligible ? "rgba(34, 197, 94, 0.25)" : "var(--border)"}`,
-                          fontSize: 11,
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          background: "rgba(56, 189, 248, 0.12)",
+                          color: "var(--accent)",
+                          border: "1px solid rgba(56, 189, 248, 0.25)",
+                          fontWeight: 700,
                         }}
                       >
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontWeight: 700, color: evalItem.eligible ? "var(--fg)" : "var(--muted)" }}>
-                              {evalItem.profileName}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: 9,
-                                fontWeight: 700,
-                                padding: "1px 5px",
-                                borderRadius: 3,
-                                background: evalItem.eligible ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                                color: evalItem.eligible ? "var(--green)" : "var(--red)",
-                              }}
-                            >
-                              {evalItem.eligible ? "✓ WILL COPY" : "✗ FILTERED OUT"}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 10, color: evalItem.eligible ? "var(--green)" : "var(--muted)" }}>
-                            {evalItem.eligible
-                              ? `Matched: ${evalItem.matches.join(" · ") || "All criteria aligned"}`
-                              : `Blocked: ${evalItem.reasons.join(" · ")}`}
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 10 }}>
-                          <div style={{ color: "var(--muted)", fontSize: 9 }}>TARGET RISK</div>
-                          <div style={{ fontWeight: 700, color: evalItem.eligible ? "var(--accent)" : "var(--muted)" }}>
-                            {evalItem.riskOverridePct ? `${evalItem.riskOverridePct}% Risk` : "Standard Risk"}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                        Magic: #{trade.magicNumber || modalRouting.magicNumber}
+                      </span>
+                    )}
+                    {(trade.brokerComment || modalRouting?.comment) && (
+                      <span
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          color: "var(--fg)",
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        Comment: {trade.brokerComment || modalRouting.comment}
+                      </span>
+                    )}
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Footer Actions */}
@@ -988,7 +1315,7 @@ export default function StagedQueue({
               >
                 <button
                   onClick={() => {
-                    onDismissTrade(trade._id);
+                    handleDismiss(setup);
                     closeDetails();
                   }}
                   style={{
@@ -999,7 +1326,7 @@ export default function StagedQueue({
                     border: "1px solid rgba(239, 68, 68, 0.3)",
                   }}
                 >
-                  <X size={13} /> Dismiss Setup
+                  <X size={13} /> {isDual ? "Dismiss Dual Setup" : "Dismiss Setup"}
                 </button>
 
                 <div style={{ display: "flex", gap: 8 }}>
@@ -1015,11 +1342,11 @@ export default function StagedQueue({
                     Close
                   </button>
 
-                  {trade.status === "staged" && (
+                  {setup.status === "staged" && (
                     <button
                       disabled={hasVeto || !!pendingAction}
                       onClick={() => {
-                        onApproveTrade(trade._id);
+                        handleApprove(setup);
                         closeDetails();
                       }}
                       style={{
@@ -1032,7 +1359,7 @@ export default function StagedQueue({
                         cursor: hasVeto ? "not-allowed" : "pointer",
                       }}
                     >
-                      <Check size={14} /> Approve & Arm Execution
+                      <Check size={14} /> {isDual ? "Approve & Arm Dual Execution" : "Approve & Arm Execution"}
                     </button>
                   )}
                 </div>

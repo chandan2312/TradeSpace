@@ -237,6 +237,42 @@ test("Aggregates spread friction drag and recovery in KPIs", () => {
   assert.strictEqual(kpis.avgRecoveryPct, 62.0);
 });
 
+// 7. Isolation of Staged & Pending Trades from Journal Execution Ledger
+test("Staged and pending limit ideas are strictly marked unexecuted", () => {
+  const stagedTrade = {
+    symbol: "EURUSD",
+    dir: 1,
+    status: "staged",
+    entryPrice: 1.0800,
+    slPrice: 1.0770,
+    tpPrice: 1.0950,
+  };
+  const rowStaged = normalizeJournalRow(stagedTrade);
+  assert.strictEqual(rowStaged.outcome, "STAGED");
+
+  const pendingTrade = {
+    symbol: "NAS100",
+    dir: -1,
+    status: "pending",
+    entryPrice: 20000,
+    slPrice: 20100,
+    tpPrice: 19600,
+  };
+  const rowPending = normalizeJournalRow(pendingTrade);
+  assert.strictEqual(rowPending.outcome, "CANCELLED"); // never executed!
+
+  const armedTrade = {
+    symbol: "XAUUSD",
+    dir: 1,
+    status: "armed",
+    entryPrice: 2650,
+    slPrice: 2640,
+    tpPrice: 2700,
+  };
+  const rowArmed = normalizeJournalRow(armedTrade);
+  assert.strictEqual(rowArmed.outcome, "CANCELLED"); // never executed!
+});
+
 console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, 0 FAILED`);
 console.log("=======================================================");

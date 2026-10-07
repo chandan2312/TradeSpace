@@ -15,12 +15,14 @@ export default function ControlConsole({ config = {}, brokerAccount = null, allT
   const brokerEquity = Number(brokerAccount?.equity ?? brokerAccount?.balance);
   const [form, setForm] = useState(() => ({
     executionMode: config.executionMode ?? "paper", liveTrading: config.liveTrading ?? false,
-    horizonMode: config.horizonMode ?? "adaptive", minConviction: config.minConviction ?? 70,
-    minRunwayPct: config.minRunwayPct ?? 25, confluenceThreshold: config.confluenceThreshold ?? 60,
-    maxConcurrentTrades: config.maxConcurrentTrades ?? 3, minRR: config.minRR ?? 2.2,
+    horizonMode: config.horizonMode ?? "adaptive", minConviction: config.minConviction ?? 60,
+    minRunwayPct: config.minRunwayPct ?? 15, confluenceThreshold: config.confluenceThreshold ?? 60,
+    maxConcurrentTrades: config.maxConcurrentTrades ?? 10, minRR: config.minRR ?? 1.8,
     riskPerTradePct: config.riskPerTradePct ?? 1,
+    enforceDollarRiskCaps: config.enforceDollarRiskCaps ?? false,
+    measureRiskInR: config.measureRiskInR ?? true,
     accountSize: brokerEquity > 0 ? brokerEquity : (config.accountSize ?? 25000),
-    maxDailyLossPct: config.maxDailyLossPct ?? 3, requireSmtConfirm: config.requireSmtConfirm ?? false,
+    maxDailyLossPct: config.maxDailyLossPct ?? 10, requireSmtConfirm: config.requireSmtConfirm ?? false,
     enforceSymbolSessions: config.enforceSymbolSessions ?? true, telegram: config.telegram ?? true,
     enabledModels: { ...(config.enabledModels || {}) },
     allowedTimeSlots: { ...(config.allowedTimeSlots || {}), dead_zone: false },
@@ -74,7 +76,7 @@ export default function ControlConsole({ config = {}, brokerAccount = null, allT
           <section style={sectionStyle}>
             <h3 style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 8px" }}>Qualification thresholds</h3>
             <div style={grid}>
-              <NumberField label="Min conviction (%)" name="minConviction" form={form} onChange={change} min={50} max={95} />
+              <NumberField label="Min conviction (%)" name="minConviction" form={form} onChange={change} min={30} max={95} />
               <NumberField label="Min range runway (%)" name="minRunwayPct" form={form} onChange={change} min={0} max={100} />
               <NumberField label="Min risk:reward (R)" name="minRR" form={form} onChange={change} min={1} step={0.1} />
               <NumberField label="Min confluence (of 100)" name="confluenceThreshold" form={form} onChange={change} min={0} max={100} />
@@ -108,14 +110,22 @@ export default function ControlConsole({ config = {}, brokerAccount = null, allT
                 )}
               </div>
               <NumberField label="Risk per trade (%)" name="riskPerTradePct" form={form} onChange={change} min={0.01} step={0.25} />
-              <NumberField label="Max concurrent trades" name="maxConcurrentTrades" form={form} onChange={change} min={1} max={8} />
-              <NumberField label="Max daily loss (%)" name="maxDailyLossPct" form={form} onChange={change} min={0.1} step={0.25} />
+              <NumberField label="Max concurrent trades" name="maxConcurrentTrades" form={form} onChange={change} min={1} max={50} />
+              <NumberField label="Max daily loss (%)" name="maxDailyLossPct" form={form} onChange={change} min={0.1} max={50} step={0.25} />
             </div>
+            <label style={{ display: "flex", gap: 7, fontSize: 11, marginTop: 10, alignItems: "center", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={!form.enforceDollarRiskCaps}
+                onChange={(e) => change("enforceDollarRiskCaps", !e.target.checked)}
+              />
+              <span><strong>Pure R-Measurement Mode (Demo Master Sender)</strong> — Bypass dollar risk caps &amp; dollar drawdown limits</span>
+            </label>
             <div style={{ padding: 10, border: "1px solid var(--border)", borderRadius: 8, marginTop: 10, fontSize: 11, lineHeight: 1.5 }}>
               <strong style={{ color: "var(--accent)" }}>Dual Execution Architecture (Default + Prop-Firm Safe)</strong>
               <div style={{ marginTop: 4 }}>• <strong>Default Leg (MG1)</strong>: At 50% TP distance, books 40% lot size & moves SL to breakeven; 60% runner continues to full TP. (Swing setups exempt from 5R clamp).</div>
               <div style={{ marginTop: 2 }}>• <strong>Prop-Firm Safe (MG2)</strong>: Short 1.5R–2.5R TP bracket. 1.0R halves risk (-0.5R); 1.5R moves SL to breakeven (full exit if TP is 1.5R); full exit at TP.</div>
-              <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 10 }}>Every qualified setup executes both legs simultaneously on MT5, cleanly routed downstream via trade copiers and magic numbers.</div>
+              <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 10 }}>Every qualified setup executes both legs simultaneously on MT5 with institutional magic numbers and comments.</div>
             </div>
           </section>
           <section style={sectionStyle}>

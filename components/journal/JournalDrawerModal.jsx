@@ -450,6 +450,82 @@ export default function JournalDrawerModal({
                 </div>
               </div>
 
+              {/* 50% MILESTONE REDECISION AUDIT TELEMETRY */}
+              {trade.redecisionDone && (
+                <div
+                  style={{
+                    background:
+                      trade.redecisionAction === "CLOSE_FULL_NOW"
+                        ? "rgba(239, 83, 80, 0.08)"
+                        : trade.redecisionAction === "REDUCE_TP"
+                        ? "rgba(0, 176, 255, 0.08)"
+                        : trade.redecisionAction === "EXPAND_TP"
+                        ? "rgba(171, 71, 188, 0.08)"
+                        : "rgba(38, 166, 154, 0.08)",
+                    border: `1px solid ${
+                      trade.redecisionAction === "CLOSE_FULL_NOW"
+                        ? "rgba(239, 83, 80, 0.3)"
+                        : trade.redecisionAction === "REDUCE_TP"
+                        ? "rgba(0, 176, 255, 0.3)"
+                        : trade.redecisionAction === "EXPAND_TP"
+                        ? "rgba(171, 71, 188, 0.3)"
+                        : "rgba(38, 166, 154, 0.3)"
+                    }`,
+                    borderRadius: 8,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--fg)" }}>50% MILESTONE REDECISION (AMRE)</div>
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 800,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background:
+                          trade.redecisionAction === "CLOSE_FULL_NOW"
+                            ? "rgba(239, 83, 80, 0.2)"
+                            : trade.redecisionAction === "REDUCE_TP"
+                            ? "rgba(0, 176, 255, 0.2)"
+                            : trade.redecisionAction === "EXPAND_TP"
+                            ? "rgba(171, 71, 188, 0.2)"
+                            : "rgba(38, 166, 154, 0.2)",
+                        color:
+                          trade.redecisionAction === "CLOSE_FULL_NOW"
+                            ? "var(--red)"
+                            : trade.redecisionAction === "REDUCE_TP"
+                            ? "var(--accent)"
+                            : trade.redecisionAction === "EXPAND_TP"
+                            ? "var(--purple, #ab47bc)"
+                            : "var(--green)",
+                      }}
+                    >
+                      {trade.redecisionAction}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 11, color: "var(--fg)", marginBottom: 8, lineHeight: 1.4 }}>
+                    {trade.redecisionReason}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontFamily: "monospace", fontSize: 11 }}>
+                    <div>
+                      <span style={{ fontSize: 9, color: "var(--muted)", display: "block" }}>SCORE</span>
+                      <strong style={{ color: "var(--accent)" }}>{trade.redecisionScore > 0 ? `+${trade.redecisionScore}` : trade.redecisionScore}/100</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 9, color: "var(--muted)", display: "block" }}>OLD TARGET</span>
+                      <span>{trade.redecisionOldTp ? formatPrice5(trade.redecisionOldTp) : "-"} ({trade.redecisionOldRR ?? trade.targetRR}R)</span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 9, color: "var(--muted)", display: "block" }}>NEW TARGET</span>
+                      <strong style={{ color: "var(--green)" }}>{trade.redecisionNewTp ? formatPrice5(trade.redecisionNewTp) : (trade.redecisionAction === "CLOSE_FULL_NOW" ? "MARKET EXIT" : "-")} ({trade.redecisionNewRR ?? trade.targetRR}R)</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Time Telemetry */}
               <div
                 style={{
@@ -523,9 +599,9 @@ export default function JournalDrawerModal({
                 </div>
               </div>
 
-              {/* Copier & Telemetry Strip */}
+              {/* Broker Order Telemetry Strip */}
               <div style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: "var(--fg)" }}>BROKER & COPIER TELEMETRY</div>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: "var(--fg)" }}>BROKER ORDER TELEMETRY</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, fontFamily: "monospace" }}>
                   <div>
                     <span style={{ fontSize: 9, color: "var(--muted)", display: "block" }}>MAGIC NUMBER</span>

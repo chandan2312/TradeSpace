@@ -136,7 +136,7 @@ export default function TopBar({
             <a href="/autonomous" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
               <Activity size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
             </a>
-            <a href="/journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
+            <a href="/autonomous?section=journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
               <BookOpen size={14} /> Trading Journal
             </a>
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
@@ -602,7 +602,7 @@ export default function TopBar({
             <a href="/autonomous" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
             </a>
-            <a href="/journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
+            <a href="/autonomous?section=journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <BookOpen size={14} /> Trading Journal
             </a>
             <button 

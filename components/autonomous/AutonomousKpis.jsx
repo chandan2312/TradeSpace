@@ -59,8 +59,10 @@ export default function AutonomousKpis({ metrics, config, brokerAccount }) {
     },
     {
       label: "Daily Circuit Breaker",
-      value: maxDailyLoss !== null ? `Max -${maxDailyLoss}%` : unavailable,
-      sub: "Auto-halt safeguard",
+      value: config?.enforceDollarRiskCaps === false
+        ? (config?.maxDailyLossR ? `Max -${config.maxDailyLossR}R` : "Unconstrained (R-Mode)")
+        : (maxDailyLoss !== null ? `Max -${maxDailyLoss}%` : unavailable),
+      sub: config?.enforceDollarRiskCaps === false ? "Demo Sender (Copier R-Mode)" : "Auto-halt safeguard",
       icon: ShieldCheck,
       color: "var(--purple)",
     },

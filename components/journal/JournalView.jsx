@@ -44,8 +44,8 @@ const darkGridTheme = themeQuartz.withPart(colorSchemeDark).withParams({
   borderColor: "#232a38",
   headerBackgroundColor: "#10141d",
   headerForegroundColor: "#8a93a6",
-  rowHoverColor: "rgba(255, 255, 255, 0.04)",
-  oddRowBackgroundColor: "rgba(255, 255, 255, 0.01)",
+  rowHoverColor: "rgba(41, 98, 255, 0.08)",
+  oddRowBackgroundColor: "rgba(0, 0, 0, 0.16)",
   fontSize: 12,
   fontFamily: "var(--font, -apple-system, sans-serif)",
 });
@@ -382,6 +382,9 @@ export default function JournalView() {
   // Filtered dataset
   const filteredTrades = useMemo(() => {
     return trades.filter((t) => {
+      // Staged, pending, or unexecuted setups have no place in the execution journal
+      if (t.outcome === "STAGED" || t.outcome === "CANCELLED" || t.status === "staged") return false;
+
       // 1. Sheet selection filter
       if (activeSheet !== "ALL") {
         const isProp = t.managementLogic === "prop_firm_safe" || Boolean(t.isPropFirm);
@@ -399,7 +402,7 @@ export default function JournalView() {
       // 3. Outcome multi-select filter (treats -0.2R to +0.2R as BREAKEVEN)
       const ar = Number(t.actualR ?? t.realizedR ?? 0);
       let effOutcome = t.outcome || "OPEN";
-      if (effOutcome !== "CANCELLED" && effOutcome !== "OPEN") {
+      if (effOutcome !== "OPEN") {
         if (ar >= -0.2 && ar <= 0.2) effOutcome = "BREAKEVEN";
         else if (ar > 0.2) effOutcome = "WIN";
         else effOutcome = "LOSS";
@@ -556,6 +559,66 @@ export default function JournalView() {
               }}
             >
               {isProp ? "PROP-FIRM SAFE" : "DEFAULT (50%)"}
+            </span>
+          );
+        },
+      },
+      {
+        field: "redecisionAction",
+        headerName: "Milestone Redecision",
+        width: 175,
+        filter: "agTextColumnFilter",
+        cellRenderer: (params) => {
+          const act = params.value;
+          if (!act) {
+            return (
+              <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>
+                {params.data?.isPropFirm ? "N/A (Prop Safe)" : "Pending / None"}
+              </span>
+            );
+          }
+          const isClose = act === "CLOSE_FULL_NOW";
+          const isReduce = act === "REDUCE_TP";
+          const isExpand = act === "EXPAND_TP";
+
+          const bg = isClose
+            ? "rgba(239, 83, 80, 0.18)"
+            : isReduce
+            ? "rgba(255, 179, 0, 0.18)"
+            : isExpand
+            ? "rgba(171, 71, 188, 0.18)"
+            : "rgba(38, 166, 154, 0.18)";
+
+          const color = isClose
+            ? "var(--red)"
+            : isReduce
+            ? "var(--orange, #ffb300)"
+            : isExpand
+            ? "var(--purple, #ab47bc)"
+            : "var(--green)";
+
+          const label = isClose
+            ? "CLOSE NOW"
+            : isReduce
+            ? `REDUCE (${params.data?.redecisionNewRR ?? "-"}R)`
+            : isExpand
+            ? `EXPAND (${params.data?.redecisionNewRR ?? "-"}R)`
+            : "HOLD FULL";
+
+          return (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: "2px 8px",
+                borderRadius: 4,
+                background: bg,
+                color: color,
+                fontFamily: "monospace",
+              }}
+              title={params.data?.redecisionReason || `AMRE Score: ${params.data?.redecisionScore}`}
+            >
+              {label}
             </span>
           );
         },
@@ -1204,7 +1267,7 @@ export default function JournalView() {
           />
         </div>
 
-        {/* 1. Multi-Select Outcome Filter (Defaults: WIN, LOSS, BREAKEVEN, OPEN - excludes CANCELLED by default!) */}
+        {/* 1. Multi-Select Outcome Filter (Strictly executed outcomes: WIN, LOSS, BREAKEVEN, OPEN) */}
         <MultiSelectFilter
           label="Outcome"
           icon={CheckCircle2}
@@ -1213,7 +1276,6 @@ export default function JournalView() {
             { value: "LOSS", label: "Losses 🛑", badge: "SL" },
             { value: "BREAKEVEN", label: "Breakeven ⚪ (±0.2R)", badge: "BE" },
             { value: "OPEN", label: "Open Positions 🟢", badge: "Running" },
-            { value: "CANCELLED", label: "Cancelled / Expired 🚫", badge: "Unentered" },
           ]}
           selected={selectedOutcomes}
           onChange={setSelectedOutcomes}
@@ -1342,6 +1404,7 @@ export default function JournalView() {
       {/* 5. DATA PRESENTATION CONTAINER (SPREADSHEET OR TABLE VIEW) */}
       {viewMode === "spreadsheet" ? (
         <div
+          className="ag-theme-quartz-dark"
           style={{
             width: "100%",
             height: "calc(100vh - 290px)",
@@ -1458,6 +1521,7 @@ export default function JournalView() {
                     <th style={{ padding: "10px 14px" }}>Symbol</th>
                     <th style={{ padding: "10px 14px" }}>Side</th>
                     <th style={{ padding: "10px 14px" }}>Risk Model</th>
+                    <th style={{ padding: "10px 14px" }}>Milestone Redecision</th>
                     <th style={{ padding: "10px 14px" }}>Outcome</th>
                     <th style={{ padding: "10px 14px" }}>Actual R (AR)</th>
                     <th style={{ padding: "10px 14px" }}>Ideal R (IR)</th>
@@ -1532,6 +1596,48 @@ export default function JournalView() {
                           >
                             {isProp ? "PROP-FIRM" : "DEFAULT (50%)"}
                           </span>
+                        </td>
+                        <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                          {t.redecisionAction ? (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 800,
+                                padding: "2px 7px",
+                                borderRadius: 4,
+                                background:
+                                  t.redecisionAction === "CLOSE_FULL_NOW"
+                                    ? "rgba(239, 83, 80, 0.18)"
+                                    : t.redecisionAction === "REDUCE_TP"
+                                    ? "rgba(255, 179, 0, 0.18)"
+                                    : t.redecisionAction === "EXPAND_TP"
+                                    ? "rgba(171, 71, 188, 0.18)"
+                                    : "rgba(38, 166, 154, 0.18)",
+                                color:
+                                  t.redecisionAction === "CLOSE_FULL_NOW"
+                                    ? "var(--red)"
+                                    : t.redecisionAction === "REDUCE_TP"
+                                    ? "var(--orange, #ffb300)"
+                                    : t.redecisionAction === "EXPAND_TP"
+                                    ? "var(--purple, #ab47bc)"
+                                    : "var(--green)",
+                                fontFamily: "monospace",
+                              }}
+                              title={t.redecisionReason || `AMRE Score: ${t.redecisionScore}`}
+                            >
+                              {t.redecisionAction === "CLOSE_FULL_NOW"
+                                ? "CLOSE NOW"
+                                : t.redecisionAction === "REDUCE_TP"
+                                ? `REDUCE (${t.redecisionNewRR ?? "-"}R)`
+                                : t.redecisionAction === "EXPAND_TP"
+                                ? `EXPAND (${t.redecisionNewRR ?? "-"}R)`
+                                : "HOLD FULL"}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>
+                              {t.isPropFirm ? "N/A" : "-"}
+                            </span>
+                          )}
                         </td>
                         <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
                           <span

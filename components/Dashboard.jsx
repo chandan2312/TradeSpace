@@ -729,13 +729,19 @@ export default function Dashboard() {
       ]);
       const autoList = autoRes?.ok ? [
         ...(Array.isArray(autoRes.activeTrades) ? autoRes.activeTrades : []),
+        ...(Array.isArray(autoRes.stagedTrades) ? autoRes.stagedTrades : []),
         ...(Array.isArray(autoRes.executionTrades) ? autoRes.executionTrades : []),
         ...(Array.isArray(autoRes.recentClosed) ? autoRes.recentClosed : []),
       ] : [];
       const journalList = journalRes?.ok && Array.isArray(journalRes.trades) ? journalRes.trades : [];
       const rawList = [...autoList, ...journalList].filter((t) =>
         !["invalidated", "cancelled", "expired", "dismissed"].includes(t.status) &&
-        (Boolean(t.filledAt) || Boolean(t.filledPrice) || ["active", "managing", "closing", "closed_tp", "closed_sl", "closed_be"].includes(t.status))
+        (
+          ["staged", "armed", "confirming", "placing", "pending"].includes(t.status) ||
+          Boolean(t.filledAt) ||
+          Boolean(t.filledPrice) ||
+          ["active", "managing", "closing", "closed_tp", "closed_sl", "closed_be"].includes(t.status)
+        )
       );
       const seen = new Set();
       const deduped = [];
@@ -749,6 +755,12 @@ export default function Dashboard() {
       setAutonomousTrades(deduped);
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (autoCockpitOpen) {
+      loadAutonomousTrades();
+    }
+  }, [autoCockpitOpen, loadAutonomousTrades]);
 
   useEffect(() => {
     loadAlerts();

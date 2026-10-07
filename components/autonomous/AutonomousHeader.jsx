@@ -25,6 +25,8 @@ export default function AutonomousHeader({
   isScanning,
   onOpenSettings,
   pendingAction,
+  onOpenJournal,
+  activeSection,
 }) {
   const [eetTime, setEetTime] = useState("");
   const [activeSession, setActiveSession] = useState("");
@@ -92,24 +94,33 @@ export default function AutonomousHeader({
           <ArrowLeft size={14} /> Charts
         </a>
 
-        <a
-          href="/journal"
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenJournal) {
+              onOpenJournal();
+            } else if (typeof window !== "undefined") {
+              window.location.href = "/autonomous?section=journal";
+            }
+          }}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            color: "var(--accent)",
+            color: activeSection === "journal" ? "#fff" : "var(--accent)",
             textDecoration: "none",
             fontSize: 13,
             padding: "4px 8px",
             borderRadius: 6,
-            border: "1px solid rgba(41, 98, 255, 0.3)",
-            background: "rgba(41, 98, 255, 0.1)",
+            border: activeSection === "journal" ? "1px solid var(--accent)" : "1px solid rgba(41, 98, 255, 0.3)",
+            background: activeSection === "journal" ? "var(--accent)" : "rgba(41, 98, 255, 0.1)",
+            cursor: "pointer",
+            fontWeight: 600,
           }}
           title="Open Autonomous Trading Journal"
         >
           <BookOpen size={14} /> Journal
-        </a>
+        </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
           <div

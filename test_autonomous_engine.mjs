@@ -45,7 +45,7 @@ import {
 } from "./lib/autonomous/management.js";
 import { computeRR } from "./lib/draw/core.js";
 import { TERMINAL_STATES } from "./lib/autonomous/store.js";
-import { calculateRiskSize } from "./lib/autonomous/risk.js";
+import { calculateRiskSize, dailyRiskGovernor, calculateEffectiveGroupRisk, calculatePartitionedDailyPnl, calculatePartitionedDailyR } from "./lib/autonomous/risk.js";
 import { calculateInstitutionalPositionSize, getMT5State } from "./lib/autonomous/mt5.js";
 import {
   encodeDecimalMagic,
@@ -65,6 +65,10 @@ import {
   extractSpreadPrice,
   isSpreadAcceptable,
 } from "./lib/autonomous/friction.js";
+import {
+  evaluateMilestoneRedecision,
+  synthesizeRedecision,
+} from "./lib/autonomous/redecision.js";
 import { ObjectId } from "mongodb";
 
 let passed = 0;
@@ -806,10 +810,10 @@ console.log("=======================================================");
   assert(recentFingerprints.has(getSetupFingerprint("NAS100", 1, levelA)) === true, "Identical NAS100 setup recognized in recent fingerprint cache");
   assert(recentFingerprints.has(getSetupFingerprint("NAS100", 1, levelDifferent)) === false, "Distinct new setup passes through dedup check");
 
-  // 10.4 Cooldown window parameters defined in store
-  assert(DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes >= 30, `Cooldown period configured: ${DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes}m`);
+  // 10.4 Cooldown window parameters defined in store (loosened for downstream receiver flow)
+  assert(DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes >= 15, `Cooldown period configured: ${DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes}m`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes >= 15, `Post-loss cooldown configured: ${DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes}m`);
-  assert(DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes >= 45, `Dedup fingerprint window configured: ${DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes}m`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes >= 15, `Dedup fingerprint window configured: ${DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes}m`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.alertThrottleMinutes >= 15, `Alert throttle window configured: ${DEFAULT_AUTONOMOUS_CONFIG.alertThrottleMinutes}m`);
 
   // 10.5 Simulated alert throttle logic
@@ -1945,6 +1949,510 @@ console.log("=======================================================");
   const beWithSpread = breakevenPrice(tradeWithSpread, spec);
   assert(beWithSpread >= 1.08510, `Breakeven covers spread buffer: expected >= 1.08510, got ${beWithSpread}`);
 }
+
+// =======================================================
+// TEST SUITE 20: Autonomous Milestone Redecision Engine (AMRE) at 50% Target
+// =======================================================
+console.log("\n=======================================================");
+console.log("TEST SUITE 20: Autonomous Milestone Redecision Engine (AMRE) at 50% Target");
+console.log("=======================================================");
+
+{
+  const tradeBuy = {
+    _id: "trade_redecision_test",
+    symbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0800,
+    slPrice: 1.0770,
+    initialRiskDistance: 0.0030,
+    targetRR: 5.0,
+    tpPrice: 1.0950,
+    initialVolume: 1.0,
+    remainingVolume: 0.6,
+    managementLogic: "milestone_50",
+    symbolSpec: { digits: 5, point: 0.00001 },
+  };
+
+  // 20.1 Half Target calculation for redecision trigger
+  const half = calculateHalfTargetLevel(tradeBuy);
+  assert(half.halfRR === 2.5, `50% milestone target RR is 2.5R: got ${half.halfRR}R`);
+  assert(half.price === 1.0875, `50% milestone target price is 1.0875: got ${half.price}`);
+
+  // 20.2 Emergency exit redecision (Opposing MSS -> CLOSE_FULL_NOW)
+  const closeVerdict = synthesizeRedecision({
+    momentum: { score: -80, opposingMss: true, opposingWickRatio: 0.45 },
+    obstacles: { score: -50, obstacles: [] },
+    dol: { score: -60, status: "ALREADY_SWEPT" },
+    smt: { score: -20 },
+    session: { score: 0 },
+    trade: tradeBuy,
+    currentPrice: 1.0875,
+  });
+  assert(closeVerdict.action === "CLOSE_FULL_NOW", `Opposing MSS triggers CLOSE_FULL_NOW: got ${closeVerdict.action}`);
+  assert(closeVerdict.newTpPrice === null, "CLOSE_FULL_NOW specifies market exit with no TP target");
+
+  // 20.3 Target reduction redecision (Obstacle ahead -> REDUCE_TP)
+  const reduceVerdict = synthesizeRedecision({
+    momentum: { score: 10, opposingMss: false, opposingWickRatio: 0.2 },
+    obstacles: {
+      score: -70,
+      nearestObstacle: {
+        price: 1.0880,
+        safeBufferPrice: 1.0876,
+        safeBufferRR: 2.53,
+        name: "H4 Bearish Order Block",
+      },
+      obstacles: [{ name: "H4 OB" }],
+    },
+    dol: { score: 10, status: "CLEAR_RUNWAY" },
+    smt: { score: 0 },
+    session: { score: 0 },
+    trade: tradeBuy,
+    currentPrice: 1.0875,
+  });
+  assert(reduceVerdict.action === "REDUCE_TP", `Obstacle in path triggers REDUCE_TP: got ${reduceVerdict.action}`);
+  assert(reduceVerdict.newTargetRR < 5.0 && reduceVerdict.newTargetRR >= 1.5, `Reduced RR clamped to institutional bracket: got ${reduceVerdict.newTargetRR}R`);
+  assert(reduceVerdict.newTpPrice > 1.0800 && reduceVerdict.newTpPrice < 1.0950, `Reduced TP price properly placed: got ${reduceVerdict.newTpPrice}`);
+
+  // 20.4 Conviction hold redecision (Clear skies & healthy trend -> HOLD_FULL_TP)
+  const holdVerdict = synthesizeRedecision({
+    momentum: { score: 50, opposingMss: false, opposingWickRatio: 0.15 },
+    obstacles: { score: 70, obstacles: [], nearestObstacle: null },
+    dol: { score: 40, status: "CLEAR_RUNWAY" },
+    smt: { score: 20 },
+    session: { score: 40 },
+    trade: tradeBuy,
+    currentPrice: 1.0875,
+  });
+  assert(holdVerdict.action === "HOLD_FULL_TP", `Clear skies triggers HOLD_FULL_TP: got ${holdVerdict.action}`);
+  assert(holdVerdict.newTargetRR === 5.0, `HOLD_FULL_TP maintains full 5.0R target: got ${holdVerdict.newTargetRR}R`);
+  assert(holdVerdict.newTpPrice === 1.0950, `HOLD_FULL_TP maintains full TP price: got ${holdVerdict.newTpPrice}`);
+
+  // 20.5 Target expansion redecision (Runaway expansion -> EXPAND_TP)
+  const expandVerdict = synthesizeRedecision({
+    momentum: { score: 85, opposingMss: false, opposingWickRatio: 0.1 },
+    obstacles: { score: 80, obstacles: [], nearestObstacle: null },
+    dol: { score: 80, status: "UNREACHED_MAGNET" },
+    smt: { score: 40 },
+    session: { score: 60 },
+    trade: { ...tradeBuy, targetRR: 3.0, tpPrice: 1.0890 },
+    currentPrice: 1.0845,
+  });
+  assert(expandVerdict.action === "EXPAND_TP", `Runaway expansion triggers EXPAND_TP: got ${expandVerdict.action}`);
+  assert(expandVerdict.newTargetRR === 4.0, `EXPAND_TP increments target to 4.0R: got ${expandVerdict.newTargetRR}R`);
+}
+
+// ===========================================================================
+// TEST SUITE 21: Partitioned Copier Risk Engine & Loosened Entry Constraints
+// ===========================================================================
+console.log("\n=======================================================");
+console.log("TEST SUITE 21: Partitioned Copier Risk Engine & Loosened Capacity");
+console.log("=======================================================");
+
+{
+  // 21.1 Dual-Leg Sibling Invariance in calculateEffectiveGroupRisk
+  const legDefault = {
+    _id: "trade_def_1",
+    groupId: "grp_nas_1",
+    symbol: "NAS100",
+    initialRiskUsd: 500,
+    legId: "default",
+    managementLogic: "milestone_50",
+  };
+  const legProp = {
+    _id: "trade_prop_1",
+    groupId: "grp_nas_1",
+    symbol: "NAS100",
+    initialRiskUsd: 500,
+    legId: "prop_firm",
+    managementLogic: "prop_firm_safe",
+  };
+
+  const initialRiskCheck = calculateEffectiveGroupRisk([legDefault], legProp);
+  assert(initialRiskCheck.reservedRisk === 500, `Baseline reserved risk is 1.0R ($500): got ${initialRiskCheck.reservedRisk}`);
+  assert(initialRiskCheck.incrementalRisk === 0, `Sibling leg adds strictly 0 incremental risk: got ${initialRiskCheck.incrementalRisk}`);
+  assert(initialRiskCheck.totalWithNew === 500, `Group effective risk is invariant to sibling addition: got ${initialRiskCheck.totalWithNew}`);
+
+  // 21.2 Asymmetric sibling risk sizing
+  const legDefaultAsym = { ...legDefault, initialRiskUsd: 400 };
+  const legPropAsym = { ...legProp, initialRiskUsd: 650 };
+  const asymRiskCheck = calculateEffectiveGroupRisk([legDefaultAsym], legPropAsym);
+  assert(asymRiskCheck.incrementalRisk === 250, `Incremental risk is max(0, new - old) ($250): got ${asymRiskCheck.incrementalRisk}`);
+  assert(asymRiskCheck.totalWithNew === 650, `Total group risk equals max leg risk ($650): got ${asymRiskCheck.totalWithNew}`);
+
+  // 21.3 Multi-setup group risk aggregation (eliminates 2x fake inflation across setups)
+  const setupA_1 = { _id: "s1_a", groupId: "grp_a", initialRiskUsd: 500 };
+  const setupA_2 = { _id: "s1_b", groupId: "grp_a", initialRiskUsd: 500 };
+  const setupB_1 = { _id: "s2_a", groupId: "grp_b", initialRiskUsd: 600 };
+  const setupB_2 = { _id: "s2_b", groupId: "grp_b", initialRiskUsd: 600 };
+
+  const allFourLegs = [setupA_1, setupA_2, setupB_1, setupB_2];
+  const combinedGroupRisk = calculateEffectiveGroupRisk(allFourLegs, null);
+  assert(combinedGroupRisk.reservedRisk === 1100, `Two dual-leg setups aggregate to $1,100 effective risk (not $2,200): got ${combinedGroupRisk.reservedRisk}`);
+
+  // 21.4 Partitioned Realized Daily PnL for Receiver Accounts
+  const stoppedLegDefault = {
+    _id: "closed_def_1",
+    groupId: "grp_stopped",
+    managementLogic: "milestone_50",
+    realizedPnl: -500,
+    closedAt: new Date(),
+  };
+  const stoppedLegProp = {
+    _id: "closed_prop_1",
+    groupId: "grp_stopped",
+    managementLogic: "prop_firm_safe",
+    realizedPnl: -500,
+    closedAt: new Date(),
+  };
+
+  const closedTrades = [stoppedLegDefault, stoppedLegProp];
+  const partitionedLoss = calculatePartitionedDailyPnl(closedTrades, new Date(Date.now() - 3600000));
+  assert(partitionedLoss === -500, `Dual stopout realized PnL on receiver account is -$500 (not -$1,000): got ${partitionedLoss}`);
+
+  // 21.5 dailyRiskGovernor with Partitioned vs Naive Drawdown
+  const startEquity = 50000;
+  const maxDailyLossPct = 2.0; // $1,000 limit
+
+  // Naive would charge -$1,000 drawdown + $400 new risk = $1,400 > $1,000 -> false veto
+  const naiveGov = dailyRiskGovernor({
+    startEquity,
+    equity: startEquity - 1000,
+    realizedPnl: -1000,
+    maxDailyLossPct,
+    reservedRisk: 0,
+    newRisk: 400,
+  });
+  assert(naiveGov.permitted === false, "Naive governor falsely trips circuit breaker at 2x loss");
+
+  // Partitioned charges -$500 drawdown + $400 new risk = $900 < $1,000 -> PERMITTED
+  const partitionedGov = dailyRiskGovernor({
+    startEquity,
+    equity: startEquity - 500,
+    realizedPnl: partitionedLoss,
+    maxDailyLossPct,
+    reservedRisk: 0,
+    newRisk: 400,
+  });
+  assert(partitionedGov.permitted === true, "Partitioned governor correctly permits trade within true receiver loss budget");
+  assert(partitionedGov.drawdown === 500, `Partitioned drawdown accurately measured as $500: got ${partitionedGov.drawdown}`);
+
+  // 21.6 Verification of Loosened Enterprise Constraints
+  assert(DEFAULT_AUTONOMOUS_CONFIG.maxConcurrentTrades === 10, `maxConcurrentTrades elevated to 10: got ${DEFAULT_AUTONOMOUS_CONFIG.maxConcurrentTrades}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.maxDailyLossPct === 10.0, `maxDailyLossPct elevated to 10.0: got ${DEFAULT_AUTONOMOUS_CONFIG.maxDailyLossPct}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.minConviction === 60, `minConviction loosened to 60: got ${DEFAULT_AUTONOMOUS_CONFIG.minConviction}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.minRunwayPct === 15, `minRunwayPct loosened to 15%: got ${DEFAULT_AUTONOMOUS_CONFIG.minRunwayPct}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.minRR === 1.8, `minRR loosened to 1.8R: got ${DEFAULT_AUTONOMOUS_CONFIG.minRR}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.partitionedCopierRisk === true, `partitionedCopierRisk is active: got ${DEFAULT_AUTONOMOUS_CONFIG.partitionedCopierRisk}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.maxSpreadToRisk === 0.25, `maxSpreadToRisk loosened to 0.25: got ${DEFAULT_AUTONOMOUS_CONFIG.maxSpreadToRisk}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes === 15, `cooldownMinutes loosened to 15m: got ${DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes === 15, `lossCooldownMinutes loosened to 15m: got ${DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes === 20, `dedupFingerprintWindowMinutes loosened to 20m: got ${DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes}`);
+
+  // 21.7 High-Capacity Multi-Setup Simulation (5 Setups x 2 Legs = 10 Slots on Master VPS)
+  const masterSlots = [];
+  for (let i = 1; i <= 5; i++) {
+    masterSlots.push({ tradeId: `t_${i}_def`, groupId: `grp_${i}`, symbol: `SYM_${i}`, riskUsd: 500 });
+    masterSlots.push({ tradeId: `t_${i}_prop`, groupId: `grp_${i}`, symbol: `SYM_${i}`, riskUsd: 500 });
+  }
+
+  // Count distinct groups in masterSlots
+  const distinctGroups = new Set();
+  for (const s of masterSlots) {
+    if (s.groupId) distinctGroups.add(s.groupId);
+  }
+  assert(masterSlots.length === 10, `Master VPS holds 10 active trade legs: got ${masterSlots.length}`);
+  assert(distinctGroups.size === 5, `Evaluated distinct setup groups is 5 (not 10): got ${distinctGroups.size}`);
+
+  const effectiveRisk5Setups = calculateEffectiveGroupRisk(masterSlots, null);
+  assert(effectiveRisk5Setups.reservedRisk === 2500, `Total effective risk for 5 dual-leg setups is $2,500 (not $5,000): got ${effectiveRisk5Setups.reservedRisk}`);
+
+  // 6th setup can be accommodated because distinct count (5) < maxConcurrentTrades (10)
+  const setup6Leg1 = { tradeId: "t_6_def", groupId: "grp_6", symbol: "SYM_6", riskUsd: 500 };
+  const canAccommodate6 = distinctGroups.size < DEFAULT_AUTONOMOUS_CONFIG.maxConcurrentTrades;
+  assert(canAccommodate6 === true, "6th setup group successfully accommodates under elevated capacity limit (10)");
+}
+
+// =======================================================
+// TEST SUITE 22: Pure R-Measurement Architecture & Removal of Dollar Caps
+// =======================================================
+console.log("\n=======================================================");
+console.log("TEST SUITE 22: Pure R-Measurement Architecture & Removal of Dollar Caps");
+console.log("=======================================================");
+{
+  // 22.1 Verify Default Configuration Flag Values
+  assert(DEFAULT_AUTONOMOUS_CONFIG.enforceDollarRiskCaps === false, `enforceDollarRiskCaps is false by default: got ${DEFAULT_AUTONOMOUS_CONFIG.enforceDollarRiskCaps}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.measureRiskInR === true, `measureRiskInR is true by default: got ${DEFAULT_AUTONOMOUS_CONFIG.measureRiskInR}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.maxDailyLossR === null, `maxDailyLossR defaults to null (unconstrained): got ${DEFAULT_AUTONOMOUS_CONFIG.maxDailyLossR}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.capacityRiskLimit === null, `capacityRiskLimit is null: got ${DEFAULT_AUTONOMOUS_CONFIG.capacityRiskLimit}`);
+
+  // 22.2 Partitioned Daily R Engine (calculatePartitionedDailyR)
+  const now = Date.now();
+  const pastHour = new Date(now - 3600000);
+  const closedRTrades = [
+    // Setup 1 (Stopped out on both legs)
+    { _id: "t1_def", groupId: "grp_1", legId: "default", managementLogic: "milestone_50", realizedR: -1.0, closedAt: new Date(now - 1800000) },
+    { _id: "t1_prop", groupId: "grp_1", legId: "prop_firm", managementLogic: "prop_firm_safe", realizedR: -1.0, closedAt: new Date(now - 1800000) },
+    // Setup 2 (Default hit full TP 3R, Prop hit TP 2R)
+    { _id: "t2_def", groupId: "grp_2", legId: "default", managementLogic: "milestone_50", realizedR: 3.0, closedAt: new Date(now - 900000) },
+    { _id: "t2_prop", groupId: "grp_2", legId: "prop_firm", managementLogic: "prop_firm_safe", realizedR: 2.0, closedAt: new Date(now - 900000) },
+    // Setup 3 (Default took 40% partial at +1.5R weighted = +0.6R, stopped at BE for remaining; Prop closed at BE = 0R)
+    { _id: "t3_def", groupId: "grp_3", legId: "default", managementLogic: "milestone_50", partialExits: [{ weightedR: 0.6, time: new Date(now - 300000) }], closedAt: new Date(now - 100000) },
+    { _id: "t3_prop", groupId: "grp_3", legId: "prop_firm", managementLogic: "prop_firm_safe", realizedR: 0.0, closedAt: new Date(now - 100000) },
+  ];
+
+  // Stream Default: -1.0 + 3.0 + 0.6 = +2.6R
+  // Stream Prop: -1.0 + 2.0 + 0.0 = +1.0R
+  // Worst-case receiver stream R = min(2.6, 1.0) = +1.0R
+  const dailyR = calculatePartitionedDailyR(closedRTrades, pastHour);
+  assert(Math.abs(dailyR - 1.0) < 1e-4, `Partitioned Daily R accurately measures worst receiver stream (+1.0R): got ${dailyR}`);
+
+  // Test purely losing day: Setup 1 lost -1.0R on both legs, Setup 2 lost -1.0R on both legs
+  const lossOnlyTrades = [
+    { _id: "l1_def", groupId: "grp_1", legId: "default", managementLogic: "milestone_50", realizedR: -1.0, closedAt: new Date(now - 1800000) },
+    { _id: "l1_prop", groupId: "grp_1", legId: "prop_firm", managementLogic: "prop_firm_safe", realizedR: -1.0, closedAt: new Date(now - 1800000) },
+    { _id: "l2_def", groupId: "grp_2", legId: "default", managementLogic: "milestone_50", realizedR: -1.0, closedAt: new Date(now - 900000) },
+    { _id: "l2_prop", groupId: "grp_2", legId: "prop_firm", managementLogic: "prop_firm_safe", realizedR: -1.0, closedAt: new Date(now - 900000) },
+  ];
+  // 4 trades closed on master VPS, but each receiver stream experienced strictly -2.0R (NOT -4.0R)
+  const lossDailyR = calculatePartitionedDailyR(lossOnlyTrades, pastHour);
+  assert(lossDailyR === -2.0, `Dual stopout realized R on receiver account is -2.0R (not -4.0R): got ${lossDailyR}`);
+
+  // 22.3 Minimum Lot Fallback on Demo / Small Balance
+  // Suppose broker min lot is 0.01, loss per 0.01 lot is $15. But account equity has nominal budget of $5.
+  // Without allowMinLotFallback, sizing fails with "Minimum lot exceeds risk budget".
+  const noFallbackSizing = calculateRiskSize({
+    equity: 500,
+    riskPct: 1.0, // $5 budget
+    entryPrice: 2000,
+    slPrice: 1985,
+    symInfo: { volume_min: 0.01, volume_step: 0.01, volume_max: 100, trade_tick_size: 0.01, trade_tick_value: 0.01 },
+    lossPerLot: 1500, // $15 per 0.01 lot
+    allowMinLotFallback: false,
+  });
+  assert(noFallbackSizing.lotSize === 0, "Without fallback, sub-budget lot size returns 0");
+  assert(noFallbackSizing.reason === "Minimum lot exceeds risk budget", "Without fallback, returns 'Minimum lot exceeds risk budget'");
+
+  // With allowMinLotFallback (demo sender mode): sizes at minimum lot (0.01) so downstream copiers receive signal
+  const fallbackSizing = calculateRiskSize({
+    equity: 500,
+    riskPct: 1.0, // $5 budget
+    entryPrice: 2000,
+    slPrice: 1985,
+    symInfo: { volume_min: 0.01, volume_step: 0.01, volume_max: 100, trade_tick_size: 0.01, trade_tick_value: 0.01 },
+    lossPerLot: 1500, // $15 per 0.01 lot
+    allowMinLotFallback: true,
+  });
+  assert(fallbackSizing.lotSize === 0.01, `With fallback, sizes at minimum broker lot (0.01): got ${fallbackSizing.lotSize}`);
+  assert(fallbackSizing.reason === null, "With fallback, reason is null (permitted)");
+
+  // 22.4 Guard Veto Bypass: In Demo R-mode, no RISK_CHANGED and no dollar DAILY_DRAWDOWN
+  const mockTradesCol = {
+    find: () => ({ toArray: async () => [] }),
+    findOne: async () => null,
+    updateOne: async () => ({ modifiedCount: 1 }),
+  };
+  const mockEngine = createAutonomousEngine({
+    autonomousCols: async () => ({ tradesCol: mockTradesCol, controlCol: { findOne: async () => null, updateOne: async () => ({}) } }),
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, liveTrading: false }),
+    getMT5State: async () => ({ ok: true, account: { login: 12345, equity: 1000, balance: 1000 } }),
+    getMainWatchlistSymbols: async () => ["NAS100"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    getDailyBaseline: async (dayKey, equity) => equity,
+    revalidateTradeIdea: async () => ({ permitted: true }),
+  });
+  const testTrade = {
+    _id: "trade_demo_test",
+    symbol: "NAS100",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    initialSlPrice: 17950,
+    initialRiskUsd: 500,
+    riskUsd: 500,
+    status: "staged",
+    groupId: "grp_test",
+  };
+
+  // Test with enforceDollarRiskCaps: false (pure R mode)
+  const guardDemoMode = await mockEngine.guard(testTrade, {
+    enabled: true,
+    liveTrading: false,
+    enforceDollarRiskCaps: false,
+    riskPerTradePct: 1.0,
+    accountSize: 1000, // nominal $10 budget vs $500 trade risk
+    maxConcurrentTrades: 10,
+  });
+  assert(!guardDemoMode.vetoes.some(v => v.code === "RISK_CHANGED"), "Demo R-mode: No RISK_CHANGED veto generated");
+  assert(!guardDemoMode.vetoes.some(v => v.code === "DAILY_DRAWDOWN"), "Demo R-mode: No dollar DAILY_DRAWDOWN veto generated");
+  assert(guardDemoMode.capacityRiskLimit === null, "Demo R-mode: capacityRiskLimit is null (unconstrained)");
+
+  // Test with enforceDollarRiskCaps: true (legacy dollar mode)
+  const guardDollarMode = await mockEngine.guard(testTrade, {
+    enabled: true,
+    liveTrading: false,
+    enforceDollarRiskCaps: true,
+    riskPerTradePct: 1.0,
+    accountSize: 1000, // nominal $10 budget vs $500 trade risk
+    maxConcurrentTrades: 10,
+  });
+  assert(guardDollarMode.vetoes.some(v => v.code === "RISK_CHANGED"), "Dollar mode: RISK_CHANGED veto correctly triggered when risk exceeds budget");
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 23: Staged Trade Lifecycle & Horizon-Aware Invalidation Engine");
+console.log("=======================================================");
+
+{
+  const updatedTrades = new Map();
+  const mockTradesCol = {
+    find: (query) => ({
+      toArray: async () => {
+        if (query?.status?.$in) {
+          return Array.from(updatedTrades.values()).filter(t => query.status.$in.includes(t.status));
+        }
+        if (query?.status === "staged") {
+          return Array.from(updatedTrades.values()).filter(t => t.status === "staged");
+        }
+        return Array.from(updatedTrades.values());
+      }
+    }),
+    findOne: async () => null,
+    updateOne: async (filter, update) => {
+      const id = String(filter._id);
+      const doc = updatedTrades.get(id);
+      if (doc) {
+        if (update.$set) Object.assign(doc, update.$set);
+        return { modifiedCount: 1 };
+      }
+      return { modifiedCount: 0 };
+    },
+    insertOne: async (doc) => {
+      const id = doc._id || "id_" + Math.random();
+      doc._id = id;
+      updatedTrades.set(String(id), doc);
+      return { insertedId: id };
+    }
+  };
+
+  const nowBase = new Date("2026-10-07T12:00:00Z").getTime();
+  let currentEngineTime = nowBase;
+
+  const engine = createAutonomousEngine({
+    autonomousCols: async () => ({ tradesCol: mockTradesCol, controlCol: { findOne: async () => null, updateOne: async () => ({}) } }),
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, liveTrading: false, enabled: true }),
+    getMT5State: async () => ({ ok: true, account: { login: 12345, equity: 50000, balance: 50000 } }),
+    getMainWatchlistSymbols: async () => ["EURUSD", "NAS100", "NAS100_SL", "NAS100_TP"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date("2026-10-07T00:00:00Z"),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    logEvent: async () => {},
+    releaseTradeCapacity: async () => true,
+    sendTelegram: async () => {},
+    broadcast: () => {},
+    now: () => currentEngineTime,
+  });
+
+  // 1. Swing trade at 4 hours old: MUST NOT BE EXPIRED
+  const swingTrade = {
+    _id: "swing_1",
+    symbol: "EURUSD",
+    canonicalSymbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0800,
+    initialSlPrice: 1.0800,
+    tpPrice: 1.1000,
+    status: "staged",
+    horizon: "swing",
+    horizonCode: 1,
+    createdAt: new Date(nowBase - 4 * 3600_000), // 4 hours ago
+  };
+  updatedTrades.set("swing_1", swingTrade);
+
+  // 2. Day trade at 4 hours old: MUST NOT BE EXPIRED (valid within 24h trading day)
+  const dayTrade = {
+    _id: "day_1",
+    symbol: "EURUSD",
+    canonicalSymbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0800,
+    initialSlPrice: 1.0800,
+    tpPrice: 1.0950,
+    status: "staged",
+    horizon: "day",
+    horizonCode: 2,
+    createdAt: new Date(nowBase - 4 * 3600_000), // 4 hours ago
+  };
+  updatedTrades.set("day_1", dayTrade);
+
+  // 3. Staged Trade Invalidation: Tick touches or breaches SL before entry fill
+  const slBreachTrade = {
+    _id: "sl_breach_1",
+    symbol: "NAS100_SL",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    initialSlPrice: 17950,
+    tpPrice: 18150,
+    status: "staged",
+    horizon: "day",
+    horizonCode: 2,
+    createdAt: new Date(nowBase - 1800_000), // 30m ago
+  };
+  updatedTrades.set("sl_breach_1", slBreachTrade);
+
+  // 4. Staged Trade Invalidation: Tick reaches target TP before entry fill (move already completed)
+  const tpTargetHitTrade = {
+    _id: "tp_target_hit_1",
+    symbol: "NAS100_TP",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    initialSlPrice: 17950,
+    tpPrice: 18150,
+    status: "staged",
+    horizon: "day",
+    horizonCode: 2,
+    createdAt: new Date(nowBase - 1800_000), // 30m ago
+  };
+  updatedTrades.set("tp_target_hit_1", tpTargetHitTrade);
+
+  // Run onTicks with normal tick for EURUSD (1.0870, above entry 1.0850)
+  await engine.autonomousOnTicks({
+    EURUSD: { bid: 1.0870, ask: 1.0871, time: nowBase },
+  });
+
+  assert(swingTrade.status === "staged", "Swing trade (4h old) is still active and NOT expired");
+  assert(dayTrade.status === "staged", "Day trade (4h old) is still active and NOT expired");
+
+  // Test SL breach invalidation (at nowBase)
+  await engine.autonomousOnTicks({
+    NAS100_SL: { bid: 17945, ask: 17946, time: nowBase }, // Breaches SL (17950)
+  });
+  assert(slBreachTrade.status === "invalidated", "Staged trade is invalidated when price breaches SL before entry");
+  assert(slBreachTrade.closeReason?.includes("invalidation stop breached"), "Invalidation reason records SL breach");
+
+  // Test TP target hit invalidation (move left without entry fill at nowBase)
+  await engine.autonomousOnTicks({
+    NAS100_TP: { bid: 18155, ask: 18156, time: nowBase }, // Hits TP (18150)
+  });
+  assert(tpTargetHitTrade.status === "invalidated", "Staged trade is invalidated when price reaches target before entry");
+  assert(tpTargetHitTrade.closeReason?.includes("Target reached prior to limit entry fill"), "Invalidation reason records target hit");
+
+  // Advance time to 36 hours later (1.5 days later)
+  currentEngineTime = nowBase + 36 * 3600_000;
+  await engine.autonomousOnTicks({
+    EURUSD: { bid: 1.0870, ask: 1.0871, time: currentEngineTime },
+  });
+  assert(swingTrade.status === "staged", "Swing trade (36h / 1.5 days old) is still active and NOT expired");
+  assert(dayTrade.status === "expired", "Day trade (36h old) expired across daily session rollover");
+}
+
 
 console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);

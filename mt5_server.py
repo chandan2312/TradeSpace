@@ -629,12 +629,16 @@ def handle_order(payload):
             return {"ok": False, "status": "bad-levels", "message": "Structural SL/TP direction or broker stop distance invalid"}
         # Autonomous legs require an unambiguous dedicated position; netting an
         # unrelated position would corrupt the original-volume risk ledger.
+        # Sibling legs (different magic numbers e.g. Default vs Prop-Firm Safe) are separate positions.
+        # Only reject if a position/order with the SAME magic number already occupies the symbol.
         positions = mt5.positions_get(symbol=mt5_symbol)
         orders = mt5.orders_get(symbol=mt5_symbol)
         if positions is None or orders is None:
             return {"ok": False, "status": "broker-state-unavailable", "message": "Cannot establish symbol capacity"}
-        if positions or orders:
-            return {"ok": False, "status": "symbol-occupied", "message": "Symbol already has broker position/order"}
+        same_magic_pos = [p for p in (positions or []) if getattr(p, "magic", None) == magic]
+        same_magic_ord = [o for o in (orders or []) if getattr(o, "magic", None) == magic]
+        if same_magic_pos or same_magic_ord:
+            return {"ok": False, "status": "symbol-occupied", "message": f"Symbol already has broker position/order with magic {magic}"}
 
     # Determine filling mode
     filling = getattr(mt5, "ORDER_FILLING_IOC", 1)

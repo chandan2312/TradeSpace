@@ -62,7 +62,10 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
         <div style={panel}>
           <div style={{ fontWeight: 700, color: "var(--accent)", fontSize: 12 }}>{modelName} · {pair.activeTimeSlot?.name || "Active Session"}</div>
           <div style={{ fontSize: 11, lineHeight: 1.5, margin: "5px 0 8px" }}>{modelRationale}</div>
-          <ConfluenceBreakdown breakdown={pair.confluenceBreakdown || staged?.confluenceBreakdown} score={staged?.confluenceScore ?? pair.entryModel?.confluenceScore} />
+          <ConfluenceBreakdown
+            breakdown={pair.confluenceBreakdown || staged?.confluenceBreakdown || pair.entryModel?.confluenceBreakdown}
+            score={staged?.confluenceScore ?? pair.entryModel?.confluenceScore ?? pair.opportunityScore}
+          />
           <EvidenceDetails evidence={staged?.evidence || pair.evidence} />
         </div>
         <section>
@@ -75,18 +78,31 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 10 }}>
-              {candidates.map((level, index) => (
-                <article key={level.id || `${level.modelId}-${index}`} style={{ ...panel, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>{level.modelName || level.name || level.label || level.type || "Level unavailable"}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 85px), 1fr))", gap: 7 }}>
-                    <TelemetryValue label="Entry" value={formatPrice(level.entry ?? level.price)} /><TelemetryValue label="SL" value={formatPrice(level.sl)} color="var(--red)" /><TelemetryValue label="TP / DOL" value={formatPrice(level.tp)} color="var(--green)" />
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--muted)" }}>R:R {finiteNumber(level.rr) === null ? "Unavailable" : `${level.rr.toFixed(2)}R`} · {level.status || (level.meetsMinRR === false ? "RR rejected" : "Qualification unavailable")}</div>
-                  <DecisionReasons vetoes={level.vetoes} reason={level.rejectionReason || level.rationale} title="Candidate decision" />
-                  <ConfluenceBreakdown breakdown={level.confluenceBreakdown} score={level.confluenceScore} />
-                  <EvidenceDetails evidence={level.evidence} />
-                </article>
-              ))}
+              {candidates.map((level, index) => {
+                const entryVal = level.entry ?? level.price;
+                const slVal = level.sl;
+                const tpVal = level.tp ?? level.targetPrice;
+                const rrVal = level.rr ?? level.targetRR;
+                const scoreVal = level.confluenceScore;
+                const qualStatus = level.status
+                  || (level.meetsMinRR === false ? "RR rejected" : level.meetsMinRR ? "Qualified" : "Pending qualification");
+                return (
+                  <article key={level.id || `${level.modelId}-${index}`} style={{ ...panel, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>{level.modelName || level.name || level.label || level.type || "Level unavailable"}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 85px), 1fr))", gap: 7 }}>
+                      <TelemetryValue label="Entry" value={formatPrice(entryVal)} />
+                      <TelemetryValue label="SL" value={formatPrice(slVal)} color="var(--red)" />
+                      <TelemetryValue label="TP / DOL" value={formatPrice(tpVal)} color="var(--green)" />
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                      R:R {finiteNumber(rrVal) !== null ? `${Number(rrVal).toFixed(2)}R` : "—"} · {qualStatus}
+                    </div>
+                    <DecisionReasons vetoes={level.vetoes} reason={level.rejectionReason || level.rationale} title="Candidate decision" />
+                    <ConfluenceBreakdown breakdown={level.confluenceBreakdown} score={scoreVal} />
+                    <EvidenceDetails evidence={level.evidence} />
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>

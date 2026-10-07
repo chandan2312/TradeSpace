@@ -26,6 +26,7 @@ import {
   IRARBadge,
   finiteNumber,
 } from "./TradeTelemetry";
+import { groupStagedTrades } from "./StagedQueue";
 
 export default function AutonomousLiveHUD({
   trades = [],
@@ -70,6 +71,13 @@ export default function AutonomousLiveHUD({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
+  // Auto-refresh when drawer opens
+  useEffect(() => {
+    if (isOpen && onRefresh) {
+      onRefresh();
+    }
+  }, [isOpen, onRefresh]);
+
   const activeTrades = useMemo(() => {
     return (trades || []).filter((t) =>
       ["active", "managing", "closing", "open", "filling", "armed_fill"].includes(t.status)
@@ -79,6 +87,17 @@ export default function AutonomousLiveHUD({
   const stagedTrades = useMemo(() => {
     return (trades || []).filter((t) => ["staged", "confirming", "armed"].includes(t.status));
   }, [trades]);
+
+  const unifiedStagedSetups = useMemo(() => {
+    return groupStagedTrades(stagedTrades);
+  }, [stagedTrades]);
+
+  // If there are no active positions but there are staged setups, automatically show staged tab
+  useEffect(() => {
+    if (isOpen && activeTrades.length === 0 && unifiedStagedSetups.length > 0) {
+      setTab("staged");
+    }
+  }, [isOpen, activeTrades.length, unifiedStagedSetups.length]);
 
   const closedTrades = useMemo(() => {
     return (trades || [])
@@ -109,9 +128,9 @@ export default function AutonomousLiveHUD({
       totalUsd: hasTelemetry ? totalFloatingUsd : null,
       totalR: hasTelemetry ? totalFloatingR : null,
       count: activeTrades.length,
-      stagedCount: stagedTrades.length,
+      stagedCount: unifiedStagedSetups.length,
     };
-  }, [activeTrades, stagedTrades, ticks]);
+  }, [activeTrades, unifiedStagedSetups, ticks]);
 
   // Quick action: close active position
   const handleCloseTrade = async (tradeId) => {
@@ -139,20 +158,38 @@ export default function AutonomousLiveHUD({
   };
 
   // Quick action: approve staged setup
-  const handleApprove = async (tradeId) => {
+  const handleApprove = async (setupOrId) => {
+    const isObj = setupOrId && typeof setupOrId === "object";
+    const primaryId = isObj ? (setupOrId.primaryId || setupOrId._id) : setupOrId;
+    const hasGroupId = isObj ? Boolean(setupOrId.groupId) : false;
+    const allIds = isObj && Array.isArray(setupOrId.tradeIds) ? setupOrId.tradeIds : [primaryId];
+
     if (loadingAction) return;
-    setLoadingAction(tradeId);
+    setLoadingAction(primaryId);
     setActionMsg(null);
     try {
       const res = await fetch("/api/autonomous", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", tradeId }),
+        body: JSON.stringify({ action: "approve", tradeId: primaryId }),
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) {
         throw new Error(data.error || "Failed to approve setup");
       }
+
+      // If not grouped by backend groupId and there are separate sibling ids, approve remaining
+      if (!hasGroupId && allIds.length > 1) {
+        for (const id of allIds) {
+          if (id === primaryId) continue;
+          await fetch("/api/autonomous", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "approve", tradeId: id }),
+          });
+        }
+      }
+
       setActionMsg({ type: "success", text: "Setup approved for execution" });
       onRefresh?.();
     } catch (err) {
@@ -163,7 +200,49 @@ export default function AutonomousLiveHUD({
     }
   };
 
-  const hasTrades = activeTrades.length > 0 || stagedTrades.length > 0;
+  // Quick action: dismiss staged setup
+  const handleDismissSetup = async (setupOrId) => {
+    const isObj = setupOrId && typeof setupOrId === "object";
+    const primaryId = isObj ? (setupOrId.primaryId || setupOrId._id) : setupOrId;
+    const hasGroupId = isObj ? Boolean(setupOrId.groupId) : false;
+    const allIds = isObj && Array.isArray(setupOrId.tradeIds) ? setupOrId.tradeIds : [primaryId];
+
+    if (loadingAction) return;
+    setLoadingAction(primaryId);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/autonomous", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss", tradeId: primaryId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Failed to dismiss setup");
+      }
+
+      if (!hasGroupId && allIds.length > 1) {
+        for (const id of allIds) {
+          if (id === primaryId) continue;
+          await fetch("/api/autonomous", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "dismiss", tradeId: id }),
+          });
+        }
+      }
+
+      setActionMsg({ type: "success", text: "Setup dismissed" });
+      onRefresh?.();
+    } catch (err) {
+      setActionMsg({ type: "error", text: err.message });
+    } finally {
+      setLoadingAction(null);
+      setTimeout(() => setActionMsg(null), 3000);
+    }
+  };
+
+  const hasTrades = activeTrades.length > 0 || unifiedStagedSetups.length > 0;
   const isNetProfit = (netTelemetry.totalUsd ?? 0) >= 0;
 
   if (!isOpen) return null;
@@ -442,12 +521,28 @@ export default function AutonomousLiveHUD({
                 fontWeight: 700,
                 border: "none",
                 background: tab === "staged" ? "rgba(255, 255, 255, 0.06)" : "transparent",
-                color: tab === "staged" ? "var(--fg)" : "var(--muted)",
+                color: tab === "staged" ? "var(--fg)" : (unifiedStagedSetups.length > 0 ? "var(--accent)" : "var(--muted)"),
                 borderBottom: tab === "staged" ? "2px solid var(--accent)" : "none",
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
               }}
             >
-              Staged ({stagedTrades.length})
+              <span>Staged</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 10,
+                  background: unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                  color: unifiedStagedSetups.length > 0 ? "var(--accent)" : "var(--muted)",
+                  fontWeight: 800,
+                }}
+              >
+                {unifiedStagedSetups.length}
+              </span>
             </button>
             <button
               onClick={() => setTab("history")}
@@ -727,6 +822,38 @@ export default function AutonomousLiveHUD({
                               <Shield size={10} /> 40% Booked · Stop at Breakeven
                             </div>
                           )}
+
+                          {trade.redecisionDone && (
+                            <div
+                              style={{
+                                fontSize: 9,
+                                color:
+                                  trade.redecisionAction === "CLOSE_FULL_NOW"
+                                    ? "var(--red)"
+                                    : trade.redecisionAction === "REDUCE_TP"
+                                    ? "var(--accent)"
+                                    : trade.redecisionAction === "EXPAND_TP"
+                                    ? "var(--purple, #c084fc)"
+                                    : "var(--green)",
+                                fontWeight: 700,
+                                marginTop: 2,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                fontFamily: "monospace",
+                              }}
+                            >
+                              <span>
+                                {trade.redecisionAction === "CLOSE_FULL_NOW"
+                                  ? "⚡ Redecision: Closed Full Runner"
+                                  : trade.redecisionAction === "REDUCE_TP"
+                                  ? `🎯 Redecision: Reduced TP (${trade.redecisionNewRR || trade.targetRR}R)`
+                                  : trade.redecisionAction === "EXPAND_TP"
+                                  ? `🚀 Redecision: Expanded TP (${trade.redecisionNewRR || trade.targetRR}R)`
+                                  : `💎 Redecision: Hold Full (${trade.targetRR}R)`}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Price chips & Actions */}
@@ -776,7 +903,7 @@ export default function AutonomousLiveHUD({
             {/* TAB: STAGED SETUPS */}
             {tab === "staged" && (
               <>
-                {stagedTrades.length === 0 ? (
+                {unifiedStagedSetups.length === 0 ? (
                   <div
                     style={{
                       textAlign: "center",
@@ -788,17 +915,21 @@ export default function AutonomousLiveHUD({
                     No setups currently staged.
                   </div>
                 ) : (
-                  stagedTrades.map((staged) => {
-                    const level = staged.levelDetails || staged.stagedLevel || {};
-                    const isApproving = loadingAction === staged._id;
-                    const confluence = level.confluenceScore ?? 85;
+                  unifiedStagedSetups.map((setup) => {
+                    const trade = setup.primaryTrade || setup;
+                    const level = trade.levelDetails || trade.stagedLevel || {};
+                    const isApproving = loadingAction === (setup.primaryId || setup._id);
+                    const confluence = level.confluenceScore ?? trade.confluenceScore ?? 85;
+                    const isDual = setup.isDualLeg;
+                    const defaultLeg = setup.defaultLeg;
+                    const propLeg = setup.propLeg;
 
                     return (
                       <div
-                        key={staged._id}
+                        key={setup.groupKey || setup.primaryId || setup._id}
                         style={{
                           background: "rgba(255, 255, 255, 0.02)",
-                          border: "1px solid var(--border)",
+                          border: isDual ? "1px solid rgba(56, 189, 248, 0.25)" : "1px solid var(--border)",
                           borderRadius: 10,
                           padding: 12,
                           display: "flex",
@@ -814,7 +945,7 @@ export default function AutonomousLiveHUD({
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <strong style={{ fontSize: 13 }}>{staged.symbol}</strong>
+                            <strong style={{ fontSize: 13 }}>{setup.symbol}</strong>
                             <span
                               style={{
                                 fontSize: 10,
@@ -822,12 +953,27 @@ export default function AutonomousLiveHUD({
                                 padding: "2px 6px",
                                 borderRadius: 4,
                                 background:
-                                  staged.dir === 1 ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)",
-                                color: staged.dir === 1 ? "var(--green)" : "var(--red)",
+                                  setup.dir === 1 ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)",
+                                color: setup.dir === 1 ? "var(--green)" : "var(--red)",
                               }}
                             >
-                              {staged.dir === 1 ? "BUY SETUP" : "SELL SETUP"}
+                              {setup.dir === 1 ? "BUY SETUP" : "SELL SETUP"}
                             </span>
+                            {isDual && (
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  padding: "2px 5px",
+                                  borderRadius: 4,
+                                  background: "rgba(56, 189, 248, 0.15)",
+                                  color: "var(--accent)",
+                                  letterSpacing: 0.3,
+                                }}
+                              >
+                                DUAL LEG
+                              </span>
+                            )}
                           </div>
 
                           <span
@@ -842,8 +988,11 @@ export default function AutonomousLiveHUD({
                           </span>
                         </div>
 
-                        <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                          Model: <strong style={{ color: "var(--fg)" }}>{staged.modelId || level.model || "ICT 2022"}</strong>
+                        <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
+                          <span>Model: <strong style={{ color: "var(--fg)" }}>{setup.modelId || level.model || "ICT 2022"}</strong></span>
+                          {setup.status === "armed" && (
+                            <span style={{ color: "var(--green)", fontWeight: 700, fontSize: 10 }}>⚡ ARMED</span>
+                          )}
                         </div>
 
                         <div
@@ -852,19 +1001,105 @@ export default function AutonomousLiveHUD({
                             justifyContent: "space-between",
                             fontSize: 10,
                             fontFamily: "monospace",
-                            background: "rgba(0, 0, 0, 0.2)",
+                            background: "rgba(0, 0, 0, 0.25)",
                             padding: "6px 8px",
                             borderRadius: 6,
                           }}
                         >
-                          <span>Entry: {formatPrice(staged.entryPrice ?? level.entry)}</span>
-                          <span>SL: {formatPrice(staged.slPrice ?? level.sl)}</span>
-                          <span>TP: {formatPrice(staged.tpPrice ?? level.tp)}</span>
+                          <span>Entry: <strong style={{ color: "var(--fg)" }}>{formatPrice(setup.entryPrice ?? level.entry)}</strong></span>
+                          <span>SL: <strong style={{ color: "var(--red)" }}>{formatPrice(setup.slPrice ?? level.sl)}</strong></span>
+                          {!isDual && (
+                            <span>TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.tpPrice ?? level.tp)}</strong></span>
+                          )}
                         </div>
 
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                        {/* If Dual Leg: Render Leg 1 and Leg 2 details */}
+                        {isDual && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                            {defaultLeg && (
+                              <div
+                                style={{
+                                  background: "rgba(56, 189, 248, 0.04)",
+                                  border: "1px solid rgba(56, 189, 248, 0.2)",
+                                  borderRadius: 6,
+                                  padding: "5px 8px",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 2,
+                                  fontSize: 10,
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9 }}>LEG 1 · DEFAULT (50%)</span>
+                                  <span style={{ fontWeight: 700, color: "var(--green)" }}>
+                                    TP: {formatPrice(defaultLeg.tpPrice)} ({Number(defaultLeg.targetRR || 5.0).toFixed(1)}R)
+                                  </span>
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
+                                  <span>Covered: <strong style={{ color: "var(--accent)" }}>{defaultLeg.coveredRR || `${Number(defaultLeg.targetRR || 5.0).toFixed(1)}`}R</strong></span>
+                                  {(defaultLeg.magicNumber || defaultLeg.routing?.magicNumber) && (
+                                    <span style={{ color: "var(--accent)" }}>⚡ MT5 #{defaultLeg.magicNumber || defaultLeg.routing?.magicNumber}</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {propLeg && (
+                              <div
+                                style={{
+                                  background: "rgba(168, 85, 247, 0.04)",
+                                  border: "1px solid rgba(168, 85, 247, 0.2)",
+                                  borderRadius: 6,
+                                  padding: "5px 8px",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 2,
+                                  fontSize: 10,
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>LEG 2 · PROP SAFE</span>
+                                  <span style={{ fontWeight: 700, color: "var(--green)" }}>
+                                    TP: {formatPrice(propLeg.tpPrice)} ({Number(propLeg.targetRR || 2.2).toFixed(1)}R)
+                                  </span>
+                                </div>
+                                {(propLeg.targetLandmark || propLeg.propTarget?.source) && (
+                                  <div style={{ color: "var(--purple, #c084fc)", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    🎯 {propLeg.targetLandmark || propLeg.propTarget?.source}
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
+                                  <span>Covered: <strong style={{ color: "var(--accent)" }}>{propLeg.coveredRR || `${Number(propLeg.targetRR || 2.2).toFixed(1)}`}R</strong></span>
+                                  {(propLeg.magicNumber || propLeg.routing?.magicNumber) && (
+                                    <span style={{ color: "var(--purple, #c084fc)" }}>⚡ MT5 #{propLeg.magicNumber || propLeg.routing?.magicNumber}</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 2 }}>
                           <button
-                            onClick={() => handleApprove(staged._id)}
+                            onClick={() => handleDismissSetup(setup)}
+                            disabled={isApproving}
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 5,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              background: "rgba(255, 255, 255, 0.05)",
+                              color: "var(--muted)",
+                              border: "1px solid var(--border)",
+                              cursor: isApproving ? "wait" : "pointer",
+                            }}
+                          >
+                            Dismiss
+                          </button>
+                          <button
+                            onClick={() => handleApprove(setup)}
                             disabled={isApproving}
                             style={{
                               padding: "4px 10px",
@@ -877,7 +1112,7 @@ export default function AutonomousLiveHUD({
                               cursor: isApproving ? "wait" : "pointer",
                             }}
                           >
-                            {isApproving ? "Approving..." : "Approve Trade"}
+                            {isApproving ? "Approving..." : isDual ? "Approve Dual Setup" : "Approve Trade"}
                           </button>
                         </div>
                       </div>

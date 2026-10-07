@@ -583,6 +583,78 @@ function DefaultLegCard({ item, setup, ticks, onCloseTrade }) {
         </div>
       )}
 
+      {/* 50% Milestone Redecision Telemetry Banner */}
+      {trade.redecisionDone && (
+        <div
+          style={{
+            background:
+              trade.redecisionAction === "CLOSE_FULL_NOW"
+                ? "rgba(239, 68, 68, 0.08)"
+                : trade.redecisionAction === "REDUCE_TP"
+                ? "rgba(56, 189, 248, 0.08)"
+                : trade.redecisionAction === "EXPAND_TP"
+                ? "rgba(168, 85, 247, 0.08)"
+                : "rgba(34, 197, 94, 0.08)",
+            border: `1px solid ${
+              trade.redecisionAction === "CLOSE_FULL_NOW"
+                ? "rgba(239, 68, 68, 0.3)"
+                : trade.redecisionAction === "REDUCE_TP"
+                ? "rgba(56, 189, 248, 0.3)"
+                : trade.redecisionAction === "EXPAND_TP"
+                ? "rgba(168, 85, 247, 0.3)"
+                : "rgba(34, 197, 94, 0.3)"
+            }`,
+            borderRadius: 6,
+            padding: "6px 8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            fontSize: 10,
+            fontFamily: "monospace",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span
+              style={{
+                fontWeight: 800,
+                color:
+                  trade.redecisionAction === "CLOSE_FULL_NOW"
+                    ? "var(--red)"
+                    : trade.redecisionAction === "REDUCE_TP"
+                    ? "var(--accent)"
+                    : trade.redecisionAction === "EXPAND_TP"
+                    ? "var(--purple, #c084fc)"
+                    : "var(--green)",
+                fontSize: 9,
+                letterSpacing: 0.3,
+              }}
+            >
+              {trade.redecisionAction === "CLOSE_FULL_NOW"
+                ? "⚡ 50% REDECISION: CLOSE FULL RUNNER"
+                : trade.redecisionAction === "REDUCE_TP"
+                ? `🎯 50% REDECISION: TP REDUCED TO ${trade.redecisionNewRR || trade.targetRR}R`
+                : trade.redecisionAction === "EXPAND_TP"
+                ? `🚀 50% REDECISION: TP EXPANDED TO ${trade.redecisionNewRR || trade.targetRR}R`
+                : `💎 50% REDECISION: CONVICTION HOLD (${trade.targetRR}R)`}
+            </span>
+            <span style={{ color: "var(--muted)", fontSize: 9 }}>
+              Score: {trade.redecisionScore > 0 ? `+${trade.redecisionScore}` : trade.redecisionScore}/100
+            </span>
+          </div>
+          {trade.redecisionReason && (
+            <div style={{ color: "var(--fg)", fontSize: 9, lineHeight: 1.3, opacity: 0.85 }}>
+              {trade.redecisionReason}
+            </div>
+          )}
+          {trade.redecisionAction === "REDUCE_TP" && trade.redecisionOldTp && (
+            <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
+              <span>Old TP: {formatPrice(trade.redecisionOldTp)} ({trade.redecisionOldRR}R)</span>
+              <span style={{ color: "var(--accent)", fontWeight: 700 }}>New TP: {formatPrice(trade.redecisionNewTp || trade.tpPrice)} ({trade.redecisionNewRR || trade.targetRR}R)</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <BrokerTelemetry trade={trade} />
 
       <button

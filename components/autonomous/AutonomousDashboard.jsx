@@ -14,19 +14,20 @@ import {
   Layers,
   AlertCircle,
   Radio,
-  History,
+  BookOpen,
+  FileSpreadsheet,
 } from "lucide-react";
 import AutonomousHeader from "./AutonomousHeader";
 import AutonomousKpis from "./AutonomousKpis";
 import PairRadar from "./PairRadar";
-import StagedQueue from "./StagedQueue";
+import StagedQueue, { groupStagedTrades } from "./StagedQueue";
 import ActivePositions from "./ActivePositions";
 import BrainInspectorModal from "./BrainInspectorModal";
 import ControlConsole from "./ControlConsole";
 import AuditLog from "./AuditLog";
 import CockpitTelemetry from "./CockpitTelemetry";
 import ExecutionDiagnostics from "./ExecutionDiagnostics";
-import ClosedHistory from "./ClosedHistory";
+import JournalView from "../journal/JournalView";
 import {
   tradeRiskTelemetry,
   formatPrice,
@@ -40,7 +41,7 @@ import {
 export default function AutonomousDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState("cockpit"); // "cockpit" | "radar" | "analytics" | "audit"
+  const [section, setSection] = useState("cockpit"); // "cockpit" | "journal" | "radar" | "analytics" | "audit"
   const [inspectedPair, setInspectedPair] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ticks, setTicks] = useState({});
@@ -56,6 +57,27 @@ export default function AutonomousDashboard() {
 
   const closeInspector = useCallback(() => setInspectedPair(null), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const target = params.get("section") || params.get("tab");
+      if (target === "journal" || target === "history") {
+        setSection("journal");
+      } else if (target === "radar" || target === "analytics" || target === "audit" || target === "cockpit") {
+        setSection(target);
+      }
+    }
+  }, []);
+
+  const handleSelectSection = useCallback((sec) => {
+    setSection(sec);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("section", sec);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
 
   // Fetch full state from /api/autonomous
   const loadState = useCallback(async () => {
@@ -222,6 +244,7 @@ export default function AutonomousDashboard() {
   const brokerAccount = data?.brokerAccount || null;
   const activeTrades = data?.activeTrades || [];
   const stagedTrades = data?.stagedTrades || [];
+  const unifiedStagedSetups = useMemo(() => groupStagedTrades(stagedTrades), [stagedTrades]);
   const recentClosed = data?.recentClosed || [];
   const rankedPairs = data?.leaderboard?.rankedPairs || [];
   const logs = data?.logs || [];
@@ -295,6 +318,8 @@ export default function AutonomousDashboard() {
           isScanning={data?.isScanning || pendingAction === "scan"}
           onOpenSettings={() => setSettingsOpen(true)}
           pendingAction={pendingAction}
+          onOpenJournal={() => handleSelectSection("journal")}
+          activeSection={section}
         />
 
         {/* System Error Banner if present */}
@@ -436,7 +461,7 @@ export default function AutonomousDashboard() {
           <div
             style={{
               background: "var(--panel)",
-              border: `1px solid ${stagedTrades.length > 0 ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
+              border: `1px solid ${unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
               borderRadius: 12,
               padding: "14px 16px",
               display: "flex",
@@ -455,19 +480,19 @@ export default function AutonomousDashboard() {
                   fontWeight: 800,
                   padding: "2px 6px",
                   borderRadius: 4,
-                  background: stagedTrades.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                  color: stagedTrades.length > 0 ? "var(--accent)" : "var(--muted)",
+                  background: unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                  color: unifiedStagedSetups.length > 0 ? "var(--accent)" : "var(--muted)",
                 }}
               >
-                {stagedTrades.length > 0 ? "ARMED" : "SCANNING"}
+                {unifiedStagedSetups.length > 0 ? "ARMED" : "SCANNING"}
               </span>
             </div>
 
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
               <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace" }}>
-                {stagedTrades.length} {stagedTrades.length === 1 ? "Setup" : "Setups"}
+                {unifiedStagedSetups.length} {unifiedStagedSetups.length === 1 ? "Setup" : "Setups"}
               </span>
-              {stagedTrades.length > 0 && (
+              {unifiedStagedSetups.length > 0 && (
                 <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700 }}>
                   Ready to Fire
                 </span>
@@ -475,8 +500,8 @@ export default function AutonomousDashboard() {
             </div>
 
             <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              {stagedTrades.length > 0
-                ? `Lead: ${stagedTrades[0]?.symbol || "SMC"} (${stagedTrades[0]?.modelId || "A+"})`
+              {unifiedStagedSetups.length > 0
+                ? `Lead: ${unifiedStagedSetups[0]?.symbol || "SMC"} (${unifiedStagedSetups[0]?.modelId || "A+"})`
                 : "Scanner loop active · Refreshes every 3m"}
             </div>
           </div>
@@ -571,7 +596,9 @@ export default function AutonomousDashboard() {
             </div>
 
             <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              Risk: {config.riskPerTradePct || 1}%/trade · Circuit breaker: -{config.maxDailyLossPct || 2}%
+              {config.enforceDollarRiskCaps === false
+                ? "Risk: 1.0R (Pure R-Mode) · Demo Sender: No Dollar Caps"
+                : `Risk: ${config.riskPerTradePct || 1}%/trade · Circuit breaker: -${config.maxDailyLossPct || 2}%`}
             </div>
           </div>
         </div>
@@ -603,7 +630,7 @@ export default function AutonomousDashboard() {
           >
             {/* Tab 1: Live Cockpit (Primary Focus) */}
             <button
-              onClick={() => setSection("cockpit")}
+              onClick={() => handleSelectSection("cockpit")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -636,9 +663,9 @@ export default function AutonomousDashboard() {
               )}
             </button>
 
-            {/* Tab: Trade History */}
+            {/* Tab 2: Trading Journal */}
             <button
-              onClick={() => setSection("history")}
+              onClick={() => handleSelectSection("journal")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -649,31 +676,18 @@ export default function AutonomousDashboard() {
                 fontWeight: 700,
                 border: "none",
                 cursor: "pointer",
-                background: section === "history" ? "var(--accent)" : "transparent",
-                color: section === "history" ? "#fff" : "var(--muted)",
+                background: (section === "journal" || section === "history") ? "var(--accent)" : "transparent",
+                color: (section === "journal" || section === "history") ? "#fff" : "var(--muted)",
                 transition: "all 0.15s ease",
               }}
             >
-              <History size={14} />
-              <span>History</span>
-              {recentClosed.length > 0 && (
-                <span
-                  style={{
-                    padding: "1px 6px",
-                    borderRadius: 10,
-                    fontSize: 10,
-                    background: section === "history" ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
-                    color: section === "history" ? "#fff" : "var(--muted)",
-                  }}
-                >
-                  {recentClosed.length}
-                </span>
-              )}
+              <FileSpreadsheet size={14} />
+              <span>Trading Journal</span>
             </button>
 
-            {/* Tab 2: Market Radar */}
+            {/* Tab 3: Market Radar */}
             <button
-              onClick={() => setSection("radar")}
+              onClick={() => handleSelectSection("radar")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -704,9 +718,9 @@ export default function AutonomousDashboard() {
               </span>
             </button>
 
-            {/* Tab 3: Risk & Analytics */}
+            {/* Tab 4: Risk & Analytics */}
             <button
-              onClick={() => setSection("analytics")}
+              onClick={() => handleSelectSection("analytics")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -726,9 +740,9 @@ export default function AutonomousDashboard() {
               <span>Risk & Analytics</span>
             </button>
 
-            {/* Tab 4: Audit Trail */}
+            {/* Tab 5: Audit Trail */}
             <button
-              onClick={() => setSection("audit")}
+              onClick={() => handleSelectSection("audit")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -811,17 +825,13 @@ export default function AutonomousDashboard() {
               diagnostics={data?.executionDiagnostics}
             />
 
-            {/* Closed History in Cockpit */}
-            {recentClosed.length > 0 && (
-              <ClosedHistory closedTrades={recentClosed} />
-            )}
           </div>
         )}
 
-        {/* SECTION: TRADE HISTORY */}
-        {section === "history" && (
+        {/* SECTION: EMBEDDED TRADING JOURNAL */}
+        {(section === "journal" || section === "history") && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <ClosedHistory closedTrades={recentClosed} />
+            <JournalView />
           </div>
         )}
 
