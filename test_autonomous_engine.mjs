@@ -2453,6 +2453,198 @@ console.log("=======================================================");
   assert(dayTrade.status === "expired", "Day trade (36h old) expired across daily session rollover");
 }
 
+// =======================================================
+// TEST SUITE 24: Autonomous Pre-Entry Validation Engine (APVE)
+// =======================================================
+{
+  console.log("\n=======================================================");
+  console.log("TEST SUITE 24: Autonomous Pre-Entry Validation Engine (APVE)");
+  console.log("=======================================================");
+
+  const updatedTrades = new Map();
+  const loggedEvents = [];
+
+  const mockDb = {
+    tradesCol: {
+      find: (q) => ({
+        toArray: async () => {
+          let list = Array.from(updatedTrades.values());
+          if (q.status?.$in) list = list.filter((t) => q.status.$in.includes(t.status));
+          if (q.groupId) list = list.filter((t) => t.groupId === q.groupId);
+          return list;
+        },
+      }),
+      findOne: async (q) => {
+        if (q._id) return updatedTrades.get(String(q._id)) || null;
+        return null;
+      },
+      updateOne: async (q, u) => {
+        const t = updatedTrades.get(String(q._id));
+        if (t && (!q.status || q.status === t.status)) {
+          if (u.$set) Object.assign(t, u.$set);
+          if (u.$push?.events) (t.events = t.events || []).push(u.$push.events);
+          return { modifiedCount: 1 };
+        }
+        return { modifiedCount: 0 };
+      },
+      insertOne: async (doc) => {
+        const id = doc._id || `trade_${Math.random()}`;
+        doc._id = id;
+        updatedTrades.set(String(id), doc);
+        return { insertedId: id };
+      },
+    },
+    controlCol: {
+      updateOne: async () => ({ modifiedCount: 1 }),
+      findOne: async () => null,
+    },
+  };
+
+  const tradePendingFvg = {
+    _id: "trade_pending_fvg",
+    symbol: "EURUSD",
+    canonicalSymbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0830,
+    initialSlPrice: 1.0830,
+    tpPrice: 1.0910,
+    status: "pending",
+    executionMode: "paper",
+    lotSize: 0.5,
+    modelId: "ict_2022",
+    tf: "M15",
+    isLive: false,
+    stagedLevel: {
+      fvg: { top: 1.0860, bottom: 1.0845, ce: 1.08525 },
+    },
+  };
+  updatedTrades.set("trade_pending_fvg", tradePendingFvg);
+
+  // Inverted FVG frames (bar closed below 1.0845 at 1.0840)
+  const invertedFrames = {
+    M15: [
+      { time: 1700000000, open: 1.0860, high: 1.0865, low: 1.0848, close: 1.0855, volume: 1000 },
+      { time: 1700000900, open: 1.0855, high: 1.0858, low: 1.0838, close: 1.0840, volume: 1000 }, // FVG Inverted!
+    ],
+  };
+
+  const engine = createAutonomousEngine({
+    autonomousCols: async () => mockDb,
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, enabled: true, liveTrading: false, executionMode: "paper" }),
+    getFrames: async () => invertedFrames,
+    getMainWatchlistSymbols: async () => ["EURUSD", "NAS100", "NAS100_CLEAN", "EURUSD_VETO"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date("2026-10-07T00:00:00Z"),
+    guard: async () => ({ permitted: true, equity: 50000 }),
+    releaseTradeCapacity: async () => true,
+    sendTelegram: async () => {},
+    broadcast: () => {},
+    logEvent: async (type, msg) => { loggedEvents.push({ type, msg }); },
+  });
+
+  // Tick touches entry price (1.0849 <= 1.0850)
+  await engine.autonomousOnTicks({
+    EURUSD: { bid: 1.0849, ask: 1.0850, time: Date.now() },
+  });
+
+  assert(tradePendingFvg.status === "invalidated", "Pending trade is invalidated on entry tap when FVG is inverted");
+  assert(tradePendingFvg.closeReason?.includes("virgin FVG floor"), "Invalidation reason correctly identifies FVG inverted failure");
+
+  // Test 2: Valid trade with clean frames executes fill smoothly
+  const cleanTrade = {
+    _id: "trade_clean_1",
+    symbol: "NAS100_CLEAN",
+    canonicalSymbol: "NAS100",
+    dir: 1,
+    entryPrice: 18000,
+    slPrice: 17950,
+    initialSlPrice: 17950,
+    tpPrice: 18150,
+    status: "pending",
+    executionMode: "paper",
+    lotSize: 0.1,
+    modelId: "ict_2022",
+    tf: "M15",
+    isLive: false,
+    stagedLevel: {
+      fvg: { top: 18050, bottom: 17980, ce: 18015 },
+    },
+  };
+  updatedTrades.set("trade_clean_1", cleanTrade);
+
+  const cleanFrames = {
+    M15: [
+      { time: 1700000000, open: 18050, high: 18060, low: 18010, close: 18020, volume: 1000 },
+      { time: 1700000900, open: 18020, high: 18025, low: 17995, close: 18005, volume: 1000 }, // Holds above 17980 floor!
+    ],
+  };
+
+  const engineClean = createAutonomousEngine({
+    autonomousCols: async () => mockDb,
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, enabled: true, liveTrading: false, executionMode: "paper" }),
+    getFrames: async () => cleanFrames,
+    getMainWatchlistSymbols: async () => ["EURUSD", "NAS100", "NAS100_CLEAN", "EURUSD_VETO"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date("2026-10-07T00:00:00Z"),
+    guard: async () => ({ permitted: true, equity: 50000 }),
+    reserveTradeCapacity: async () => true,
+    releaseTradeCapacity: async () => true,
+    sendTelegram: async () => {},
+    broadcast: () => {},
+    logEvent: async () => {},
+  });
+
+  await engineClean.autonomousOnTicks({
+    NAS100_CLEAN: { bid: 17999, ask: 18000, time: Date.now() },
+  });
+
+  assert(cleanTrade.status === "active", "Valid trade passes APVE and is confirmed active on entry tap");
+  assert(cleanTrade.filledPrice === 18000, "Clean trade is filled at entry price (18000)");
+
+  // Test 3: Staged Trade Approval with Pre-Entry Veto
+  const stagedTradeToApprove = {
+    _id: new ObjectId("650000000000000000000088"),
+    symbol: "EURUSD_VETO",
+    canonicalSymbol: "EURUSD",
+    dir: 1,
+    entryPrice: 1.0850,
+    slPrice: 1.0830,
+    initialSlPrice: 1.0830,
+    tpPrice: 1.0910,
+    status: "staged",
+    executionMode: "paper",
+    modelId: "ict_2022",
+    tf: "M15",
+    stagedLevel: {
+      fvg: { top: 1.0860, bottom: 1.0845, ce: 1.08525 },
+    },
+  };
+  updatedTrades.set(String(stagedTradeToApprove._id), stagedTradeToApprove);
+
+  const engineApprove = createAutonomousEngine({
+    autonomousCols: async () => mockDb,
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, enabled: true, liveTrading: false, executionMode: "paper" }),
+    getFrames: async () => invertedFrames, // Inverted FVG!
+    getMainWatchlistSymbols: async () => ["EURUSD", "NAS100", "NAS100_CLEAN", "EURUSD_VETO"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date("2026-10-07T00:00:00Z"),
+    guard: async () => ({ permitted: true, equity: 50000 }),
+    reserveTradeCapacity: async () => true,
+    releaseTradeCapacity: async () => true,
+    sendTelegram: async () => {},
+    broadcast: () => {},
+    logEvent: async () => {},
+  });
+
+  const approveRes = await engineApprove.approveStagedTrade(stagedTradeToApprove._id);
+  assert(approveRes.ok === false, "approveStagedTrade rejects approval when APVE vetoes setup");
+  assert(approveRes.error?.includes("virgin FVG floor"), "approveStagedTrade error reports APVE reason");
+  assert(stagedTradeToApprove.status === "invalidated", "Staged trade transitioned to invalidated upon failed approval");
+}
 
 console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
@@ -2463,3 +2655,4 @@ if (failed > 0) {
 } else {
   console.log("🎯 ALL AUTONOMOUS ENGINE TESTS PASSED WITH 100% SUCCESS!\n");
 }
+

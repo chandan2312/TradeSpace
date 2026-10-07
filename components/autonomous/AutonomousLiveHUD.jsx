@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   Zap,
   Activity,
@@ -368,7 +369,7 @@ export default function AutonomousLiveHUD({
               </button>
             )}
 
-            <a
+            <Link
               href="/autonomous"
               title="Open Full Autonomous Page"
               style={{
@@ -388,7 +389,7 @@ export default function AutonomousLiveHUD({
             >
               <span>Full Page</span>
               <ExternalLink size={11} />
-            </a>
+            </Link>
 
             <button
               onClick={handleDismiss}
@@ -1013,73 +1014,79 @@ export default function AutonomousLiveHUD({
                           )}
                         </div>
 
-                        {/* If Dual Leg: Render Leg 1 and Leg 2 details */}
-                        {isDual && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                            {defaultLeg && (
-                              <div
-                                style={{
-                                  background: "rgba(56, 189, 248, 0.04)",
-                                  border: "1px solid rgba(56, 189, 248, 0.2)",
-                                  borderRadius: 6,
-                                  padding: "5px 8px",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 2,
-                                  fontSize: 10,
-                                  fontFamily: "monospace",
-                                }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                  <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9 }}>LEG 1 · DEFAULT (50%)</span>
-                                  <span style={{ fontWeight: 700, color: "var(--green)" }}>
-                                    TP: {formatPrice(defaultLeg.tpPrice)} ({Number(defaultLeg.targetRR || 5.0).toFixed(1)}R)
-                                  </span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
-                                  <span>Covered: <strong style={{ color: "var(--accent)" }}>{defaultLeg.coveredRR || `${Number(defaultLeg.targetRR || 5.0).toFixed(1)}`}R</strong></span>
-                                  {(defaultLeg.magicNumber || defaultLeg.routing?.magicNumber) && (
-                                    <span style={{ color: "var(--accent)" }}>⚡ MT5 #{defaultLeg.magicNumber || defaultLeg.routing?.magicNumber}</span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                        {/* Dual Management Pathways: Default 50% Milestone + Full TP vs Prop Safe */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {/* Pathway 1: Default Milestone & Full TP */}
+                          <div
+                            style={{
+                              background: "rgba(56, 189, 248, 0.04)",
+                              border: "1px solid rgba(56, 189, 248, 0.22)",
+                              borderRadius: 6,
+                              padding: "5px 8px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 3,
+                              fontSize: 10,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9 }}>
+                                PATH A · DEFAULT (50% + RUNNER)
+                              </span>
+                              {(defaultLeg?.magicNumber || defaultLeg?.routing?.magicNumber) && (
+                                <span style={{ color: "var(--accent)", fontSize: 9 }}>⚡ MT5 #{defaultLeg.magicNumber || defaultLeg.routing?.magicNumber}</span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                                50% Level: <strong style={{ color: "var(--accent)" }}>{formatPrice(setup.halfPrice)}</strong> ({Number(setup.halfRR || 2.2).toFixed(1)}R)
+                              </span>
+                              <span style={{ fontSize: 8.5, color: "var(--accent)", fontWeight: 700 }}>Book 40% + BE</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                                Full TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)}</strong> ({Number(setup.fullRR || 4.5).toFixed(1)}R)
+                              </span>
+                              <span style={{ fontSize: 8.5, color: "var(--green)", fontWeight: 700 }}>60% to DOL</span>
+                            </div>
+                          </div>
 
-                            {propLeg && (
-                              <div
-                                style={{
-                                  background: "rgba(168, 85, 247, 0.04)",
-                                  border: "1px solid rgba(168, 85, 247, 0.2)",
-                                  borderRadius: 6,
-                                  padding: "5px 8px",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 2,
-                                  fontSize: 10,
-                                  fontFamily: "monospace",
-                                }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                  <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>LEG 2 · PROP SAFE</span>
-                                  <span style={{ fontWeight: 700, color: "var(--green)" }}>
-                                    TP: {formatPrice(propLeg.tpPrice)} ({Number(propLeg.targetRR || 2.2).toFixed(1)}R)
-                                  </span>
-                                </div>
-                                {(propLeg.targetLandmark || propLeg.propTarget?.source) && (
-                                  <div style={{ color: "var(--purple, #c084fc)", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    🎯 {propLeg.targetLandmark || propLeg.propTarget?.source}
-                                  </div>
-                                )}
-                                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
-                                  <span>Covered: <strong style={{ color: "var(--accent)" }}>{propLeg.coveredRR || `${Number(propLeg.targetRR || 2.2).toFixed(1)}`}R</strong></span>
-                                  {(propLeg.magicNumber || propLeg.routing?.magicNumber) && (
-                                    <span style={{ color: "var(--purple, #c084fc)" }}>⚡ MT5 #{propLeg.magicNumber || propLeg.routing?.magicNumber}</span>
-                                  )}
-                                </div>
+                          {/* Pathway 2: Prop Safe */}
+                          <div
+                            style={{
+                              background: "rgba(168, 85, 247, 0.04)",
+                              border: "1px solid rgba(168, 85, 247, 0.22)",
+                              borderRadius: 6,
+                              padding: "5px 8px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 3,
+                              fontSize: 10,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>
+                                PATH B · PROP-FIRM SAFE
+                              </span>
+                              {(propLeg?.magicNumber || propLeg?.routing?.magicNumber) && (
+                                <span style={{ color: "var(--purple, #c084fc)", fontSize: 9 }}>⚡ MT5 #{propLeg.magicNumber || propLeg.routing?.magicNumber}</span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                                Target: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.propTp)}</strong> ({Number(setup.propRR || 2.0).toFixed(1)}R)
+                              </span>
+                              <span style={{ fontSize: 8.5, color: "var(--purple, #c084fc)", fontWeight: 700 }}>100% Exit</span>
+                            </div>
+                            {(propLeg?.targetLandmark || propLeg?.propTarget?.source) && (
+                              <div style={{ color: "var(--purple, #c084fc)", fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                🎯 {propLeg?.targetLandmark || propLeg?.propTarget?.source}
                               </div>
                             )}
                           </div>
-                        )}
+                        </div>
 
                         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 2 }}>
                           <button
@@ -1246,7 +1253,7 @@ export default function AutonomousLiveHUD({
             }}
           >
             <span>Auto-syncs on tick stream</span>
-            <a
+            <Link
               href="/autonomous"
               style={{
                 color: "var(--accent)",
@@ -1255,7 +1262,7 @@ export default function AutonomousLiveHUD({
               }}
             >
               Open Full Cockpit →
-            </a>
+            </Link>
           </div>
         </aside>
     </div>

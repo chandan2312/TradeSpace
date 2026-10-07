@@ -23,54 +23,77 @@ import {
 import { getCurrentTimeSlot, getAllTimeSlots } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
-import { syncMT5HistoryToJournal } from "../../../lib/journal/store.js";
+import { syncMT5HistoryToJournalThrottled } from "../../../lib/journal/store.js";
 
 const g = globalThis;
+
+const CLOSED_TRADES_PROJECTION = {
+  brainSnapshot: 0,
+  brain: 0,
+  levelDetails: 0,
+  stagedLevel: 0,
+  entryModel: 0,
+  copierRouting: 0,
+};
+
+let lastBackgroundScanTriggerAt = 0;
 
 export async function GET() {
   try {
     startAutonomousLoop();
-    await syncMT5HistoryToJournal().catch(() => {});
-    const { tradesCol, logsCol } = await autonomousCols();
-    const config = await getConfig();
-    const metrics = await getMetrics();
+    // Non-blocking background sync of MT5 history so page loads instantly
+    syncMT5HistoryToJournalThrottled().catch(() => {});
+
+    const { tradesCol, logsCol, controlCol } = await autonomousCols();
+
+    // Fetch independent data sources concurrently (with 2500ms safety timeout on remote broker bridge)
+    const [config, metrics, brokerAccountRes, openTrades, recentClosed, logs, persistedScan] = await Promise.all([
+      getConfig(),
+      getMetrics(),
+      Promise.race([
+        getMT5Account().catch(() => null),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]),
+      tradesCol.find({ status: { $in: OPEN_STATES } }).sort({ createdAt: -1 }).toArray(),
+      tradesCol.find({ status: { $in: TERMINAL_STATES } }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, createdAt: -1 }).limit(50).toArray(),
+      logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
+      controlCol.findOne({ _id: "latest_autonomous_scan" }).catch(() => null),
+    ]);
+
     const currentTimeSlot = getCurrentTimeSlot();
 
     let brokerAccount = null;
-    try {
-      const accRes = await getMT5Account();
-      if (accRes?.ok && accRes.account) {
-        brokerAccount = accRes.account;
-        const liveEq = Number(brokerAccount.equity ?? brokerAccount.balance);
-        if (liveEq > 0 && Math.abs((config.accountSize || 0) - liveEq) > 1) {
-          config.accountSize = liveEq;
-          await setConfig({ accountSize: liveEq }).catch(() => {});
-        }
+    if (brokerAccountRes?.ok && brokerAccountRes.account) {
+      brokerAccount = brokerAccountRes.account;
+      const liveEq = Number(brokerAccount.equity ?? brokerAccount.balance);
+      if (liveEq > 0 && Math.abs((config.accountSize || 0) - liveEq) > 1) {
+        config.accountSize = liveEq;
+        setConfig({ accountSize: liveEq }).catch(() => {});
       }
-    } catch (e) {
-      // Non-fatal if broker bridge is temporarily offline
     }
 
-    const openTrades = await tradesCol
-      .find({ status: { $in: OPEN_STATES } })
-      .sort({ createdAt: -1 })
-      .toArray();
     const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status));
     const stagedTrades = openTrades.filter((trade) => ["staged", "armed", "confirming"].includes(trade.status));
     // Surface every nonterminal execution/reconciliation state without reproducing engine transitions.
     const executionTrades = openTrades.filter((trade) => !activeTrades.includes(trade) && !stagedTrades.includes(trade));
 
-    const recentClosed = await tradesCol
-      .find({ status: { $in: TERMINAL_STATES } })
-      .sort({ closedAt: -1, createdAt: -1 })
-      .limit(100)
-      .toArray();
+    // Hydrate leaderboard from memory or persisted scan from previous cycle
+    if (!g._tsAutonomousLeaderboard && persistedScan?.leaderboard) {
+      g._tsAutonomousLeaderboard = persistedScan.leaderboard;
+    }
+    const leaderboard = g._tsAutonomousLeaderboard || null;
 
-    const logs = await logsCol
-      .find({})
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray();
+    // Check if scan is stale beyond the configured cycle period
+    const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
+    const scanIntervalMs = Number(config?.scanIntervalMs || 180000);
+    const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
+
+    // If scan is stale and engine is not already scanning, trigger background scan without blocking page load (throttled to max 1 attempt per 60s)
+    const now = Date.now();
+    if (isScanStale && !g._tsAutonomousScanning && config?.enabled && (now - lastBackgroundScanTriggerAt > 60000)) {
+      lastBackgroundScanTriggerAt = now;
+      runAutonomousScan("interval").catch(() => {});
+    }
 
     const events = [...openTrades, ...recentClosed].flatMap((trade) =>
       (Array.isArray(trade.events) ? trade.events : []).map((event, index, timeline) => ({
@@ -91,7 +114,7 @@ export async function GET() {
       openTrades,
       executionTrades,
       recentClosed,
-      leaderboard: g._tsAutonomousLeaderboard || null,
+      leaderboard,
       currentTimeSlot,
       allTimeSlots: getAllTimeSlots(),
       allEntryModels: ENTRY_MODEL_DEFINITIONS,

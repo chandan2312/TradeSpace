@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass, Zap } from "lucide-react";
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
@@ -133,12 +134,12 @@ export default function TopBar({
             <button className="dropdown-btn" onClick={() => { onOpenAutoCockpit?.(); setToolsMenuOpen(false); }}>
               <Zap size={14} style={{ color: "var(--accent)" }} /> Live Autonomous Cockpit
             </button>
-            <a href="/autonomous" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
+            <Link href="/autonomous" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
               <Activity size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
-            </a>
-            <a href="/autonomous?section=journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
+            </Link>
+            <Link href="/autonomous?section=journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
               <BookOpen size={14} /> Trading Journal
-            </a>
+            </Link>
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             <button 
               className="dropdown-btn" 
@@ -599,12 +600,12 @@ export default function TopBar({
                 <ExternalLink size={14} /> {isPipActive ? "Close Pop Out" : "Pop Out Chart"}
               </button>
             )}
-            <a href="/autonomous" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
+            <Link href="/autonomous" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
-            </a>
-            <a href="/autonomous?section=journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
+            </Link>
+            <Link href="/autonomous?section=journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
               <BookOpen size={14} /> Trading Journal
-            </a>
+            </Link>
             <button 
               className={biasEnabled ? "primary" : "ghost"} 
               onClick={onToggleBias} 

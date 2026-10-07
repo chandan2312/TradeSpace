@@ -67,41 +67,84 @@ export function groupStagedTrades(trades = []) {
   const unified = [];
 
   for (const [key, items] of groups.entries()) {
-    if (items.length === 1) {
-      const item = items[0];
-      unified.push({
-        ...item,
-        groupKey: key,
-        isDualLeg: false,
-        primaryTrade: item,
-        tradeIds: [item._id],
-        primaryId: item._id,
-        defaultLeg: item.managementLogic !== "prop_firm_safe" ? item : null,
-        propLeg: item.managementLogic === "prop_firm_safe" ? item : null,
-        legs: [item],
-      });
-    } else {
-      const defaultLeg = items.find((t) => t.legId === "default" || t.managementLogic === "milestone_50") || items[0];
-      const propLeg = items.find((t) => t.legId === "prop_firm" || t.managementLogic === "prop_firm_safe") || items.find((t) => t !== defaultLeg) || items[1];
-      const primaryTrade = defaultLeg || items[0];
+    const defaultLegRaw = items.find((t) => t.legId === "default" || t.managementLogic === "milestone_50");
+    const propLegRaw = items.find((t) => t.legId === "prop_firm" || t.managementLogic === "prop_firm_safe");
 
-      const armed = items.some((t) => t.status === "armed");
-      const confirming = items.some((t) => t.status === "confirming");
-      const status = armed ? "armed" : confirming ? "confirming" : primaryTrade.status;
+    const base = defaultLegRaw || propLegRaw || items[0];
+    const level = base.levelDetails || base.stagedLevel || {};
+    const dir = Number(base.dir || 1);
+    const entry = Number(base.entryPrice ?? level.entry);
+    const sl = Number(base.initialSlPrice ?? base.slPrice ?? level.sl);
+    const riskDist = Math.abs(entry - sl) || 0.001;
 
-      unified.push({
-        ...primaryTrade,
-        groupKey: key,
-        isDualLeg: true,
-        status,
-        primaryTrade,
-        tradeIds: items.map((t) => t._id),
-        primaryId: primaryTrade._id,
-        defaultLeg,
-        propLeg,
-        legs: [defaultLeg, propLeg].filter(Boolean),
-      });
-    }
+    // Full target resolution (matching Market Radar full structural TP)
+    const fullTp = Number(defaultLegRaw?.tpPrice ?? base.fullTp ?? level.fullTp ?? level.tp ?? base.tpPrice);
+    const fullRR = Number(defaultLegRaw?.targetRR ?? base.fullRR ?? level.fullRR ?? level.rr ?? (riskDist > 0 ? Math.abs(fullTp - entry) / riskDist : 3.0));
+
+    // 50% Milestone resolution
+    const halfTarget = defaultLegRaw?.halfTarget || base.halfTarget || level.halfTarget;
+    const halfRR = halfTarget?.halfRR != null ? Number(halfTarget.halfRR) : Number((fullRR * 0.5).toFixed(2));
+    const halfPrice = halfTarget?.price != null ? Number(halfTarget.price) : Number((entry + dir * Math.abs(fullTp - entry) * 0.5).toFixed(5));
+
+    // Prop Target resolution
+    const propTarget = propLegRaw?.propTarget || base.propTarget || level.propTarget;
+    const propRR = Number(propLegRaw?.targetRR ?? base.propRR ?? propTarget?.targetRR ?? 2.0);
+    const propTp = Number(propLegRaw?.tpPrice ?? base.propTp ?? propTarget?.tpPrice ?? (entry + dir * (riskDist * propRR)));
+
+    // Reconstruct defaultLeg if missing
+    const defaultLeg = defaultLegRaw || {
+      ...base,
+      _id: `${base._id}_def_synth`,
+      legId: "default",
+      legLabel: "Default (50% Milestone + Runner)",
+      managementLogic: "milestone_50",
+      entryPrice: entry,
+      slPrice: sl,
+      tpPrice: fullTp,
+      targetRR: fullRR,
+      halfTarget: { halfRR, price: halfPrice },
+      isSynthesized: true,
+    };
+
+    // Reconstruct propLeg if missing
+    const propLeg = propLegRaw || {
+      ...base,
+      _id: `${base._id}_prop_synth`,
+      legId: "prop_firm",
+      legLabel: "Prop-Firm Safe (1.5R–2.5R)",
+      managementLogic: "prop_firm_safe",
+      entryPrice: entry,
+      slPrice: sl,
+      tpPrice: propTp,
+      targetRR: propRR,
+      propTarget,
+      targetLandmark: propLegRaw?.targetLandmark || base.targetLandmark || propTarget?.source,
+      isSynthesized: true,
+    };
+
+    const primaryTrade = defaultLegRaw || base;
+    const armed = items.some((t) => t.status === "armed");
+    const confirming = items.some((t) => t.status === "confirming");
+    const status = armed ? "armed" : confirming ? "confirming" : primaryTrade.status;
+
+    unified.push({
+      ...primaryTrade,
+      groupKey: key,
+      isDualLeg: true,
+      status,
+      primaryTrade,
+      tradeIds: items.map((t) => t._id),
+      primaryId: primaryTrade._id,
+      defaultLeg,
+      propLeg,
+      fullTp,
+      fullRR,
+      halfPrice,
+      halfRR,
+      propTp,
+      propRR,
+      legs: [defaultLeg, propLeg],
+    });
   }
 
   return unified;
@@ -499,161 +542,139 @@ export default function StagedQueue({
                   </div>
                 </div>
 
-                {/* Targets and Execution: DUAL LEG vs SINGLE LEG */}
-                {setup.isDualLeg ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {/* Leg 1: Default Milestone */}
-                    {defaultLeg && (
-                      <div
-                        style={{
-                          background: "rgba(56, 189, 248, 0.04)",
-                          border: "1px solid rgba(56, 189, 248, 0.2)",
-                          borderRadius: 6,
-                          padding: "6px 8px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                          fontSize: 10,
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
-                          <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9 }}>
-                            LEG 1 · DEFAULT (50% + RUNNER)
-                          </span>
-                          <span style={{ fontWeight: 700, color: "var(--green)" }}>
-                            TARGET: {formatPrice(defaultLeg.tpPrice)} ({Number(defaultLeg.targetRR || 5.0).toFixed(1)}R)
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
-                          <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{defaultLeg.coveredRR || `${Number(defaultLeg.targetRR || 5.0).toFixed(1)}`}R</strong></span>
-                          {(defaultLeg.magicNumber || routingDefault?.magicNumber) && (
-                            <span style={{ color: "var(--accent)", fontWeight: 700 }}>⚡ MT5 #{defaultLeg.magicNumber || routingDefault?.magicNumber}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                {/* Dual Management Pathways: Trade Default (50% Milestone + Full TP) vs Prop Safe (1.5R–2.5R) */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {/* Pathway 1: Default Milestone & Full Runner Target */}
+                  <div
+                    style={{
+                      background: "rgba(56, 189, 248, 0.04)",
+                      border: "1px solid rgba(56, 189, 248, 0.22)",
+                      borderRadius: 6,
+                      padding: "6px 8px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      fontSize: 10,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+                      <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <Target size={11} /> PATH A · DEFAULT (50% + RUNNER)
+                      </span>
+                      {(defaultLeg?.magicNumber || routingDefault?.magicNumber) && (
+                        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: 9 }}>
+                          ⚡ MT5 #{defaultLeg?.magicNumber || routingDefault?.magicNumber}
+                        </span>
+                      )}
+                    </div>
 
-                    {/* Leg 2: Prop-Firm Safe */}
-                    {propLeg && (
-                      <div
-                        style={{
-                          background: "rgba(168, 85, 247, 0.04)",
-                          border: "1px solid rgba(168, 85, 247, 0.2)",
-                          borderRadius: 6,
-                          padding: "6px 8px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                          fontSize: 10,
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
-                          <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>
-                            LEG 2 · PROP-FIRM SAFE
-                          </span>
-                          <span style={{ fontWeight: 700, color: "var(--green)" }}>
-                            TARGET: {formatPrice(propLeg.tpPrice)} ({Number(propLeg.targetRR || 2.2).toFixed(1)}R)
-                          </span>
-                        </div>
-                        {(propLeg.targetLandmark || propLeg.propTarget?.source) && (
-                          <div style={{ color: "var(--purple, #c084fc)", fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            🎯 Landmark: {propLeg.targetLandmark || propLeg.propTarget?.source}
-                          </div>
-                        )}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 9 }}>
-                          <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{propLeg.coveredRR || `${Number(propLeg.targetRR || 2.2).toFixed(1)}`}R</strong></span>
-                          {(propLeg.magicNumber || routingProp?.magicNumber) && (
-                            <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700 }}>⚡ MT5 #{propLeg.magicNumber || routingProp?.magicNumber}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
+                    {/* 50% Milestone Level */}
                     <div
                       style={{
                         display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "center",
+                        justifyContent: "space-between",
                         background: "rgba(0, 0, 0, 0.25)",
-                        padding: "6px 8px",
-                        borderRadius: 6,
-                        fontFamily: "monospace",
-                        fontSize: 10,
+                        padding: "3px 6px",
+                        borderRadius: 4,
                       }}
                     >
-                      <span style={{ color: "var(--muted)" }}>TARGET ({trade.targetRR ? `${Number(trade.targetRR).toFixed(1)}R` : "TP"})</span>
-                      <span style={{ fontWeight: 700, color: "var(--green)" }}>{formatPrice(trade.tpPrice ?? level.tp)}</span>
+                      <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                        50% LEVEL: <strong style={{ color: "var(--accent)" }}>{formatPrice(setup.halfPrice)}</strong> ({Number(setup.halfRR || 2.2).toFixed(1)}R)
+                      </span>
+                      <span style={{ fontSize: 8.5, color: "var(--accent)", fontWeight: 700, background: "rgba(56, 189, 248, 0.15)", padding: "1px 5px", borderRadius: 3 }}>
+                        40% Book + BE SL
+                      </span>
                     </div>
 
-                    {(trade.targetLandmark || trade.propTarget?.source) && (
-                      <div
-                        style={{
-                          fontSize: 10,
-                          padding: "4px 8px",
-                          borderRadius: 5,
-                          background: "rgba(168, 85, 247, 0.1)",
-                          border: "1px solid rgba(168, 85, 247, 0.25)",
-                          color: "var(--purple, #c084fc)",
-                          fontFamily: "monospace",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        🎯 Landmark: {trade.targetLandmark || trade.propTarget?.source}
+                    {/* Full TP Level (matching Market Radar) */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: "rgba(0, 0, 0, 0.25)",
+                        padding: "3px 6px",
+                        borderRadius: 4,
+                      }}
+                    >
+                      <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                        FULL TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)}</strong> ({Number(setup.fullRR || 4.5).toFixed(1)}R)
+                      </span>
+                      <span style={{ fontSize: 8.5, color: "var(--green)", fontWeight: 700, background: "rgba(34, 197, 94, 0.15)", padding: "1px 5px", borderRadius: 3 }}>
+                        60% to DOL
+                      </span>
+                    </div>
+
+                    {defaultLeg?.coveredRR && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 8.5 }}>
+                        <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{defaultLeg.coveredRR}R</strong></span>
+                        <span style={{ color: "var(--muted)" }}>drag -{defaultLeg.frictionDragR ?? "0.00"}R</span>
                       </div>
                     )}
+                  </div>
 
-                    {trade.coveredRR && (
-                      <div
-                        style={{
-                          fontSize: 10,
-                          padding: "4px 8px",
-                          borderRadius: 5,
-                          background: "rgba(0, 176, 255, 0.08)",
-                          border: "1px solid rgba(0, 176, 255, 0.25)",
-                          color: "var(--accent, #00b0ff)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        <span>🛡️ Net Covered R: <strong>{trade.coveredRR}R</strong></span>
-                        <span style={{ color: "var(--muted)", fontSize: 9 }}>drag -{trade.frictionDragR ?? "0.00"}R</span>
-                      </div>
-                    )}
-
-                    {(trade.magicNumber || routingSingle?.magicNumber) && (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontFamily: "monospace",
-                          padding: "4px 8px",
-                          borderRadius: 6,
-                          background: "rgba(255, 255, 255, 0.03)",
-                          border: "1px solid rgba(255, 255, 255, 0.05)",
-                        }}
-                      >
-                        <span style={{ color: "var(--accent)", fontWeight: 700 }}>
-                          ⚡ MT5 #{trade.magicNumber || routingSingle?.magicNumber}
+                  {/* Pathway 2: Prop-Firm Safe */}
+                  <div
+                    style={{
+                      background: "rgba(168, 85, 247, 0.04)",
+                      border: "1px solid rgba(168, 85, 247, 0.22)",
+                      borderRadius: 6,
+                      padding: "6px 8px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      fontSize: 10,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+                      <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <Shield size={11} /> PATH B · PROP-FIRM SAFE
+                      </span>
+                      {(propLeg?.magicNumber || routingProp?.magicNumber) && (
+                        <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700, fontSize: 9 }}>
+                          ⚡ MT5 #{propLeg?.magicNumber || routingProp?.magicNumber}
                         </span>
-                        {(trade.brokerComment || routingSingle?.comment) && (
-                          <span style={{ color: "var(--muted)", fontSize: 9 }}>
-                            {trade.brokerComment || routingSingle?.comment}
-                          </span>
-                        )}
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: "rgba(0, 0, 0, 0.25)",
+                        padding: "3px 6px",
+                        borderRadius: 4,
+                      }}
+                    >
+                      <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                        PROP TARGET: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.propTp)}</strong> ({Number(setup.propRR || 2.0).toFixed(1)}R)
+                      </span>
+                      <span style={{ fontSize: 8.5, color: "var(--purple, #c084fc)", fontWeight: 700, background: "rgba(168, 85, 247, 0.15)", padding: "1px 5px", borderRadius: 3 }}>
+                        100% Exit
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 8.5, flexWrap: "wrap", gap: 4 }}>
+                      <span>1.0R → -0.5R Risk · 1.5R → BE</span>
+                      {(propLeg?.targetLandmark || propLeg?.propTarget?.source) && (
+                        <span style={{ color: "var(--purple, #c084fc)", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, whiteSpace: "nowrap" }}>
+                          🎯 {propLeg?.targetLandmark || propLeg?.propTarget?.source}
+                        </span>
+                      )}
+                    </div>
+
+                    {propLeg?.coveredRR && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 8.5 }}>
+                        <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{propLeg.coveredRR}R</strong></span>
+                        <span style={{ color: "var(--muted)" }}>drag -{propLeg.frictionDragR ?? "0.00"}R</span>
                       </div>
                     )}
-                  </>
-                )}
+                  </div>
+                </div>
 
                 {/* Action Buttons Row */}
                 <div
@@ -931,10 +952,17 @@ export default function StagedQueue({
                             <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 11 }}>
                               LEG 1 · DEFAULT (50% MILESTONE + RUNNER)
                             </span>
-                            <div style={{ fontSize: 11, fontFamily: "monospace", marginTop: 2 }}>
-                              Target: <strong style={{ color: "var(--green)" }}>{formatPrice(legTrade.tpPrice ?? legLevel.tp)}</strong> (
-                              {finiteNumber(legTrade.targetRR ?? legLevel.rr) === null ? "5.0" : `${legTrade.targetRR ?? legLevel.rr}R`})
-                              {legTrade.coveredRR && <span style={{ color: "var(--muted)", marginLeft: 6 }}>· Net Covered: {legTrade.coveredRR}R</span>}
+                            <div style={{ fontSize: 11, fontFamily: "monospace", marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+                              <div>
+                                50% Milestone: <strong style={{ color: "var(--accent)" }}>{formatPrice(setup.halfPrice)}</strong> ({Number(setup.halfRR || 2.2).toFixed(1)}R)
+                                <span style={{ color: "var(--muted)", marginLeft: 6 }}>· Book 40% volume + Move SL to Breakeven</span>
+                              </div>
+                              <div>
+                                Full Target (Runner): <strong style={{ color: "var(--green)" }}>{formatPrice(legTrade.tpPrice ?? legLevel.tp ?? setup.fullTp)}</strong> (
+                                {finiteNumber(legTrade.targetRR ?? legLevel.rr ?? setup.fullRR) === null ? "5.0" : `${legTrade.targetRR ?? legLevel.rr ?? setup.fullRR}R`})
+                                <span style={{ color: "var(--muted)", marginLeft: 6 }}>· Hold 60% runner to DOL</span>
+                              </div>
+                              {legTrade.coveredRR && <div style={{ color: "var(--muted)", fontSize: 10 }}>🛡️ Net Covered: {legTrade.coveredRR}R</div>}
                             </div>
                           </div>
 

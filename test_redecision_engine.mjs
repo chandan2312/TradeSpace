@@ -281,8 +281,9 @@ const tradeSwing = {
   tpPrice: 1.0980,
 };
 
-// Swing in Asian session is neutral (0), NOT penalized with -50
-const swingSession = evaluateSessionVolatility(tradeSwing, {}, profileSwing);
+// Swing in Asian/dead zone session is neutral (0), NOT penalized with -50
+const offHoursDate = new Date("2026-10-07T22:00:00Z"); // 22:00 UTC = Asian consolidation / dead zone
+const swingSession = evaluateSessionVolatility(tradeSwing, {}, profileSwing, offHoursDate);
 assert("Swing trade is neutral (0) during Asian/dead zone sessions", swingSession.score === 0 && swingSession.sessionPhase === "SWING_HOLD_NEUTRAL", swingSession);
 
 // Swing ignores micro 1.5R obstacles (requires >= 2.0R)
@@ -322,7 +323,6 @@ const tradeScalp = {
 };
 
 // Scalp in dead zone is heavily penalized (-70)
-const offHoursDate = new Date("2026-10-07T22:00:00Z"); // 22:00 UTC = Asian consolidation / dead zone
 const scalpDeadZone = evaluateSessionVolatility(tradeScalp, {}, profileScalp, offHoursDate);
 assert("Scalp trade in off-hours/dead zone is severely penalized (-70)", scalpDeadZone.score <= -60, scalpDeadZone.score);
 
