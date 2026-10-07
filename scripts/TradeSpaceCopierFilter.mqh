@@ -27,7 +27,7 @@ enum ENUM_TS_HORIZON
    TS_HORIZON_UNKNOWN  = 0,
    TS_HORIZON_SWING    = 1, // 1D-1H Swing
    TS_HORIZON_DAY      = 2, // 4H-15M Day Trade
-   TS_HORIZON_SCALP    = 3, // 15M-1M Scalp
+   TS_HORIZON_SCALP    = 3, // 30M-5M Scalp
    TS_HORIZON_OTHER    = 9
   };
 

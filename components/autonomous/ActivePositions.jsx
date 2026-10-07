@@ -161,7 +161,7 @@ export default function ActivePositions({
               ? "1D-1H Swing"
               : isDay
               ? "4H-15M Day"
-              : "15M-1M Scalp";
+              : "30M-5M Scalp";
 
             return (
               <article

@@ -227,13 +227,13 @@ export default function JournalDrawerModal({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
+                title={tab.label}
+                aria-label={tab.label}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "10px 14px",
-                  fontSize: 11,
-                  fontWeight: active ? 700 : 500,
+                  justifyContent: "center",
+                  padding: "10px 16px",
                   color: active ? "var(--accent)" : "var(--muted)",
                   borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
                   background: "transparent",
@@ -241,10 +241,10 @@ export default function JournalDrawerModal({
                   borderLeft: "none",
                   borderRight: "none",
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <Icon size={13} />
-                {tab.label}
+                <Icon size={14} />
               </button>
             );
           })}

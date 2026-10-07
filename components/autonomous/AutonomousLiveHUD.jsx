@@ -16,6 +16,8 @@ import {
   Target,
   Shield,
   Layers,
+  Clock,
+  FileText,
 } from "lucide-react";
 import {
   tradeRiskTelemetry,
@@ -499,6 +501,8 @@ export default function AutonomousLiveHUD({
           >
             <button
               onClick={() => setTab("active")}
+              title="Active Trades"
+              aria-label="Active Trades"
               style={{
                 flex: 1,
                 padding: "8px 12px",
@@ -509,12 +513,30 @@ export default function AutonomousLiveHUD({
                 color: tab === "active" ? "var(--fg)" : "var(--muted)",
                 borderBottom: tab === "active" ? "2px solid var(--accent)" : "none",
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
               }}
             >
-              Active ({activeTrades.length})
+              <Zap size={14} />
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 10,
+                  background: tab === "active" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                  color: tab === "active" ? "#fff" : "var(--muted)",
+                  fontWeight: 800,
+                }}
+              >
+                {activeTrades.length}
+              </span>
             </button>
             <button
               onClick={() => setTab("staged")}
+              title="Staged Setups"
+              aria-label="Staged Setups"
               style={{
                 flex: 1,
                 padding: "8px 12px",
@@ -528,10 +550,10 @@ export default function AutonomousLiveHUD({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 6,
+                gap: 5,
               }}
             >
-              <span>Staged</span>
+              <Clock size={14} />
               <span
                 style={{
                   fontSize: 10,
@@ -547,6 +569,8 @@ export default function AutonomousLiveHUD({
             </button>
             <button
               onClick={() => setTab("history")}
+              title="Closed Trades History"
+              aria-label="Closed Trades History"
               style={{
                 flex: 1,
                 padding: "8px 12px",
@@ -557,9 +581,25 @@ export default function AutonomousLiveHUD({
                 color: tab === "history" ? "var(--fg)" : "var(--muted)",
                 borderBottom: tab === "history" ? "2px solid var(--accent)" : "none",
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
               }}
             >
-              History ({closedTrades.length})
+              <FileText size={14} />
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 10,
+                  background: tab === "history" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                  color: tab === "history" ? "#fff" : "var(--muted)",
+                  fontWeight: 800,
+                }}
+              >
+                {closedTrades.length}
+              </span>
             </button>
           </div>
 
@@ -1046,7 +1086,7 @@ export default function AutonomousLiveHUD({
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
-                                Full TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)}</strong> ({Number(setup.fullRR || 4.5).toFixed(1)}R)
+                                Full TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)}</strong> ({Number(setup.fullRR || defaultLeg?.targetRR || 4.0).toFixed(1)}R)
                               </span>
                               <span style={{ fontSize: 8.5, color: "var(--green)", fontWeight: 700 }}>60% to DOL</span>
                             </div>

@@ -197,36 +197,40 @@ def evaluate_market_brain(
             h1_veto_active = False
             h1_trigger_status = "APPROVED"
 
-    # Scalp Gatekeeper (15M Compass -> 1M Trigger)
-    m1_dir = (structures.get("M1") or {}).get("dir", 0)
-    m1_veto_active = False
-    m1_veto_reason = None
-    m1_trigger_status = "NEUTRAL"
+    # Scalp Gatekeeper (30M/15M Compass -> 5M Trigger)
+    m30_dir = (structures.get("M30") or {}).get("dir", m15_dir)
+    m30_range = ranges.get("ranges", {}).get("M30") or m15_range
+    m30_coverage = m30_range.get("coveragePct") if m30_range else m15_coverage
+    m30_zone = m30_range.get("zone") if m30_range else m15_zone
+    m5_dir = (structures.get("M5") or {}).get("dir", 0)
+    m5_veto_active = False
+    m5_veto_reason = None
+    m5_trigger_status = "NEUTRAL"
 
-    if m15_dir == 1 or setup_dir == 1:
-        if m15_coverage is not None and (m15_coverage > 70 or (m15_range and m15_range.get("status") == "EXHAUSTED_HIGH")):
-            m1_veto_active = True
-            m1_veto_reason = f"15M is overextended in {m15_zone} ({m15_coverage}%). Scalpers must wait for 15M/5M pullback."
-            m1_trigger_status = "WAIT_PULLBACK"
-        elif m1_dir == -1:
-            m1_veto_active = True
-            m1_veto_reason = "1M is in active counter-trend leg. Awaiting 1M displacement shift."
-            m1_trigger_status = "WAIT_SHIFT"
+    if m30_dir == 1 or setup_dir == 1:
+        if m30_coverage is not None and (m30_coverage > 70 or (m30_range and m30_range.get("status") == "EXHAUSTED_HIGH")):
+            m5_veto_active = True
+            m5_veto_reason = f"30M is overextended in {m30_zone} ({m30_coverage}%). Scalpers must wait for 30M/15M pullback."
+            m5_trigger_status = "WAIT_PULLBACK"
+        elif m5_dir == -1:
+            m5_veto_active = True
+            m5_veto_reason = "5M is in active counter-trend leg. Awaiting 5M displacement shift."
+            m5_trigger_status = "WAIT_SHIFT"
         else:
-            m1_veto_active = False
-            m1_trigger_status = "APPROVED"
-    elif m15_dir == -1 or setup_dir == -1:
-        if m15_coverage is not None and (m15_coverage < 30 or (m15_range and m15_range.get("status") == "EXHAUSTED_LOW")):
-            m1_veto_active = True
-            m1_veto_reason = f"15M is overextended in {m15_zone} ({m15_coverage}%). Scalpers must wait for 15M/5M pullback."
-            m1_trigger_status = "WAIT_PULLBACK"
-        elif m1_dir == 1:
-            m1_veto_active = True
-            m1_veto_reason = "1M is in active counter-trend leg. Awaiting 1M displacement shift."
-            m1_trigger_status = "WAIT_SHIFT"
+            m5_veto_active = False
+            m5_trigger_status = "APPROVED"
+    elif m30_dir == -1 or setup_dir == -1:
+        if m30_coverage is not None and (m30_coverage < 30 or (m30_range and m30_range.get("status") == "EXHAUSTED_LOW")):
+            m5_veto_active = True
+            m5_veto_reason = f"30M is overextended in {m30_zone} ({m30_coverage}%). Scalpers must wait for 30M/15M pullback."
+            m5_trigger_status = "WAIT_PULLBACK"
+        elif m5_dir == 1:
+            m5_veto_active = True
+            m5_veto_reason = "5M is in active counter-trend leg. Awaiting 5M displacement shift."
+            m5_trigger_status = "WAIT_SHIFT"
         else:
-            m1_veto_active = False
-            m1_trigger_status = "APPROVED"
+            m5_veto_active = False
+            m5_trigger_status = "APPROVED"
 
     # 5. Dynamic Cognitive Synthesis
     if fresh_htf_sweep and fresh_htf_sweep["side"] == -1 and (
@@ -409,7 +413,7 @@ def evaluate_market_brain(
         "m15Zone": m15_zone,
         "fvgOrderFlow": fvg_order_flow,
         "activeCycle": htf_liq.get("activeCycle", "UNKNOWN"),
-        # 3 Official Horizons Matrix: Swing (1D-1H), Day (4H-15M), Scalp (15M-1M)
+        # 3 Official Horizons Matrix: Swing (1D-1H), Day (4H-15M), Scalp (30M-5M)
         "horizons": {
             "SWING": {
                 "horizon": "SWING",
@@ -467,20 +471,20 @@ def evaluate_market_brain(
             },
             "SCALP": {
                 "horizon": "SCALP",
-                "timeframeCombo": "15M-1M",
-                "macroCompass": "BULLISH" if m15_dir == 1 else "BEARISH" if m15_dir == -1 else "NEUTRAL",
-                "compassTf": "15M",
-                "roadmapTf": "5M",
-                "gatekeeperTf": "1M",
+                "timeframeCombo": "30M-5M",
+                "macroCompass": "BULLISH" if m30_dir == 1 else "BEARISH" if m30_dir == -1 else "NEUTRAL",
+                "compassTf": "30M",
+                "roadmapTf": "15M",
+                "gatekeeperTf": "5M",
                 "roadmap": {
-                    "m5StructureDir": (structures.get("M5") or {}).get("dir", 0),
-                    "m5Range": ranges.get("ranges", {}).get("M5"),
+                    "m15StructureDir": m15_dir,
+                    "m15Range": ranges.get("ranges", {}).get("M15"),
                 },
                 "gatekeeper": {
-                    "m1StructureDir": m1_dir,
-                    "vetoActive": m1_veto_active,
-                    "vetoReason": m1_veto_reason,
-                    "triggerStatus": m1_trigger_status,
+                    "m5StructureDir": m5_dir,
+                    "vetoActive": m5_veto_active,
+                    "vetoReason": m5_veto_reason,
+                    "triggerStatus": m5_trigger_status,
                 },
             },
         },

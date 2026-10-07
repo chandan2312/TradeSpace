@@ -60,82 +60,75 @@ export default function AutonomousHeader({
   const horizonMode = (config?.horizonMode || "unavailable").toUpperCase();
 
   return (
-    <header
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: 12,
-        padding: "12px 18px",
-        background: "var(--panel)",
-        border: "1px solid var(--border)",
-        borderRadius: 12,
-        marginBottom: 0,
-      }}
-    >
-      {/* Brand & Status */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", minWidth: 0 }}>
-        <a
-          href="/"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            color: "var(--muted)",
-            textDecoration: "none",
-            fontSize: 13,
-            padding: "4px 8px",
-            borderRadius: 6,
-            border: "1px solid var(--border)",
-          }}
-          title="Return to Charts"
-        >
-          <ArrowLeft size={14} /> Charts
-        </a>
+    <header className="autonomous-header">
+      {/* Row 1: Nav & Title/Status */}
+      <div className="autonomous-header-top">
+        <div className="autonomous-header-nav-group" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <a
+            href="/"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              color: "var(--muted)",
+              textDecoration: "none",
+              fontSize: 13,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              whiteSpace: "nowrap",
+            }}
+            title="Return to Charts"
+          >
+            <ArrowLeft size={14} /> Charts
+          </a>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (onOpenJournal) {
-              onOpenJournal();
-            } else if (typeof window !== "undefined") {
-              window.location.href = "/autonomous?section=journal";
-            }
-          }}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            color: activeSection === "journal" ? "#fff" : "var(--accent)",
-            textDecoration: "none",
-            fontSize: 13,
-            padding: "4px 8px",
-            borderRadius: 6,
-            border: activeSection === "journal" ? "1px solid var(--accent)" : "1px solid rgba(41, 98, 255, 0.3)",
-            background: activeSection === "journal" ? "var(--accent)" : "rgba(41, 98, 255, 0.1)",
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-          title="Open Autonomous Trading Journal"
-        >
-          <BookOpen size={14} /> Journal
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenJournal) {
+                onOpenJournal();
+              } else if (typeof window !== "undefined") {
+                window.location.href = "/autonomous?section=journal";
+              }
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              color: activeSection === "journal" ? "#fff" : "var(--accent)",
+              textDecoration: "none",
+              fontSize: 13,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: activeSection === "journal" ? "1px solid var(--accent)" : "1px solid rgba(41, 98, 255, 0.3)",
+              background: activeSection === "journal" ? "var(--accent)" : "rgba(41, 98, 255, 0.1)",
+              cursor: "pointer",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+            title="Open Autonomous Trading Journal"
+          >
+            <BookOpen size={14} /> Journal
+          </button>
+        </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+        <div className="autonomous-header-title-box" style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <div
             style={{
               width: 10,
               height: 10,
               borderRadius: "50%",
+              flexShrink: 0,
               background: isRunning ? "var(--green)" : "var(--muted)",
               boxShadow: isRunning ? "0 0 10px var(--green)" : "none",
             }}
           />
-          <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, letterSpacing: -0.2 }}>
+          <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, letterSpacing: -0.2, whiteSpace: "nowrap" }}>
             Autonomous Brain Trader
           </h1>
           <span
+            className="inst-tag"
             style={{
               fontSize: 10,
               fontWeight: 700,
@@ -144,6 +137,7 @@ export default function AutonomousHeader({
               background: "rgba(56, 189, 248, 0.15)",
               color: "var(--accent)",
               border: "1px solid rgba(56, 189, 248, 0.3)",
+              whiteSpace: "nowrap",
             }}
           >
             INSTITUTIONAL
@@ -151,10 +145,11 @@ export default function AutonomousHeader({
         </div>
       </div>
 
-      {/* Center badges: Mode, Horizon, Sessions */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      {/* Row 2: Center badges (Mode, MT5 Live, Horizon, Killzone, Session) */}
+      <div className="autonomous-header-badges">
         {/* Execution Mode */}
         <div
+          className="autonomous-badge-chip"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -183,6 +178,7 @@ export default function AutonomousHeader({
 
         {/* MT5 Broker Execution Status (1-Click Toggle) */}
         <button
+          className="autonomous-badge-chip"
           onClick={onToggleLiveTrading}
           disabled={pendingAction === "toggleLive"}
           style={{
@@ -225,6 +221,7 @@ export default function AutonomousHeader({
 
         {/* Horizon Mode */}
         <div
+          className="autonomous-badge-chip"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -244,6 +241,7 @@ export default function AutonomousHeader({
         {/* Active Time Slot & Killzone */}
         {currentSlot && (
           <div
+            className="autonomous-badge-chip"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -290,6 +288,7 @@ export default function AutonomousHeader({
 
         {/* Session & Clock */}
         <div
+          className="autonomous-badge-chip"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -307,8 +306,8 @@ export default function AutonomousHeader({
         </div>
       </div>
 
-      {/* Control Buttons */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {/* Row 3: Control Buttons */}
+      <div className="autonomous-header-actions">
         {/* Scan Now */}
         <button
           onClick={onScanNow}
@@ -316,6 +315,7 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 6,
             padding: "6px 12px",
             borderRadius: 8,
@@ -328,7 +328,7 @@ export default function AutonomousHeader({
           }}
         >
           <RefreshCw size={13} className={isScanning ? "animate-spin" : ""} />
-          {isScanning ? "Scanning..." : "Scan Universe"}
+          <span>{isScanning ? "Scanning..." : "Scan Universe"}</span>
         </button>
 
         {/* Settings */}
@@ -338,6 +338,7 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 6,
             padding: "6px 12px",
             borderRadius: 8,
@@ -350,7 +351,7 @@ export default function AutonomousHeader({
           }}
           title="Autonomous Risk & Horizon Configuration"
         >
-          <Sliders size={13} /> Settings
+          <Sliders size={13} /> <span>Settings</span>
         </button>
 
         {/* Master Power Toggle */}
@@ -360,6 +361,7 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 6,
             padding: "6px 14px",
             borderRadius: 8,
@@ -372,7 +374,7 @@ export default function AutonomousHeader({
           }}
         >
           {isRunning ? <Pause size={14} /> : <Play size={14} />}
-          {!configAvailable ? "ENGINE UNAVAILABLE" : isRunning ? "HALT ENGINE" : "ENGAGE ENGINE"}
+          <span>{!configAvailable ? "UNAVAILABLE" : isRunning ? "HALT" : "ENGAGE"}</span>
         </button>
       </div>
     </header>

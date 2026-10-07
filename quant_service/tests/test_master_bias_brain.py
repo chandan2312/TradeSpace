@@ -182,7 +182,7 @@ def test_market_brain_scenarios():
     assert "horizons" in brain_unlocked
     assert brain_unlocked["horizons"]["SWING"]["timeframeCombo"] == "1D-1H"
     assert brain_unlocked["horizons"]["DAY"]["timeframeCombo"] == "4H-15M"
-    assert brain_unlocked["horizons"]["SCALP"]["timeframeCombo"] == "15M-1M"
+    assert brain_unlocked["horizons"]["SCALP"]["timeframeCombo"] == "30M-5M"
 
 
 def test_full_engine_integration():

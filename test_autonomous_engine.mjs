@@ -43,6 +43,13 @@ import {
   planFractionalVolumes,
   determineTerminalStatus,
 } from "./lib/autonomous/management.js";
+import {
+  resolveCascadingDefaultTarget,
+  DEFAULT_TP_RANGE,
+  PROP_FIRM_TP_RANGE,
+  DEFAULT_HORIZON_TIMEFRAME_LEVELS,
+  PROP_TIMEFRAME_LADDER,
+} from "./lib/autonomous/tpCascadingEngine.js";
 import { computeRR } from "./lib/draw/core.js";
 import { TERMINAL_STATES } from "./lib/autonomous/store.js";
 import { calculateRiskSize, dailyRiskGovernor, calculateEffectiveGroupRisk, calculatePartitionedDailyPnl, calculatePartitionedDailyR } from "./lib/autonomous/risk.js";
@@ -98,14 +105,14 @@ const resDay = resolveScenarioForPair({
 assert(resDay.scenario.id === "day", "Forced day mode returns DAY scenario (4H-15M)");
 assert(resDay.scenario.minRR === 2.0, "Day trade scenario enforces minimum 2.0R");
 
-// 2. Forced Scalp Mode (15M-1M)
+// 2. Forced Scalp Mode (30M-5M)
 const resScalp = resolveScenarioForPair({
   symbol: "EURUSD",
   brain: { conviction: 85, allowedToLong: true },
   ranges: { ranges: { M15: { coveragePct: 30 } } },
   config: { horizonMode: "scalp" },
 });
-assert(resScalp.scenario.id === "scalp", "Forced scalp mode returns SCALP scenario (15M-1M)");
+assert(resScalp.scenario.id === "scalp", "Forced scalp mode returns SCALP scenario (30M-5M)");
 assert(resScalp.scenario.minRR === 1.5, "Scalp scenario enforces minimum 1.5R");
 
 // 3. Forced Swing Mode (1D-1H)
@@ -295,7 +302,12 @@ const helperEetTime = (h, m) => h * 3600 + m * 60;
 const slotAsia = getCurrentTimeSlot(helperEetTime(3, 30));
 assert(slotAsia.id === "asian_range", "03:30 EET resolves to Asian Range Accumulation");
 assert(slotAsia.isKillzone === false, "Asian Range is marked as non-killzone accumulation");
-assert(slotAsia.shortBadge === "ASIA 02-08", "Asian Range short badge formatted in EET");
+assert(slotAsia.shortBadge === "ASIA 02-06", "Asian Range short badge formatted in EET");
+
+// Interstitial Asian Close Lull (07:00 EET)
+const slotAsiaLull = getCurrentTimeSlot(helperEetTime(7, 0));
+assert(slotAsiaLull.id === "off_session_lull", "07:00 EET resolves to Asian Close Lull");
+assert(slotAsiaLull.shortBadge === "LULL 06-08", "Asian Close Lull short badge formatted in EET");
 
 // 2. London Open Killzone (10:15 EET)
 const slotLdn = getCurrentTimeSlot(helperEetTime(10, 15));
@@ -309,11 +321,16 @@ assert(slotLunch.id === "london_lunch", "13:30 EET resolves to London Lunch");
 assert(slotLunch.phase === "CONSOLIDATION", "London Lunch marked as consolidation lull");
 assert(slotLunch.shortBadge === "LUNCH 13-15", "London Lunch short badge formatted in EET");
 
-// 4. New York AM Killzone (15:30 EET)
-const slotNyAm = getCurrentTimeSlot(helperEetTime(15, 30));
-assert(slotNyAm.id === "ny_open", "15:30 EET resolves to New York AM Killzone");
+// 4. Pre-New York Session Setup (15:30 EET)
+const slotPreNy = getCurrentTimeSlot(helperEetTime(15, 30));
+assert(slotPreNy.id === "pre_ny_prep", "15:30 EET resolves to Pre-New York Session Setup");
+assert(slotPreNy.shortBadge === "PRE-NY 15-16:25", "Pre-New York short badge formatted in EET");
+
+// 5. New York AM Killzone (16:30 EET)
+const slotNyAm = getCurrentTimeSlot(helperEetTime(16, 30));
+assert(slotNyAm.id === "ny_open", "16:30 EET resolves to New York AM Killzone");
 assert(slotNyAm.isKillzone === true, "New York AM is recognized as active Killzone");
-assert(slotNyAm.shortBadge === "NYKZ 15-18", "New York AM short badge formatted in EET");
+assert(slotNyAm.shortBadge === "NYKZ 16:25-20:30", "New York AM short badge formatted in EET");
 
 // 5. New York Silver Bullet Window (17:30 EET)
 const slotSb = getCurrentTimeSlot(helperEetTime(17, 30));
@@ -358,6 +375,23 @@ assert(slotFromBar.id === "ny_silver_bullet", "getTimeSlotForBar directly maps 1
 // 11. EET Real-Time Clock Extraction Verification
 const nowEet = getEetTime(new Date());
 assert(typeof nowEet.h === "number" && typeof nowEet.m === "number" && typeof nowEet.totalMinutes === "number", "getEetTime successfully extracts live EET time from system");
+
+// 12. Extended New York Window (16:25 - 20:30 EET) & Dynamic User Custom Timings
+const slotNyExtended = getCurrentTimeSlot(helperEetTime(20, 15));
+assert(slotNyExtended.id === "ny_open", "20:15 EET resolves to New York AM Killzone under extended 16:25 - 20:30 window");
+assert(slotNyExtended.shortBadge === "NYKZ 16:25-20:30", "New York AM short badge displays extended range 16:25-20:30");
+
+// 13. Dynamic User-Configured Slot Timings Override Verification
+const customConfig = {
+  ...DEFAULT_AUTONOMOUS_CONFIG,
+  slotCustomTimings: {
+    ny_open: { start: "14:00", end: "22:00" },
+  },
+};
+const slotCustomNy = getCurrentTimeSlot(helperEetTime(14, 30), customConfig);
+assert(slotCustomNy.id === "ny_open", "14:30 EET resolves to custom configured ny_open window");
+assert(slotCustomNy.shortBadge === "NYKZ 14:00-22:00", "Custom slot timings reflect configured start-end range in badge");
+assert(slotCustomNy.startMinute === 840 && slotCustomNy.endMinute === 1320, "startMinute and endMinute dynamically updated from custom timings");
 
 console.log("\n=======================================================");
 console.log("TEST SUITE 6: The 5 Core Institutional Entry Models");
@@ -487,7 +521,7 @@ assert(spProfile.profileKey === "US_INDICES", "SP500 maps to US_INDICES profile"
 
 const gerProfile = getSymbolSessionProfile("GER40");
 assert(gerProfile.profileKey === "EU_INDICES", "GER40 maps to EU_INDICES profile");
-assert(gerProfile.label === "London Only", "GER40 badge labeled 'London Only'");
+assert(gerProfile.label === "London & NY", "GER40 badge labeled 'London & NY'");
 
 const goldProfile = getSymbolSessionProfile("XAUUSD");
 assert(goldProfile.profileKey === "METALS_CRYPTO", "XAUUSD maps to METALS_CRYPTO profile");
@@ -516,11 +550,12 @@ assert(isSymbolPermittedInSlot("NAS100", "asian_range") === false, "NAS100 stric
 assert(isSymbolPermittedInSlot("NAS100", "london_open") === false, "NAS100 strictly blocked in London Open");
 assert(isSymbolPermittedInSlot("NAS100", "dead_zone") === false, "NAS100 blocked in Dead Zone");
 
-// GER40: allowed in london_open, pre_london_prep, london_close; blocked in asian_range, ny_pm
+// GER40: allowed in london_open, pre_london_prep, london_close, ny_open, ny_pm; blocked in asian_range
 assert(isSymbolPermittedInSlot("GER40", "london_open") === true, "GER40 permitted in London Open");
 assert(isSymbolPermittedInSlot("GER40", "pre_london_prep") === true, "GER40 permitted in Frankfurt Prep");
+assert(isSymbolPermittedInSlot("GER40", "ny_open") === true, "GER40 permitted in New York AM");
+assert(isSymbolPermittedInSlot("GER40", "ny_pm") === true, "GER40 permitted in New York PM");
 assert(isSymbolPermittedInSlot("GER40", "asian_range") === false, "GER40 strictly blocked in Asian Range");
-assert(isSymbolPermittedInSlot("GER40", "ny_pm") === false, "GER40 strictly blocked in New York PM");
 
 // Gold (XAUUSD): allowed in Asia, London, NY; blocked in dead_zone
 assert(isSymbolPermittedInSlot("XAUUSD", "asian_range") === true, "Gold permitted in Asian Range");
@@ -562,13 +597,16 @@ assert(asiaPermYen.permitted === true, "isTradingPermittedNow allows USDJPY duri
 const asiaPermEur = isTradingPermittedNow(asiaSec, { enforceSymbolSessions: true }, "EURUSD.I");
 assert(asiaPermEur.permitted === false, "isTradingPermittedNow blocks EURUSD during Asian session (03:30 EET)");
 
-// At 16:00 EET (New York AM session): 16 * 3600 = 57600
-const nySec = 57600;
+// At 16:30 EET (New York AM session): 16.5 * 3600 = 59400
+const nySec = 59400;
 const nyPermNas = isTradingPermittedNow(nySec, { enforceSymbolSessions: true }, "NAS100");
-assert(nyPermNas.permitted === true, "isTradingPermittedNow allows NAS100 during New York session (16:00 EET)");
+assert(nyPermNas.permitted === true, "isTradingPermittedNow allows NAS100 during New York session (16:30 EET)");
 
 const nyPermGer = isTradingPermittedNow(nySec, { enforceSymbolSessions: true }, "GER40");
-assert(nyPermGer.permitted === false, "isTradingPermittedNow blocks GER40 during New York PM/AM session (16:00 EET)");
+assert(nyPermGer.permitted === true, "isTradingPermittedNow allows GER40 during New York session (16:30 EET)");
+
+const asiaPermGer = isTradingPermittedNow(asiaSec, { enforceSymbolSessions: true }, "GER40");
+assert(asiaPermGer.permitted === false, "isTradingPermittedNow blocks GER40 during Asian session (03:30 EET)");
 
 // =======================================================
 // TEST SUITE 8: Institutional Position Sizing (mt5.js)
@@ -1159,27 +1197,27 @@ console.log("=======================================================");
 }
 
 console.log("\n=======================================================");
-console.log("TEST SUITE 15: Max 5.0 RR Enforcement Across Models, Tools & Engine");
+console.log("TEST SUITE 15: Structural Target Mechanics Across Models, Tools & Engine (Default Freedom & Prop Clamping)");
 console.log("=======================================================");
 {
-  // 15.1 Drawing Tool RR calculation clamp
+  // 15.1 Drawing Tool RR calculation (natural ratio without artificial clamp)
   // Long drawing: Entry=100, Stop=90 (Risk=10), Target=180 (Reward=80 -> Raw RR = 8.0)
   const drawing8R = {
     entry: { price: 100 },
     stop: 90,
     target: 180,
   };
-  const clampedDrawRR = computeRR(drawing8R);
-  assert(clampedDrawRR === 5.0, `computeRR clamps 8.0R drawing to max 5.0R: got ${clampedDrawRR}`);
+  const naturalDrawRR = computeRR(drawing8R);
+  assert(naturalDrawRR === 8.0, `computeRR measures natural 8.0R drawing without naive clamp: got ${naturalDrawRR}`);
 
   const drawing3R = {
     entry: { price: 100 },
     stop: 90,
     target: 130,
   };
-  assert(computeRR(drawing3R) === 3.0, `computeRR permits 3.0R drawing within 5.0R limit: got ${computeRR(drawing3R)}`);
+  assert(computeRR(drawing3R) === 3.0, `computeRR accurately measures 3.0R drawing: got ${computeRR(drawing3R)}`);
 
-  // 15.2 modifyTradeTarget clamps targetRR and calculates proportional TP
+  // 15.2 modifyTradeTarget sets natural structural targets for default leg without 5.0R ceiling
   const tradeDoc = {
     _id: new ObjectId("650000000000000000000001"),
     symbol: "EURUSD",
@@ -1214,21 +1252,21 @@ console.log("=======================================================");
     autonomousCols: async () => ({ tradesCol: mockTradesCol }),
   });
 
-  // Request targetRR = 8.0 -> must be clamped to 5.0R (TP = 1.0850 + 5.0*0.0030 = 1.1000)
-  const resClamp = await testEngine.modifyTradeTarget(tradeDoc._id, { targetRR: 8.0 });
-  assert(resClamp.ok === true, "modifyTradeTarget succeeds with high RR request");
+  // Request targetRR = 8.0 -> natural structural target (TP = 1.0850 + 8.0*0.0030 = 1.1090)
+  const resHigh = await testEngine.modifyTradeTarget(tradeDoc._id, { targetRR: 8.0 });
+  assert(resHigh.ok === true, "modifyTradeTarget succeeds with high RR request");
   const updatedDoc1 = mockDbTrades.get(String(tradeDoc._id));
-  assert(updatedDoc1.targetRR === 5.0, `modifyTradeTarget clamped 8.0R to 5.0R: got ${updatedDoc1.targetRR}`);
-  assert(updatedDoc1.tpPrice === 1.1000, `modifyTradeTarget adjusted TP to 1.1000: got ${updatedDoc1.tpPrice}`);
+  assert(updatedDoc1.targetRR === 8.0, `modifyTradeTarget sets natural 8.0R: got ${updatedDoc1.targetRR}`);
+  assert(updatedDoc1.tpPrice === 1.1090, `modifyTradeTarget adjusted TP to 1.1090: got ${updatedDoc1.tpPrice}`);
 
-  // Request tpPrice = 1.1150 (raw RR = (1.1150 - 1.0850) / 0.0030 = 10.0R) -> clamped to 5.0R
-  const resClampTp = await testEngine.modifyTradeTarget(tradeDoc._id, { tpPrice: 1.1150 });
-  assert(resClampTp.ok === true, "modifyTradeTarget succeeds with high TP price");
+  // Request tpPrice = 1.1150 (raw RR = (1.1150 - 1.0850) / 0.0030 = 10.0R) -> natural structural TP
+  const resHighTp = await testEngine.modifyTradeTarget(tradeDoc._id, { tpPrice: 1.1150 });
+  assert(resHighTp.ok === true, "modifyTradeTarget succeeds with high TP price");
   const updatedDoc2 = mockDbTrades.get(String(tradeDoc._id));
-  assert(updatedDoc2.targetRR === 5.0, `modifyTradeTarget clamped high TP price to 5.0R: got ${updatedDoc2.targetRR}`);
-  assert(updatedDoc2.tpPrice === 1.1000, `modifyTradeTarget clamped TP price to 1.1000: got ${updatedDoc2.tpPrice}`);
+  assert(updatedDoc2.targetRR === 10.0, `modifyTradeTarget sets 10.0R: got ${updatedDoc2.targetRR}`);
+  assert(updatedDoc2.tpPrice === 1.1150, `modifyTradeTarget sets TP price to 1.1150: got ${updatedDoc2.tpPrice}`);
 
-  // Request targetRR = 3.5 -> permits within 5.0R ceiling (TP = 1.0850 + 3.5*0.0030 = 1.0955)
+  // Request targetRR = 3.5 -> permits within preferred bracket (TP = 1.0850 + 3.5*0.0030 = 1.0955)
   const resNormal = await testEngine.modifyTradeTarget(tradeDoc._id, { targetRR: 3.5 });
   assert(resNormal.ok === true, "modifyTradeTarget succeeds with normal RR request");
   const updatedDoc3 = mockDbTrades.get(String(tradeDoc._id));
@@ -1368,7 +1406,7 @@ console.log("=======================================================");
 {
   assert(getHorizonCode("swing").code === 1 && getHorizonCode("1D-1H").code === 1 && getHorizonCode("1D").code === 1, "1D-1H Swing maps to horizon code 1");
   assert(getHorizonCode("day").code === 2 && getHorizonCode("4H-15M").code === 2 && getHorizonCode("15M").code === 2, "4H-15M Day Trade maps to horizon code 2");
-  assert(getHorizonCode("scalp").code === 3 && getHorizonCode("15M-1M").code === 3 && getHorizonCode("1M").code === 3, "15M-1M Scalp maps to horizon code 3");
+  assert(getHorizonCode("scalp").code === 3 && getHorizonCode("30M-5M").code === 3 && getHorizonCode("5M").code === 3, "30M-5M Scalp maps to horizon code 3");
 }
 
 // --- 17.3 Entry Model & Management Code Categorization ---
@@ -1417,10 +1455,10 @@ console.log("=======================================================");
   const decoded2 = decodeDecimalMagic(magic2);
   assert(decoded2.asset.key === "metal" && decoded2.horizon.key === "swing" && decoded2.management.key === "prop_firm_safe", "Decoded magic2 dimensions match");
 
-  // Example 3: BTCUSD 15M-1M Scalp Silver Bullet Runner Universal Tier 00
+  // Example 3: BTCUSD 30M-5M Scalp Silver Bullet Runner Universal Tier 00
   const magic3 = encodeDecimalMagic({
     symbol: "BTCUSD",
-    horizon: "15M-1M",
+    horizon: "30M-5M",
     modelId: "silver_bullet",
     management: "runner",
     accountTier: 0,
@@ -1545,6 +1583,7 @@ console.log("=======================================================");
 
   let dispatchedOrder = null;
   const mockEngine = createAutonomousEngine({
+    now: () => 1737039600000,
     autonomousCols: async () => ({
       tradesCol: mockCol,
       controlCol: { findOne: async () => null, updateOne: async () => ({}) },
@@ -1577,8 +1616,8 @@ console.log("=======================================================");
       requests: [],
       dailyPnl: 0,
       dayStartEquity: 50000,
-      at: Date.now() / 1000,
-      brokerDayStart: Date.now() / 1000 - 3600,
+      at: 1737039600,
+      brokerDayStart: 1737039600 - 3600,
     }),
     getMT5Symbol: async () => ({ ok: true, symbol: tradeDoc.symbolSpec }),
     executeMT5Order: async (payload) => {
@@ -1591,7 +1630,7 @@ console.log("=======================================================");
 
   // Trigger tick to place order
   await mockEngine.autonomousOnTicks({
-    NAS100: { ask: 18010, bid: 18008, time: Date.now() },
+    NAS100: { ask: 18010, bid: 18008, time: 1737039600000 },
   });
 
   assert(dispatchedOrder !== null, "Order was dispatched to broker");
@@ -2582,6 +2621,7 @@ console.log("=======================================================");
   };
 
   const engineClean = createAutonomousEngine({
+    now: () => 1737039600000,
     autonomousCols: async () => mockDb,
     getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, enabled: true, liveTrading: false, executionMode: "paper" }),
     getFrames: async () => cleanFrames,
@@ -2598,7 +2638,7 @@ console.log("=======================================================");
   });
 
   await engineClean.autonomousOnTicks({
-    NAS100_CLEAN: { bid: 17999, ask: 18000, time: Date.now() },
+    NAS100_CLEAN: { bid: 17999, ask: 18000, time: 1737039600000 },
   });
 
   assert(cleanTrade.status === "active", "Valid trade passes APVE and is confirmed active on entry tap");
@@ -2644,6 +2684,144 @@ console.log("=======================================================");
   assert(approveRes.ok === false, "approveStagedTrade rejects approval when APVE vetoes setup");
   assert(approveRes.error?.includes("virgin FVG floor"), "approveStagedTrade error reports APVE reason");
   assert(stagedTradeToApprove.status === "invalidated", "Staged trade transitioned to invalidated upon failed approval");
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 25: Multi-Timeframe Structural Cascading Take-Profit Engine (MT-STPE)");
+console.log("=======================================================");
+{
+  // 25.1 tradeDefault Mode: Preferred bracket is 3.0R - 7.0R
+  assert(DEFAULT_TP_RANGE.minR === 3.0, "Default mode min preferred RR is 3.0R");
+  assert(DEFAULT_TP_RANGE.maxR === 7.0, "Default mode max preferred RR is 7.0R");
+  assert(JSON.stringify(DEFAULT_HORIZON_TIMEFRAME_LEVELS.day) === JSON.stringify(["H4", "H1", "M15"]), "Day horizon ladder is 4H -> 1H -> 15M");
+  assert(JSON.stringify(DEFAULT_HORIZON_TIMEFRAME_LEVELS.swing) === JSON.stringify(["D1", "H4", "H1"]), "Swing horizon ladder is 1D -> 4H -> 1H");
+  assert(JSON.stringify(DEFAULT_HORIZON_TIMEFRAME_LEVELS.scalp) === JSON.stringify(["M30", "M15", "M5"]), "Scalp horizon ladder is 30M -> 15M -> 5M");
+
+  // 25.2 Day Horizon: Level 1 (4H) is > 7.0R (e.g. 12R) -> cascades down to Level 2 (1H)
+  // Entry: 100, Stop: 90 (Risk: 10). Long setup.
+  // 4H has structural target @ 220 (12.0R, > 7R)
+  // 1H has structural target @ 152 (5.2R, within [3.0, 7.0])
+  const dayCascade1 = resolveCascadingDefaultTarget({
+    entry: 100,
+    sl: 90,
+    dir: 1,
+    scenario: { id: "day" },
+    targets: [
+      { tf: "4H", price: 220, source: "4H Dealing Range External High" },
+      { tf: "1H", price: 152, source: "1H FVG Consequent Encroachment" },
+    ],
+  });
+  assert(dayCascade1.targetRR === 5.2, `Level 1 (>7R) cascades down to Level 2 (1H): got ${dayCascade1.targetRR}R`);
+  assert(dayCascade1.tpPrice === 152, `Cascaded TP price is 152: got ${dayCascade1.tpPrice}`);
+  assert(dayCascade1.tf === "H1", `Cascaded timeframe is 1H: got ${dayCascade1.tf}`);
+  assert(dayCascade1.levelIndex === 1, `Selected level index is 1 (Level 2): got ${dayCascade1.levelIndex}`);
+  assert(dayCascade1.isException === false, "Candidate in preferred bracket is NOT an exception");
+
+  // 25.3 Day Horizon: Both Level 1 (4H = 12R) and Level 2 (1H = 9.5R) are > 7.0R -> cascades to Level 3 (15M = 4.0R)
+  const dayCascade2 = resolveCascadingDefaultTarget({
+    entry: 100,
+    sl: 90,
+    dir: 1,
+    scenario: { id: "day" },
+    targets: [
+      { tf: "4H", price: 220, source: "4H High" },
+      { tf: "1H", price: 195, source: "1H OB Mean Threshold" },
+      { tf: "15M", price: 140, source: "15M Dealing Range EQ" },
+    ],
+  });
+  assert(dayCascade2.targetRR === 4.0, `Cascades through 4H and 1H down to 15M: got ${dayCascade2.targetRR}R`);
+  assert(dayCascade2.tpPrice === 140, `Cascaded TP price is 140: got ${dayCascade2.tpPrice}`);
+  assert(dayCascade2.tf === "M15", `Cascaded timeframe is 15M: got ${dayCascade2.tf}`);
+  assert(dayCascade2.levelIndex === 2, `Selected level index is 2 (Level 3): got ${dayCascade2.levelIndex}`);
+  assert(dayCascade2.isException === false, "Candidate in preferred bracket is NOT an exception");
+
+  // 25.4 3rd Level Exception: Level 3 (15M) is ALSO > 7.0R (e.g. 8.5R) -> kept as valid exception, NOT clamped!
+  const dayCascade3 = resolveCascadingDefaultTarget({
+    entry: 100,
+    sl: 90,
+    dir: 1,
+    scenario: { id: "day" },
+    targets: [
+      { tf: "4H", price: 220, source: "4H High" },
+      { tf: "1H", price: 195, source: "1H OB Mean Threshold" },
+      { tf: "15M", price: 185, source: "15M Structural Target" }, // 8.5R!
+    ],
+  });
+  assert(dayCascade3.targetRR === 8.5, `3rd Level (15M) > 7.0R is kept as natural exception without clamp: got ${dayCascade3.targetRR}R`);
+  assert(dayCascade3.tpPrice === 185, `3rd Level TP price is 185: got ${dayCascade3.tpPrice}`);
+  assert(dayCascade3.tf === "M15", `Selected timeframe is 15M (level 3): got ${dayCascade3.tf}`);
+  assert(dayCascade3.isException === true, "Marked as exception out of preferred range");
+  assert(dayCascade3.targets.length === 3, "Constructs 3-target ladder");
+  assert(dayCascade3.targets[0].id === "tp1", "TP1 milestone is present");
+  assert(dayCascade3.targets[1].id === "tp2", "TP2 milestone is present");
+  assert(dayCascade3.targets[2].id === "runner", "Runner target is present");
+
+  // 25.5 Scalp Horizon Cascading: 30M -> 15M -> 5M
+  const scalpCascade = resolveCascadingDefaultTarget({
+    entry: 1.0850,
+    sl: 1.0840, // Risk: 0.0010 (10 pips)
+    dir: 1,
+    scenario: { id: "scalp" },
+    targets: [
+      { tf: "30M", price: 1.0935, source: "30M High (8.5R)" }, // > 7R
+      { tf: "15M", price: 1.0895, source: "15M CE (4.5R)" },   // in [3, 7]
+      { tf: "5M", price: 1.0875, source: "5M Pivot (2.5R)" },
+    ],
+  });
+  assert(scalpCascade.targetRR === 4.5, `Scalp cascades from 30M to 15M: got ${scalpCascade.targetRR}R`);
+  assert(scalpCascade.tpPrice === 1.0895, `Scalp TP price is 1.0895: got ${scalpCascade.tpPrice}`);
+  assert(scalpCascade.tf === "M15", `Scalp selected TF is 15M: got ${scalpCascade.tf}`);
+
+  // 25.6 Swing Horizon Cascading: 1D -> 4H -> 1H
+  const swingCascade = resolveCascadingDefaultTarget({
+    entry: 20000,
+    sl: 19800, // Risk: 200
+    dir: 1,
+    scenario: { id: "swing" },
+    targets: [
+      { tf: "1D", price: 21800, source: "1D High (9.0R)" },   // > 7R
+      { tf: "4H", price: 21200, source: "4H EQH (6.0R)" },    // in [3, 7]
+    ],
+  });
+  assert(swingCascade.targetRR === 6.0, `Swing cascades from 1D to 4H: got ${swingCascade.targetRR}R`);
+  assert(swingCascade.tpPrice === 21200, `Swing TP price is 21200: got ${swingCascade.tpPrice}`);
+  assert(swingCascade.tf === "H4", `Swing selected TF is 4H: got ${swingCascade.tf}`);
+
+  // 25.7 tradeProp Mode: Upward Gradual Ladder (5M -> 15M -> 30M -> 1H -> 2H -> 4H -> 1D)
+  assert(PROP_FIRM_TP_RANGE.minR === 1.5, "Prop mode min preferred RR is 1.5R");
+  assert(PROP_FIRM_TP_RANGE.maxR === 2.5, "Prop mode max preferred RR is 2.5R");
+
+  // Scalp starts at 5M. 5M is < 1.5R (0.8R) -> steps up to 15M which gives 2.1R (in [1.5, 2.5])
+  const propLadder1 = resolveDynamicPropFirmTarget({
+    entry: 100,
+    sl: 90,
+    dir: 1,
+    scenario: { id: "scalp" },
+    targets: [
+      { tf: "5M", price: 108, source: "5M Minor Pivot (0.8R)" },
+      { tf: "15M", price: 121, source: "15M Range High (2.1R)" },
+    ],
+  });
+  assert(propLadder1.targetRR === 2.1, `Prop scalp steps up from 5M (<1.5R) to 15M: got ${propLadder1.targetRR}R`);
+  assert(propLadder1.tpPrice === 121, `Prop TP price is 121: got ${propLadder1.tpPrice}`);
+  assert(propLadder1.tf === "M15", `Prop selected TF is 15M: got ${propLadder1.tf}`);
+  assert(propLadder1.isCapped === false, "Target within [1.5, 2.5] is NOT capped");
+
+  // Day starts at 15M. 15M is < 1.5R (1.1R) -> steps up to 30M which gives 3.2R (> 2.5R) -> capped to 2.5R
+  const propLadder2 = resolveDynamicPropFirmTarget({
+    entry: 100,
+    sl: 90,
+    dir: 1,
+    scenario: { id: "day" },
+    targets: [
+      { tf: "15M", price: 111, source: "15M Minor FVG (1.1R)" },
+      { tf: "30M", price: 132, source: "30M Dealing Range EQ (3.2R)" },
+    ],
+  });
+  assert(propLadder2.targetRR === 2.5, `Prop trade steps up and caps >2.5R target to 2.5R: got ${propLadder2.targetRR}R`);
+  assert(propLadder2.tpPrice === 125, `Capped TP price is 125 (2.5R * 10 = +25): got ${propLadder2.tpPrice}`);
+  assert(propLadder2.tf === "M30", `Prop selected TF is 30M: got ${propLadder2.tf}`);
+  assert(propLadder2.isCapped === true, "Target > 2.5R is marked as capped");
 }
 
 console.log("\n=======================================================");

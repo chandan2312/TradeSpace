@@ -3,29 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Zap,
-  Activity,
   Compass,
-  BarChart2,
   FileText,
-  TrendingUp,
   Target,
-  ShieldCheck,
-  DollarSign,
-  Layers,
   AlertCircle,
   Radio,
-  BookOpen,
   FileSpreadsheet,
 } from "lucide-react";
 import AutonomousHeader from "./AutonomousHeader";
-import AutonomousKpis from "./AutonomousKpis";
 import PairRadar from "./PairRadar";
 import StagedQueue, { groupStagedTrades } from "./StagedQueue";
 import ActivePositions from "./ActivePositions";
 import BrainInspectorModal from "./BrainInspectorModal";
 import ControlConsole from "./ControlConsole";
 import AuditLog from "./AuditLog";
-import CockpitTelemetry from "./CockpitTelemetry";
 import ExecutionDiagnostics from "./ExecutionDiagnostics";
 import JournalView from "../journal/JournalView";
 import {
@@ -41,7 +32,7 @@ import {
 export default function AutonomousDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState("cockpit"); // "cockpit" | "journal" | "radar" | "analytics" | "audit"
+  const [section, setSection] = useState("cockpit"); // "cockpit" | "journal" | "radar" | "audit"
   const [inspectedPair, setInspectedPair] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ticks, setTicks] = useState({});
@@ -64,7 +55,7 @@ export default function AutonomousDashboard() {
       const target = params.get("section") || params.get("tab");
       if (target === "journal" || target === "history") {
         setSection("journal");
-      } else if (target === "radar" || target === "analytics" || target === "audit" || target === "cockpit") {
+      } else if (target === "radar" || target === "audit" || target === "cockpit") {
         setSection(target);
       }
     }
@@ -298,7 +289,7 @@ export default function AutonomousDashboard() {
       {/* Centered anti-stretching container */}
       <div
         style={{
-          maxWidth: 1380,
+          maxWidth: section === "audit" ? "100%" : 1380,
           margin: "0 auto",
           width: "100%",
           padding: "clamp(10px, 2.5vw, 20px)",
@@ -345,42 +336,25 @@ export default function AutonomousDashboard() {
         )}
 
         {/* 2. MINIMAL FOCUS HERO COMMAND STRIP (4 Compact Focused Cards) */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
-            gap: 12,
-          }}
-        >
+        {/* 2. TOP HIGH-LEVEL KPI STRIP (4 Essential Metrics) */}
+        <div className="autonomous-kpi-strip">
           {/* Card 1: Active Positions & Floating P&L */}
           <div
+            className="autonomous-kpi-card"
             style={{
-              background: "var(--panel)",
-              border: `1px solid ${
+              borderColor:
                 activeTrades.length > 0
                   ? isNetProfit
                     ? "rgba(34, 197, 94, 0.3)"
                     : "rgba(239, 68, 68, 0.3)"
-                  : "var(--border)"
-              }`,
-              borderRadius: 12,
-              padding: "14px 16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+                  : "var(--border)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                Active Positions
-              </span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+              <span className="autonomous-kpi-title">Active Positions</span>
               <span
+                className="autonomous-kpi-badge"
                 style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "2px 6px",
-                  borderRadius: 4,
                   background:
                     activeTrades.length > 0
                       ? isNetProfit
@@ -399,12 +373,10 @@ export default function AutonomousDashboard() {
               </span>
             </div>
 
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
               <span
+                className="autonomous-kpi-value"
                 style={{
-                  fontFamily: "monospace",
-                  fontSize: 20,
-                  fontWeight: 800,
                   color:
                     activeTrades.length > 0
                       ? isNetProfit
@@ -424,13 +396,14 @@ export default function AutonomousDashboard() {
                   style={{
                     display: "flex",
                     alignItems: "baseline",
-                    gap: 5,
+                    gap: 3,
                     fontFamily: "monospace",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   <span
                     style={{
-                      fontSize: 13,
+                      fontSize: 11,
                       fontWeight: 800,
                       color: isNetProfit ? "var(--green)" : "var(--red)",
                     }}
@@ -440,7 +413,7 @@ export default function AutonomousDashboard() {
                   {aggregateTelemetry.totalIdealR !== null && Math.abs(aggregateTelemetry.totalIdealR - aggregateTelemetry.totalActualR) >= 0.05 && (
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 10,
                         color: "var(--muted)",
                         fontWeight: 600,
                       }}
@@ -452,34 +425,26 @@ export default function AutonomousDashboard() {
               )}
             </div>
 
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              {activeTrades.length} / {config.maxConcurrentTrades || 3} Max capacity · Live tick mark
+            <div
+              className="autonomous-kpi-sub"
+              title={`${activeTrades.length} / ${config.maxConcurrentTrades || 3} Max capacity · Live tick mark`}
+            >
+              {activeTrades.length} / {config.maxConcurrentTrades || 3} Max cap · Live tick
             </div>
           </div>
 
           {/* Card 2: Staged Setups Queue */}
           <div
+            className="autonomous-kpi-card"
             style={{
-              background: "var(--panel)",
-              border: `1px solid ${unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
-              borderRadius: 12,
-              padding: "14px 16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+              borderColor: unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.3)" : "var(--border)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                Action Queue
-              </span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+              <span className="autonomous-kpi-title">Action Queue</span>
               <span
+                className="autonomous-kpi-badge"
                 style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "2px 6px",
-                  borderRadius: 4,
                   background: unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.05)",
                   color: unifiedStagedSetups.length > 0 ? "var(--accent)" : "var(--muted)",
                 }}
@@ -488,117 +453,28 @@ export default function AutonomousDashboard() {
               </span>
             </div>
 
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
+              <span className="autonomous-kpi-value">
                 {unifiedStagedSetups.length} {unifiedStagedSetups.length === 1 ? "Setup" : "Setups"}
               </span>
               {unifiedStagedSetups.length > 0 && (
-                <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700 }}>
+                <span style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, whiteSpace: "nowrap" }}>
                   Ready to Fire
                 </span>
               )}
             </div>
 
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+            <div
+              className="autonomous-kpi-sub"
+              title={
+                unifiedStagedSetups.length > 0
+                  ? `Lead: ${unifiedStagedSetups[0]?.symbol || "SMC"} (${unifiedStagedSetups[0]?.modelId || "A+"})`
+                  : "Scanner loop active · Refreshes every 3m"
+              }
+            >
               {unifiedStagedSetups.length > 0
                 ? `Lead: ${unifiedStagedSetups[0]?.symbol || "SMC"} (${unifiedStagedSetups[0]?.modelId || "A+"})`
                 : "Scanner loop active · Refreshes every 3m"}
-            </div>
-          </div>
-
-          {/* Card 3: Win Rate & Realized Edge */}
-          <div
-            style={{
-              background: "var(--panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: "14px 16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                Performance Edge
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "2px 6px",
-                  borderRadius: 4,
-                  background: (metrics.winRate || 0) >= 50 ? "rgba(34, 197, 94, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                  color: (metrics.winRate || 0) >= 50 ? "var(--green)" : "var(--muted)",
-                }}
-              >
-                {formatR(metrics.totalR)} NET
-              </span>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 20,
-                  fontWeight: 800,
-                  fontFamily: "monospace",
-                  color: (metrics.winRate || 0) >= 50 ? "var(--green)" : "var(--fg)",
-                }}
-              >
-                {finiteNumber(metrics.winRate) !== null ? `${metrics.winRate}%` : "0%"} WR
-              </span>
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                PF: {metrics.profitFactor ?? "1.00"}
-              </span>
-            </div>
-
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              {metrics.wins || 0}W · {metrics.losses || 0}L · {metrics.breakevens || 0}BE Decided trades
-            </div>
-          </div>
-
-          {/* Card 4: Broker & Risk Governor */}
-          <div
-            style={{
-              background: "var(--panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: "14px 16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                {config.liveTrading ? "MT5 Broker Equity" : "Paper Simulation"}
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "2px 6px",
-                  borderRadius: 4,
-                  background: config.liveTrading ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)",
-                  color: config.liveTrading ? "var(--green)" : "var(--orange)",
-                }}
-              >
-                {config.liveTrading ? "LIVE LINK" : "SIM"}
-              </span>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace" }}>
-                {formatUsd(effectiveEquity)}
-              </span>
-            </div>
-
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              {config.enforceDollarRiskCaps === false
-                ? "Risk: 1.0R (Pure R-Mode) · Demo Sender: No Dollar Caps"
-                : `Risk: ${config.riskPerTradePct || 1}%/trade · Circuit breaker: -${config.maxDailyLossPct || 2}%`}
             </div>
           </div>
         </div>
@@ -631,11 +507,14 @@ export default function AutonomousDashboard() {
             {/* Tab 1: Live Cockpit (Primary Focus) */}
             <button
               onClick={() => handleSelectSection("cockpit")}
+              title="Live Cockpit"
+              aria-label="Live Cockpit"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
+                justifyContent: "center",
+                gap: 5,
+                padding: "8px 12px",
                 borderRadius: 7,
                 fontSize: 12,
                 fontWeight: 700,
@@ -646,8 +525,7 @@ export default function AutonomousDashboard() {
                 transition: "all 0.15s ease",
               }}
             >
-              <Zap size={14} />
-              <span>Live Cockpit</span>
+              <Zap size={15} />
               {activeTrades.length > 0 && (
                 <span
                   style={{
@@ -656,6 +534,7 @@ export default function AutonomousDashboard() {
                     fontSize: 10,
                     background: section === "cockpit" ? "rgba(255, 255, 255, 0.25)" : "var(--accent)",
                     color: "#fff",
+                    fontWeight: 800,
                   }}
                 >
                   {activeTrades.length}
@@ -666,11 +545,14 @@ export default function AutonomousDashboard() {
             {/* Tab 2: Trading Journal */}
             <button
               onClick={() => handleSelectSection("journal")}
+              title="Trading Journal"
+              aria-label="Trading Journal"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
+                justifyContent: "center",
+                gap: 5,
+                padding: "8px 12px",
                 borderRadius: 7,
                 fontSize: 12,
                 fontWeight: 700,
@@ -681,18 +563,20 @@ export default function AutonomousDashboard() {
                 transition: "all 0.15s ease",
               }}
             >
-              <FileSpreadsheet size={14} />
-              <span>Trading Journal</span>
+              <FileSpreadsheet size={15} />
             </button>
 
             {/* Tab 3: Market Radar */}
             <button
               onClick={() => handleSelectSection("radar")}
+              title="Market Radar"
+              aria-label="Market Radar"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
+                justifyContent: "center",
+                gap: 5,
+                padding: "8px 12px",
                 borderRadius: 7,
                 fontSize: 12,
                 fontWeight: 700,
@@ -703,8 +587,7 @@ export default function AutonomousDashboard() {
                 transition: "all 0.15s ease",
               }}
             >
-              <Compass size={14} />
-              <span>Market Radar</span>
+              <Compass size={15} />
               <span
                 style={{
                   padding: "1px 6px",
@@ -712,42 +595,24 @@ export default function AutonomousDashboard() {
                   fontSize: 10,
                   background: section === "radar" ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
                   color: section === "radar" ? "#fff" : "var(--muted)",
+                  fontWeight: 800,
                 }}
               >
                 {rankedPairs.length}
               </span>
             </button>
 
-            {/* Tab 4: Risk & Analytics */}
-            <button
-              onClick={() => handleSelectSection("analytics")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 7,
-                fontSize: 12,
-                fontWeight: 700,
-                border: "none",
-                cursor: "pointer",
-                background: section === "analytics" ? "var(--accent)" : "transparent",
-                color: section === "analytics" ? "#fff" : "var(--muted)",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <BarChart2 size={14} />
-              <span>Risk & Analytics</span>
-            </button>
-
-            {/* Tab 5: Audit Trail */}
+            {/* Tab 4: Audit Trail */}
             <button
               onClick={() => handleSelectSection("audit")}
+              title="Audit Trail"
+              aria-label="Audit Trail"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
+                justifyContent: "center",
+                gap: 5,
+                padding: "8px 12px",
                 borderRadius: 7,
                 fontSize: 12,
                 fontWeight: 700,
@@ -758,8 +623,7 @@ export default function AutonomousDashboard() {
                 transition: "all 0.15s ease",
               }}
             >
-              <FileText size={14} />
-              <span>Audit Trail</span>
+              <FileText size={15} />
               {logs.length > 0 && (
                 <span
                   style={{
@@ -768,6 +632,7 @@ export default function AutonomousDashboard() {
                     fontSize: 10,
                     background: section === "audit" ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
                     color: section === "audit" ? "#fff" : "var(--muted)",
+                    fontWeight: 800,
                   }}
                 >
                   {logs.length}
@@ -838,15 +703,6 @@ export default function AutonomousDashboard() {
         {/* SECTION 2: OPPORTUNITY RADAR */}
         {section === "radar" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <CockpitTelemetry
-              activeTrades={activeTrades}
-              rankedPairs={rankedPairs}
-              ticks={ticks}
-              socketState={socketState}
-              error={actionError || stateError}
-              loading={loading}
-            />
-
             <PairRadar
               pairs={rankedPairs}
               onInspectPair={(p) => setInspectedPair(p)}
@@ -857,34 +713,10 @@ export default function AutonomousDashboard() {
           </div>
         )}
 
-        {/* SECTION 3: RISK & ANALYTICS */}
-        {section === "analytics" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <AutonomousKpis
-              metrics={metrics}
-              config={config}
-              brokerAccount={brokerAccount}
-            />
-
-            <ExecutionDiagnostics
-              trades={data?.executionTrades || []}
-              diagnostics={data?.executionDiagnostics}
-            />
-
-            <CockpitTelemetry
-              activeTrades={activeTrades}
-              rankedPairs={rankedPairs}
-              ticks={ticks}
-              socketState={socketState}
-              error={actionError || stateError}
-              loading={loading}
-            />
-          </div>
-        )}
 
         {/* SECTION 4: AUDIT TRAIL */}
         {section === "audit" && (
-          <div>
+          <div style={{ width: "100%", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
             <AuditLog
               logs={[...logs, ...(data?.events || [])].sort(
                 (a, b) => new Date(b.createdAt || b.time) - new Date(a.createdAt || a.time)
@@ -896,7 +728,7 @@ export default function AutonomousDashboard() {
         {/* MODALS */}
         {inspectedPair && (
           <BrainInspectorModal
-            pair={rankedPairs.find((pair) => pair.symbol === inspectedPair.symbol) || inspectedPair}
+            pair={rankedPairs.find((pair) => (pair.radarKey && inspectedPair.radarKey ? pair.radarKey === inspectedPair.radarKey : pair.symbol === inspectedPair.symbol)) || inspectedPair}
             ticks={ticks}
             onClose={closeInspector}
           />
@@ -907,7 +739,9 @@ export default function AutonomousDashboard() {
             config={config}
             brokerAccount={brokerAccount}
             allTimeSlots={data?.allTimeSlots}
+            allSymbolProfiles={data?.allSymbolProfiles}
             allEntryModels={data?.allEntryModels}
+            universe={config.universe || data?.universe || []}
             onSaveConfig={handleSaveConfig}
             onClose={closeSettings}
           />

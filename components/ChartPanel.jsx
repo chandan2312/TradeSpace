@@ -10,7 +10,7 @@ import DrawingToolbar from "./DrawingToolbar.jsx";
 import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
 import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
-import { tradeToPositionDrawing, tradeToPositionDrawings } from "../lib/autonomous/tradeDrawing.js";
+import { tradeToPositionDrawing, tradeToPositionDrawings, tradeToStagedPositionDrawings } from "../lib/autonomous/tradeDrawing.js";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
@@ -265,6 +265,19 @@ export default function ChartPanel({
 
   const touchStartPos = useRef(null);
   const onScrollerPointerDown = (e) => {
+    const mgr = drawingManagerRef.current;
+    if (mgr) {
+      const pt = mgr.panePoint(e);
+      if (mgr.hitTopmost(pt)) {
+        e.target.style.pointerEvents = "none";
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        if (el) {
+          el.dispatchEvent(new PointerEvent("pointerdown", e));
+        }
+        setTimeout(() => { if (e.target) e.target.style.pointerEvents = "auto"; }, 400);
+        return;
+      }
+    }
     touchStartPos.current = { x: e.clientX, y: e.clientY };
   };
   const onScrollerPointerUp = (e) => {
@@ -691,12 +704,16 @@ export default function ChartPanel({
     if (!mgr || !chartReady) return;
 
     const isEnabled = indicators?.autoTrades !== false;
+    const isStagedEnabled = indicators?.stagedTrades !== false;
     const currentList = mgr.list || [];
     const userDrawings = currentList.filter((d) => !String(d.id).startsWith("auto_"));
 
-    if (!isEnabled || !autonomousTrades || autonomousTrades.length === 0) {
+    if ((!isEnabled && !isStagedEnabled) || !autonomousTrades || autonomousTrades.length === 0) {
       if (currentList.some((d) => String(d.id).startsWith("auto_"))) {
         mgr.list = userDrawings;
+        if (Array.isArray(mgr.selected)) {
+          mgr.select(mgr.selected.filter((id) => !String(id).startsWith("auto_")));
+        }
         mgr.redraw();
       }
       return;
@@ -709,9 +726,11 @@ export default function ChartPanel({
     // 1. Keep ALL active / managing / open trades
     // 2. Keep only trades closed within the last 24 hours (today's session), at most 2 most recent closed per symbol
     // 3. Drop all stale historical trades older than 24 hours to prevent chart clutter
+    // 4. Staged setups rendered to the right of current candle with 4-5 candle gap
     const nowMs = Date.now();
     const activeList = [];
     const closedList = [];
+    const stagedList = [];
 
     for (const t of (autonomousTrades || [])) {
       if (!t) continue;
@@ -724,6 +743,8 @@ export default function ChartPanel({
         if (Math.abs(nowMs - closedTime) <= 7 * 24 * 3600 * 1000) {
           closedList.push({ trade: t, time: closedTime });
         }
+      } else if (["staged", "confirming", "armed"].includes(t.status)) {
+        stagedList.push(t);
       } else {
         activeList.push(t);
       }
@@ -732,13 +753,24 @@ export default function ChartPanel({
     closedList.sort((a, b) => b.time - a.time);
     const chartTrades = [...activeList, ...closedList.slice(0, 10).map((item) => item.trade)];
 
-    const autoDrawings = chartTrades
-      .flatMap((t) => tradeToPositionDrawings(t, barsRef.current, tfSec))
-      .filter((d) => d && !isDismissed(d.id));
+    const autoDrawings = isEnabled
+      ? chartTrades
+          .flatMap((t) => tradeToPositionDrawings(t, barsRef.current, tfSec))
+          .filter((d) => d && !isDismissed(d.id))
+      : [];
 
-    mgr.list = [...userDrawings, ...autoDrawings];
+    const stagedDrawings = isStagedEnabled
+      ? stagedList
+          .flatMap((t, idx) => tradeToStagedPositionDrawings(t, barsRef.current, tfSec, idx))
+          .filter((d) => d && !isDismissed(d.id))
+      : [];
+
+    mgr.list = [...userDrawings, ...autoDrawings, ...stagedDrawings];
+    if (Array.isArray(mgr.selected)) {
+      mgr.select(mgr.selected.filter((id) => !String(id).startsWith("auto_") || [...autoDrawings, ...stagedDrawings].some((d) => d.id === id)));
+    }
     mgr.redraw();
-  }, [autonomousTrades, indicators?.autoTrades, chartReady, symbol, tf, dataVersion]);
+  }, [autonomousTrades, indicators?.autoTrades, indicators?.stagedTrades, chartReady, symbol, tf, dataVersion]);
 
   // ---------- pointer tracking for "+ price" button and drag handle ----------
   // A wrapper mousemove (NOT subscribeCrosshairMove) so the button stays alive

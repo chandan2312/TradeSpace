@@ -158,6 +158,30 @@ button.ghost { background: transparent; border-color: transparent; color: var(--
 button.ghost:hover { color: var(--text); background: var(--panel-2); border-color: transparent; }
 button.danger:hover { border-color: var(--red); color: var(--red); }
 
+.dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  box-sizing: border-box;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.dropdown-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--border-hi);
+  color: var(--text);
+}
+
 input, select {
   font: inherit;
   color: var(--text);
@@ -259,7 +283,159 @@ input::placeholder { color: var(--muted); }
   font-size: 10px;
 }
 
+/* Autonomous Top KPI Strip */
+.autonomous-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.autonomous-kpi-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  min-width: 0;
+}
+
+.autonomous-kpi-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.autonomous-kpi-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.autonomous-kpi-value {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: var(--font-mono, monospace);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.autonomous-kpi-sub {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+/* Autonomous Top Header Layout */
+.autonomous-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.autonomous-header-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.autonomous-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.autonomous-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
+  /* Organized Mobile Header Layout: Clean 3-tier compact structure */
+  .autonomous-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  .autonomous-header-top {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .autonomous-header-title-box h1 {
+    font-size: 14px !important;
+  }
+
+  /* Swipeable horizontal telemetry strip on mobile */
+  .autonomous-header-badges {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 6px !important;
+    padding: 1px 0 3px !important;
+    width: 100% !important;
+  }
+
+  .autonomous-header-badges::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .autonomous-badge-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+  }
+
+  /* Clean full-width 3-column action buttons grid */
+  .autonomous-header-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1.3fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .autonomous-header-actions button {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 6px 6px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+
   .tf-container {
     gap: 2px !important;
   }
@@ -301,6 +477,34 @@ input::placeholder { color: var(--muted); }
     -webkit-overflow-scrolling: touch !important;
   }
 
+  .autonomous-kpi-strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .autonomous-kpi-card {
+    padding: 7px 10px !important;
+    gap: 2px !important;
+    border-radius: 8px !important;
+  }
+
+  .autonomous-kpi-title {
+    font-size: 9px !important;
+  }
+
+  .autonomous-kpi-badge {
+    font-size: 8px !important;
+    padding: 1px 4px !important;
+  }
+
+  .autonomous-kpi-value {
+    font-size: 14.5px !important;
+  }
+
+  .autonomous-kpi-sub {
+    font-size: 9px !important;
+  }
+
   .dashboard-root {
     height: 100dvh !important;
     max-height: 100dvh !important;
@@ -312,6 +516,7 @@ input::placeholder { color: var(--muted); }
     padding: 6px 8px !important;
     gap: 6px !important;
     flex: none !important;
+    flex-wrap: nowrap !important;
   }
 
   .responsive-chart-grid {
@@ -393,6 +598,16 @@ input::placeholder { color: var(--muted); }
     align-items: stretch !important;
   }
 
+  .watchlist-container {
+    display: flex !important;
+    flex-direction: column-reverse !important;
+  }
+
+  .watchlist-top-bar {
+    border-bottom: none !important;
+    border-top: 1px solid var(--border) !important;
+  }
+
   .hide-on-mobile {
     display: none !important;
   }
@@ -404,7 +619,7 @@ input::placeholder { color: var(--muted); }
     overflow-y: hidden;
     padding: 4px 6px;
     gap: 4px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: none !important;
   }
 
   .wl-row-item {
@@ -616,15 +831,6 @@ a[href*="tradingview.com"],
   background-color: var(--panel-2, #10141d) !important;
 }
 
-.ag-theme-quartz .ag-header-cell-label,
-.ag-theme-quartz-dark .ag-header-cell-label {
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.04em !important;
-  font-size: 10.5px !important;
-  color: #f1f5f9 !important;
-}
-
 .ag-theme-quartz .ag-row,
 .ag-theme-quartz-dark .ag-row {
   background-color: var(--panel, #151a23) !important;
@@ -662,6 +868,26 @@ a[href*="tradingview.com"],
   color: var(--muted, #8a93a6) !important;
 }
 
+.ag-theme-quartz .ag-header-cell-label,
+.ag-theme-quartz-dark .ag-header-cell-label {
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  font-size: 11px !important;
+  color: #f1f5f9 !important;
+  white-space: nowrap !important;
+}
+
+.ag-theme-quartz .ag-header-icon,
+.ag-theme-quartz-dark .ag-header-icon {
+  color: var(--muted, #8a93a6) !important;
+}
+
+.ag-theme-quartz .ag-header-icon:hover,
+.ag-theme-quartz-dark .ag-header-icon:hover {
+  color: var(--fg, #d7dce6) !important;
+}
+
 .ag-theme-quartz .ag-paging-button,
 .ag-theme-quartz-dark .ag-paging-button {
   color: var(--fg, #d7dce6) !important;
@@ -672,19 +898,34 @@ a[href*="tradingview.com"],
   color: var(--accent, #2962ff) !important;
 }
 
-.ag-theme-quartz .ag-floating-filter-input,
-.ag-theme-quartz-dark .ag-floating-filter-input {
+.ag-theme-quartz input,
+.ag-theme-quartz-dark input,
+.ag-theme-quartz .ag-input-field-input,
+.ag-theme-quartz-dark .ag-input-field-input {
+  box-sizing: border-box !important;
+  height: 28px !important;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
   border-radius: 4px !important;
   border: 1px solid var(--border) !important;
-  background: rgba(0, 0, 0, 0.35) !important;
+  background: rgba(0, 0, 0, 0.4) !important;
   color: var(--fg) !important;
-  font-size: 11px !important;
 }
 
-.ag-theme-quartz .ag-floating-filter-input:focus,
-.ag-theme-quartz-dark .ag-floating-filter-input:focus {
+.ag-theme-quartz input:focus,
+.ag-theme-quartz-dark input:focus,
+.ag-theme-quartz .ag-input-field-input:focus,
+.ag-theme-quartz-dark .ag-input-field-input:focus {
   border-color: var(--accent) !important;
   outline: none !important;
+}
+
+.ag-theme-quartz .ag-floating-filter-input,
+.ag-theme-quartz-dark .ag-floating-filter-input {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
 .ag-theme-quartz .ag-filter,
@@ -698,6 +939,11 @@ a[href*="tradingview.com"],
   color: var(--fg, #d7dce6) !important;
   border-radius: 8px !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+.ag-theme-quartz .ag-filter-wrapper,
+.ag-theme-quartz-dark .ag-filter-wrapper {
+  padding: 8px !important;
 }
 
 .ag-theme-quartz .ag-overlay-loading-center,

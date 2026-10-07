@@ -39,6 +39,7 @@ function sanitizeDrawingsBlob(str) {
 
 const api = async (path, opts) => {
   const res = await fetch(path, {
+    cache: "no-store",
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
@@ -88,7 +89,7 @@ export default function Dashboard() {
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [symbolFlags, setSymbolFlags] = useState({}); // { symbol: "red" | "blue" | "green" | "yellow" }
-  const [indicators, setIndicators] = useState({ autoTrades: true }); // { patternId: bool } — ƒx pattern toggles
+  const [indicators, setIndicators] = useState({ autoTrades: true, stagedTrades: true }); // { patternId: bool } — ƒx pattern toggles
   
   // Loop Mode State
   const [isLooping, setIsLooping] = useState(false);
@@ -243,7 +244,7 @@ export default function Dashboard() {
         const ind = localStorage.getItem("ts_indicators");
         if (ind) {
           const parsed = JSON.parse(ind);
-          setIndicators(prev => ({ autoTrades: true, ...parsed }));
+          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, ...parsed }));
         }
         const lid = getTabItem("ts_loaded_layout_id");
         if (lid) setLoadedLayoutId(lid);
@@ -275,8 +276,8 @@ export default function Dashboard() {
           localStorage.setItem("ts_symbol_flags", JSON.stringify(d.settings.flags));
         }
         if (d.settings.indicators) {
-          setIndicators(prev => ({ autoTrades: true, ...d.settings.indicators }));
-          localStorage.setItem("ts_indicators", JSON.stringify({ autoTrades: true, ...d.settings.indicators }));
+          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, ...d.settings.indicators }));
+          localStorage.setItem("ts_indicators", JSON.stringify({ autoTrades: true, stagedTrades: true, ...d.settings.indicators }));
         }
         if (typeof d.settings.biasEnabled === "boolean") {
           setBiasEnabled(d.settings.biasEnabled);
@@ -1589,79 +1590,6 @@ export default function Dashboard() {
                         )}
                         <button className="ghost" onClick={() => { setActivePaneId(pane.id); setCorrelatedOpen(true); }} title="View Correlated Pairs" style={{ padding: "4px 8px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                           <LayoutGrid size={14} color="var(--accent)" /> <span className="hide-mobile">Correlated</span>
-                        </button>
-                        {/* Autonomous Trades Quick Indicator Toggle */}
-                        <button
-                          className={indicators?.autoTrades !== false ? "primary" : "ghost"}
-                          onClick={() => {
-                            setIndicators((prev) => ({ ...prev, autoTrades: prev?.autoTrades === false ? true : false }));
-                          }}
-                          title="Toggle Autonomous Trades Indicator (RR & Live P&L Overlay)"
-                          style={{
-                            padding: "4px 8px",
-                            background: indicators?.autoTrades !== false ? "var(--accent)" : "var(--panel)",
-                            border: `1px solid ${indicators?.autoTrades !== false ? "var(--accent)" : "var(--border)"}`,
-                            color: indicators?.autoTrades !== false ? "#fff" : "var(--text)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 5,
-                            fontSize: 12,
-                            fontWeight: 600,
-                          }}
-                        >
-                          <Zap size={13} color={indicators?.autoTrades !== false ? "#fff" : "var(--accent)"} />
-                          <span className="hide-mobile">Auto Trades</span>
-                          <span className="hide-desktop">Auto</span>
-                          {(() => {
-                            const isMatch = (t) => {
-                              if (!t || !pane.symbol) return false;
-                              const paneCanon = canonOf(pane.symbol);
-                              const c = (s) => s && canonOf(s) === paneCanon;
-                              return c(t.symbol) || c(t.tradeableSymbol) || c(t.canonicalSymbol);
-                            };
-                            const pTrades = autonomousTrades.filter(isMatch);
-                            const activeCount = pTrades.filter(
-                              (t) =>
-                                ![
-                                  "closed_tp",
-                                  "closed_sl",
-                                  "closed_be",
-                                  "closed",
-                                  "invalidated",
-                                  "cancelled",
-                                  "expired",
-                                  "dismissed",
-                                ].includes(t.status) && !t.closedAt
-                            ).length;
-                            const count =
-                              activeCount > 0
-                                ? activeCount
-                                : pTrades
-                                    .filter(
-                                      (t) =>
-                                        Date.now() -
-                                          new Date(t.closedAt || t.updatedAt || t.createdAt).getTime() <=
-                                        7 * 24 * 3600 * 1000
-                                    )
-                                    .slice(0, 10).length;
-                            return count > 0 ? (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  padding: "1px 5px",
-                                  borderRadius: 8,
-                                  background:
-                                    indicators?.autoTrades !== false
-                                      ? "rgba(255,255,255,0.25)"
-                                      : "var(--accent)",
-                                  color: "#fff",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {count}
-                              </span>
-                            ) : null;
-                          })()}
                         </button>
                         <button
                           className="ghost"

@@ -291,10 +291,10 @@ export default function Watchlist({
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, width: "100%" }}>
+    <div className="watchlist-container" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, width: "100%" }}>
       {/* Tabs row */}
       {/* Tabs and mobile action buttons row */}
-      <div style={{
+      <div className="watchlist-top-bar" style={{
         display: "flex", alignItems: "center",
         borderBottom: "1px solid var(--border)",
       }}>

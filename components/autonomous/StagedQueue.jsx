@@ -196,9 +196,10 @@ export default function StagedQueue({
     const level = trade.levelDetails || trade.stagedLevel || {};
     setEditingId(null);
     const isSwing = trade.scenario?.id === "swing" || trade.horizon === "swing" || trade.horizonCode === 1;
+    const isScalp = trade.scenario?.id === "scalp" || trade.horizon === "scalp" || trade.horizonCode === 3;
     const isProp = trade.managementLogic === "prop_firm_safe";
     const initialRR = Number(trade.targetRR ?? level.rr ?? (isProp ? 2.0 : 2.2));
-    setEditRR(isSwing ? initialRR : isProp ? Math.min(2.5, Math.max(1.5, initialRR)) : Math.min(5.0, initialRR));
+    setEditRR(isProp ? Math.min(2.5, Math.max(1.5, initialRR)) : Math.max(0.5, initialRR));
     setEditTp(trade.tpPrice ?? level.tp ?? "");
   };
 
@@ -212,16 +213,13 @@ export default function StagedQueue({
     setSaving(true);
     try {
       const tradeToEdit = targetTrade || selectedTrade?.primaryTrade || selectedTrade;
-      const isSwing = tradeToEdit.scenario?.id === "swing" || tradeToEdit.horizon === "swing" || tradeToEdit.horizonCode === 1;
       const isProp = tradeToEdit.managementLogic === "prop_firm_safe";
       const rrToUse = overrideRR != null ? overrideRR : editRR;
       const tpToUse = overrideTp != null ? overrideTp : editTp;
 
-      const clampedRR = isSwing
-        ? Math.max(0.5, Number(rrToUse) || 2.0)
-        : isProp
+      const clampedRR = isProp
         ? Math.min(2.5, Math.max(1.5, Number(rrToUse) || 2.0))
-        : Math.min(5.0, Math.max(0.5, Number(rrToUse) || 2.0));
+        : Math.max(0.5, Number(rrToUse) || 2.0);
       const parsedTp = tpToUse ? Number(tpToUse) : undefined;
 
       if (onModifyTrade) {
@@ -537,7 +535,14 @@ export default function StagedQueue({
                     <div style={{ fontWeight: 700, color: "var(--fg)" }}>{formatPrice(entryVal)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: 9 }}>STRUCTURAL SL</div>
+                    <div style={{ color: "var(--muted)", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", gap: 3, flexWrap: "wrap" }}>
+                      <span>STRUCTURAL SL</span>
+                      {(trade.slAudit?.anchorType || level.slAudit?.anchorType) && (
+                        <span style={{ fontSize: 7.5, color: "var(--accent)", background: "rgba(56, 189, 248, 0.12)", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>
+                          {(trade.slAudit?.anchorType || level.slAudit?.anchorType).replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontWeight: 700, color: "var(--red)" }}>{formatPrice(slVal)}</div>
                   </div>
                 </div>
@@ -918,7 +923,20 @@ export default function StagedQueue({
                 }}
               >
                 <TelemetryValue label="Planned Entry" value={formatPrice(trade.entryPrice ?? level.entry)} />
-                <TelemetryValue label="Structural SL" value={formatPrice(trade.initialSlPrice ?? trade.slPrice ?? level.sl)} color="var(--red)" />
+                <TelemetryValue 
+                  label="Structural SL" 
+                  value={
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                      <span>{formatPrice(trade.initialSlPrice ?? trade.slPrice ?? level.sl)}</span>
+                      {(trade.slAudit?.anchorType || level.slAudit?.anchorType) && (
+                        <span style={{ fontSize: 9, color: "var(--accent)", background: "rgba(56, 189, 248, 0.12)", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>
+                          {(trade.slAudit?.anchorType || level.slAudit?.anchorType).replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </span>
+                  } 
+                  color="var(--red)" 
+                />
                 <TelemetryValue label="Risk Distance" value={`${dist.toFixed(5)} (${trade.riskPips ? `${trade.riskPips} pips` : `${Math.round(dist * 10000)} pts`})`} color="var(--accent)" />
                 <TelemetryValue label="Initial Risk USD" value={formatUsd(trade.initialRiskUsd ?? trade.riskUsd)} color="var(--orange)" />
               </div>
@@ -959,7 +977,7 @@ export default function StagedQueue({
                               </div>
                               <div>
                                 Full Target (Runner): <strong style={{ color: "var(--green)" }}>{formatPrice(legTrade.tpPrice ?? legLevel.tp ?? setup.fullTp)}</strong> (
-                                {finiteNumber(legTrade.targetRR ?? legLevel.rr ?? setup.fullRR) === null ? "5.0" : `${legTrade.targetRR ?? legLevel.rr ?? setup.fullRR}R`})
+                                {finiteNumber(legTrade.targetRR ?? legLevel.rr ?? setup.fullRR) === null ? "4.0" : `${legTrade.targetRR ?? legLevel.rr ?? setup.fullRR}R`})
                                 <span style={{ color: "var(--muted)", marginLeft: 6 }}>· Hold 60% runner to DOL</span>
                               </div>
                               {legTrade.coveredRR && <div style={{ color: "var(--muted)", fontSize: 10 }}>🛡️ Net Covered: {legTrade.coveredRR}R</div>}
@@ -970,7 +988,7 @@ export default function StagedQueue({
                             <button
                               onClick={() => {
                                 setEditingId(legTrade._id);
-                                setEditRR(Number(legTrade.targetRR ?? legLevel.rr ?? 5.0));
+                                setEditRR(Number(legTrade.targetRR ?? legLevel.rr ?? 4.0));
                                 setEditTp(legTrade.tpPrice ?? legLevel.tp ?? "");
                               }}
                               style={{
@@ -991,16 +1009,15 @@ export default function StagedQueue({
                           <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
                             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                               <label style={{ fontSize: 10, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 100 }}>
-                                Target R:R (Default Leg — Max 5.0R)
+                                Target R:R (Default Leg)
                                 <input
                                   type="number"
-                                  step="0.1"
+                                  step="any"
                                   min="0.5"
-                                  max="5.0"
                                   value={editRR}
                                   onChange={(e) => {
                                     const raw = Number(e.target.value) || 0.1;
-                                    const r = Math.min(5.0, Math.max(0.1, raw));
+                                    const r = Math.max(0.1, raw);
                                     setEditRR(r);
                                     if (dist > 0) setEditTp(Number((entryVal + trade.dir * r * dist).toFixed(5)));
                                   }}
@@ -1029,7 +1046,7 @@ export default function StagedQueue({
                                     if (dist > 0 && parsed > 0) {
                                       const rawRR = (trade.dir * (parsed - entryVal)) / dist;
                                       const rounded = Math.round(rawRR * 10) / 10;
-                                      setEditRR(Math.min(5.0, Math.max(0.1, rounded)));
+                                      setEditRR(Math.max(0.1, rounded));
                                     }
                                   }}
                                   style={{
@@ -1139,7 +1156,7 @@ export default function StagedQueue({
                                 Target R:R (Prop-Firm Safe: 1.5R–2.5R)
                                 <input
                                   type="number"
-                                  step="0.1"
+                                  step="any"
                                   min="1.5"
                                   max="2.5"
                                   value={editRR}

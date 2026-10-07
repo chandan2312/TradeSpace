@@ -1,7 +1,7 @@
 // test_autonomous_primitive.mjs — Comprehensive Unit Tests for Native Lightweight Charts Drawing RR Tools
 
 import assert from "node:assert/strict";
-import { tradeToPositionDrawing, tradeToPositionDrawings } from "./lib/autonomous/tradeDrawing.js";
+import { tradeToPositionDrawing, tradeToPositionDrawings, buildStagedTradeDrawing, tradeToStagedPositionDrawings } from "./lib/autonomous/tradeDrawing.js";
 import * as lwcd from "lightweight-charts-drawing";
 
 console.log("=====================================================================");
@@ -571,6 +571,115 @@ const lastH1Time = h1Bars[h1Bars.length - 1].time;
 assert.equal(dOpenH1.points[1].time, lastH1Time + 3600, "Live trade on H1 extends exactly 1 bar (+3600s)");
 console.log("✅ PASS: Live active trade right boundary dynamically adapts to +1 candle next across timeframes");
 
+// -------------------------------------------------------------
+// TEST 19: Staged Setup Drawing Geometry & 4-5 Candle Gap Right of Current Candle
+// -------------------------------------------------------------
+const stagedBuySetup = {
+  _id: "staged_eur_1",
+  symbol: "EURUSD",
+  dir: 1,
+  direction: "BUY",
+  status: "staged",
+  managementLogic: "milestone_50",
+  entryPrice: 1.0820,
+  initialSlPrice: 1.0800, // 20 pips risk
+  tpPrice: 1.0870,        // 50 pips reward = 2.5R
+  targetRR: 2.5,
+  horizon: "day",
+};
+
+const lastMockBar = mockBars[mockBars.length - 1];
+const stagedD1 = buildStagedTradeDrawing(stagedBuySetup, mockBars, tfSec, 0);
+
+assert(stagedD1 !== null, "Staged trade drawing must be constructed");
+assert.equal(stagedD1.kind, "long-position", "BUY staged setup must produce long-position tool");
+assert(stagedD1.id.startsWith("auto_staged_"), "ID must start with auto_staged_ for non-persistence");
+
+// Verify 4-5 candle gap:
+const expectedEntryTime = lastMockBar.time + 5 * tfSec;
+assert.equal(stagedD1.points[0].time, expectedEntryTime, "Left boundary must be exactly 5 candles right of current candle");
+assert.equal(stagedD1.points[0].price, 1.0820, "Entry price must match staged setup entry");
+assert.equal(stagedD1.points[1].time, expectedEntryTime + 12 * tfSec, "Right boundary must be 12 candles width for clean visibility");
+assert.equal(stagedD1.points[1].price, 1.0820, "Horizontal entry level aligns");
+assert.equal(Math.round(stagedD1.style.stopLevel * 100000) / 100000, 0.0020, "stopLevel is 20 pips");
+assert.equal(Math.round(stagedD1.style.profitLevel * 100000) / 100000, 0.0050, "profitLevel is 50 pips (2.5R)");
+console.log("✅ PASS: Staged trade RR tool placed on the right side of current candle with exact 5-candle gap");
+
+// -------------------------------------------------------------
+// TEST 20: Staged Setup Color Differentiation & Dashed Line Style
+// -------------------------------------------------------------
+// Must be different from default RR (green/red) and live trade (cobalt blue/violet)
+assert.notEqual(stagedD1.style.targetColor, "#26a69a", "Target must not be default green");
+assert.notEqual(stagedD1.style.targetColor, "#089981", "Target must not be default green");
+assert.notEqual(stagedD1.style.targetColor, "#0284c7", "Target must not be live trade cobalt blue");
+assert.notEqual(stagedD1.style.stopColor, "#ef5350", "Stop must not be default red");
+assert.notEqual(stagedD1.style.stopColor, "#ea580c", "Stop must not be live trade tangerine amber");
+assert.equal(stagedD1.style.targetColor, "#facc15", "Default staged target is vibrant Canary Gold");
+assert.equal(stagedD1.style.stopColor, "#e11d48", "Default staged stop is Crimson Coral");
+assert.equal(stagedD1.style.color, "#f59e0b", "Entry line is Vivid Amber");
+assert.equal(stagedD1.style.lineStyle, "dashed", "Entry line must be dashed to symbolize pending limit order");
+assert(stagedD1.style.statsLabel.includes("STAGED"), "Stats label indicates pending STAGED setup");
+assert(stagedD1.style.statsLabel.includes("2.50RR"), "Stats label indicates 2.50RR");
+console.log("✅ PASS: Staged trade colors are distinctly differentiated from default RR and live trade RR");
+
+// -------------------------------------------------------------
+// TEST 21: Ephemeral Non-Persistence & Invalidation/Cancellation Removal
+// -------------------------------------------------------------
+// 1. DrawingManager localStorage filter excludes auto_staged_ drawings
+const mockMgrList = [
+  userManualDrawing,
+  d1, // live auto trade
+  stagedD1, // staged auto trade
+];
+const filteredForStorage = mockMgrList.filter((d) => !String(d.id).startsWith("auto_"));
+assert.equal(filteredForStorage.length, 1, "Only user manual drawing is saved; auto_ and auto_staged_ are excluded");
+assert.equal(filteredForStorage[0].id, "user_dw_trend_1", "User drawing alone persisted");
+
+// 2. Invalidation / cancellation removes drawing immediately:
+const invalidatedSetup = { ...stagedBuySetup, status: "invalidated" };
+const dInvalid = buildStagedTradeDrawing(invalidatedSetup, mockBars, tfSec, 0);
+assert.equal(dInvalid, null, "Invalidated setup produces null drawing (automatically removed from chart)");
+
+const cancelledSetup = { ...stagedBuySetup, status: "cancelled" };
+const dCancelled = buildStagedTradeDrawing(cancelledSetup, mockBars, tfSec, 0);
+assert.equal(dCancelled, null, "Cancelled setup produces null drawing (automatically removed from chart)");
+
+const closedSetup = { ...stagedBuySetup, status: "closed_sl" };
+const dClosed = buildStagedTradeDrawing(closedSetup, mockBars, tfSec, 0);
+assert.equal(dClosed, null, "Closed setup produces null staged drawing");
+console.log("✅ PASS: Staged drawings are completely ephemeral, non-persistent, and automatically removed on invalidation");
+
+// -------------------------------------------------------------
+// TEST 22: Staged Prop-Firm Model Differentiation
+// -------------------------------------------------------------
+const stagedPropSetup = {
+  _id: "staged_eur_prop",
+  symbol: "EURUSD",
+  dir: -1,
+  direction: "SELL",
+  status: "staged",
+  managementLogic: "prop_firm_safe",
+  leg: "prop",
+  entryPrice: 1.0850,
+  initialSlPrice: 1.0870,
+  tpPrice: 1.0814,
+  targetRR: 1.8,
+  horizon: "scalp",
+};
+
+const stagedDProp = buildStagedTradeDrawing(stagedPropSetup, mockBars, tfSec, 1);
+assert(stagedDProp !== null, "Prop staged drawing created");
+assert.equal(stagedDProp.kind, "short-position", "SELL trade produces short-position tool");
+assert.equal(stagedDProp.style.targetColor, "#22d3ee", "Prop staged target is Electric Cyan");
+assert.equal(stagedDProp.style.stopColor, "#fb7185", "Prop staged stop is Radiant Rose");
+assert.equal(stagedDProp.style.color, "#06b6d4", "Entry is Cyan with dashed style");
+assert.equal(stagedDProp.style.lineStyle, "dashed", "Dashed entry line");
+assert(stagedDProp.style.statsLabel.includes("PROP"), "Label indicates PROP model");
+// Gap for index 1 is 5 + 1*2 = 7 candles to stagger distinct legs:
+assert.equal(stagedDProp.points[0].time, lastMockBar.time + 7 * tfSec, "Secondary setup staggered by 2 bars (7-candle gap)");
+console.log("✅ PASS: Staged Prop-Firm model correctly differentiated with Cyan/Rose palette");
+
 console.log("\n=====================================================================");
 console.log("🎯 ALL NATIVE LIGHTWEIGHT-CHARTS-DRAWING RR TOOL TESTS PASSED!");
 console.log("=====================================================================");
+

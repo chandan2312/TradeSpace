@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Save, Repeat, Bell, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass, Zap } from "lucide-react";
+import { Save, Repeat, Bell, BellPlus, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass, Zap, ChevronDown, Clock } from "lucide-react";
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
@@ -44,10 +44,12 @@ export default function TopBar({
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileTfOpen, setMobileTfOpen] = useState(false);
   const layoutMenuRef = useRef(null);
   const toolsMenuRef = useRef(null);
   const themeMenuRef = useRef(null);
   const mobileLayoutMenuRef = useRef(null);
+  const mobileTfRef = useRef(null);
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -64,10 +66,14 @@ export default function TopBar({
         const clickedTheme = themeMenuRef.current && themeMenuRef.current.contains(e.target);
         if (!clickedTheme) setThemeMenuOpen(false);
       }
+      if (mobileTfOpen) {
+        const clickedMobileTf = mobileTfRef.current && mobileTfRef.current.contains(e.target);
+        if (!clickedMobileTf) setMobileTfOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [showLayoutMenu, toolsMenuOpen, themeMenuOpen]);
+  }, [showLayoutMenu, toolsMenuOpen, themeMenuOpen, mobileTfOpen]);
   
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -78,6 +84,14 @@ export default function TopBar({
   const stagedAutoTrades = (autonomousTrades || []).filter((t) =>
     ["staged", "confirming", "armed"].includes(t.status)
   );
+
+  const symbolStagedTrades = stagedAutoTrades.filter((t) => {
+    if (!t || !symbol) return false;
+    const sCanon = symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const tCanon = (t.symbol || t.tradeableSymbol || t.canonicalSymbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    return tCanon.includes(sCanon) || sCanon.includes(tCanon);
+  });
+  const symbolStagedCount = symbolStagedTrades.length;
 
   let autoNetR = 0;
   let hasAutoR = false;
@@ -92,27 +106,29 @@ export default function TopBar({
 
   return (
     <header className="topbar-header" style={{
-      display: "flex", alignItems: "center", gap: 12, padding: "8px 14px",
+      display: "flex", alignItems: "center", gap: 8, padding: "0 12px",
+      height: 40, minHeight: 40, maxHeight: 40,
       background: "var(--panel)", borderBottom: "1px solid var(--border)",
-      flexWrap: "wrap", position: "relative", zIndex: 100
+      flexWrap: "nowrap", position: "relative", zIndex: 100
     }}>
-      <div className="logo-text hide-mobile" style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2 }}>
+      <div className="logo-text hide-mobile" style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2, whiteSpace: "nowrap", flexShrink: 0 }}>
         Trade<span style={{ color: "var(--accent)" }}>Space</span>
       </div>
 
       <button className="primary symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
-        style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+        style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
         <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
       </button>
 
-      <div style={{ position: "relative" }}>
+      <div style={{ position: "relative", flexShrink: 0 }}>
         <button 
           className={toolsMenuOpen ? "primary" : "ghost"} 
           onClick={() => setToolsMenuOpen(!toolsMenuOpen)} 
           title="Tools & Analytics" 
-          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+          aria-label="Tools & Analytics"
+          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}
         >
-          <Wrench size={14} /> <span className="hide-mobile">Tools</span>
+          <Wrench size={14} />
         </button>
 
         {toolsMenuOpen && (
@@ -131,28 +147,26 @@ export default function TopBar({
             <button className="dropdown-btn" onClick={() => { onOpenMarketBias(); setToolsMenuOpen(false); }}>
               <Activity size={14} /> Master Market Bias
             </button>
-            <button className="dropdown-btn" onClick={() => { onOpenAutoCockpit?.(); setToolsMenuOpen(false); }}>
-              <Zap size={14} style={{ color: "var(--accent)" }} /> Live Autonomous Cockpit
-            </button>
-            <Link href="/autonomous" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
-              <Activity size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
+            <Link href="/autonomous" className="dropdown-btn" onClick={() => setToolsMenuOpen(false)}>
+              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous
             </Link>
-            <Link href="/autonomous?section=journal" className="dropdown-btn" style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 8, alignItems: "center" }}>
-              <BookOpen size={14} /> Trading Journal
+            <Link href="/autonomous?section=journal" className="dropdown-btn" onClick={() => setToolsMenuOpen(false)}>
+              <BookOpen size={14} /> Journal
             </Link>
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             <button 
               className="dropdown-btn" 
               onClick={() => { onToggleBias(); setToolsMenuOpen(false); }}
-              style={{ color: biasEnabled ? "var(--green)" : "var(--muted)" }}
+              style={{ color: biasEnabled ? "var(--green)" : "var(--muted)", fontWeight: 600 }}
             >
-              <Power size={14} /> Bias Engine: {biasEnabled ? "ON" : "OFF"}
+              <Power size={14} style={{ color: biasEnabled ? "var(--green)" : "var(--muted)" }} /> Bias Engine: {biasEnabled ? "ON" : "OFF"}
             </button>
           </div>
         )}
       </div>
 
-      <div className="tf-container" style={{ display: "flex", gap: 4 }}>
+      {/* Desktop Timeframe Buttons */}
+      <div className="tf-container hide-mobile" style={{ display: "flex", gap: 4 }}>
         {TFS.map((t) => (
           <button
             key={t}
@@ -163,6 +177,75 @@ export default function TopBar({
             {TF_LABEL[t]}
           </button>
         ))}
+      </div>
+
+      {/* Mobile Collapsed Timeframe Dropdown */}
+      <div className="hide-desktop" style={{ position: "relative" }} ref={mobileTfRef}>
+        <button
+          className="primary"
+          onClick={() => setMobileTfOpen(!mobileTfOpen)}
+          title="Select Timeframe"
+          style={{
+            padding: "4px 7px",
+            fontSize: 12,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            borderRadius: 6,
+          }}
+        >
+          <span>{TF_LABEL[tf] || tf}</span>
+          <ChevronDown size={12} />
+        </button>
+
+        {mobileTfOpen && (
+          <>
+            <div
+              style={{ position: "fixed", inset: 0, zIndex: 120 }}
+              onClick={() => setMobileTfOpen(false)}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                marginTop: 6,
+                background: "var(--panel)",
+                border: "1px solid var(--border-hi)",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.6)",
+                zIndex: 130,
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 4,
+                padding: 6,
+                minWidth: 160,
+              }}
+            >
+              {TFS.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    setTf(t);
+                    setMobileTfOpen(false);
+                  }}
+                  className={tf === t ? "primary" : "ghost"}
+                  style={{
+                    padding: "6px 8px",
+                    fontSize: 12,
+                    fontWeight: tf === t ? 700 : 500,
+                    borderRadius: 4,
+                    textAlign: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {TF_LABEL[t]}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Mobile Top Controls: Quick Auto Cockpit Button + Hamburger Menu */}
@@ -202,19 +285,20 @@ export default function TopBar({
         </button>
       </div>
 
-      <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-        <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 12, display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+        <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 8, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <button 
           className={showLayoutMenu ? "primary" : "ghost"} 
           onClick={() => setShowLayoutMenu(!showLayoutMenu)} 
           title="Layout Settings"
-          style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+          aria-label="Layout Settings"
+          style={{ padding: "4px 8px", display: "flex", alignItems: "center", fontSize: 12, flexShrink: 0 }}
         >
-          <LayoutGrid size={14} /> Layout
+          <LayoutGrid size={14} />
         </button>
         {layout === "1" && (
-          <button className="ghost" onClick={onOpenLoop} title="Start Slideshow Loop" style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-            <Repeat size={14} /> Loop
+          <button className="ghost" onClick={onOpenLoop} title="Start Slideshow Loop" aria-label="Start Slideshow Loop" style={{ padding: "4px 8px", display: "flex", alignItems: "center", fontSize: 12, flexShrink: 0 }}>
+            <Repeat size={14} />
           </button>
         )}
 
@@ -290,18 +374,78 @@ export default function TopBar({
 
       <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />
 
-      <div style={{ position: "relative" }} className="hide-mobile">
+      {/* Desktop Taskbar: Auto Trades Indicator Toggle */}
+      <button
+        className={`hide-mobile ${indicators?.autoTrades !== false ? "primary" : "ghost"}`}
+        onClick={() => {
+          setIndicators?.((prev) => ({ ...prev, autoTrades: prev?.autoTrades === false ? true : false }));
+        }}
+        title="Toggle Autonomous Trades Overlay on Chart (RR & Live P&L)"
+        aria-label="Toggle Auto Trades Overlay"
+        style={{
+          padding: "4px 8px",
+          fontSize: 12,
+          display: "flex",
+          alignItems: "center",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }}
+      >
+        <Zap size={14} style={{ color: indicators?.autoTrades !== false ? "#fff" : "var(--accent)" }} />
+      </button>
+
+      {/* Desktop Taskbar: Staged Trades Indicator Toggle */}
+      <button
+        className={`hide-mobile ${indicators?.stagedTrades !== false ? "primary" : "ghost"}`}
+        onClick={() => {
+          setIndicators?.((prev) => ({ ...prev, stagedTrades: prev?.stagedTrades === false ? true : false }));
+        }}
+        title="Toggle Staged Setups Overlay on Chart (Pending RR & Targets)"
+        aria-label="Toggle Staged Setups Overlay"
+        style={{
+          padding: "4px 8px",
+          fontSize: 12,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          background: indicators?.stagedTrades !== false ? "rgba(245, 158, 11, 0.2)" : "transparent",
+          border: indicators?.stagedTrades !== false ? "1px solid rgba(245, 158, 11, 0.45)" : "1px solid transparent",
+          color: indicators?.stagedTrades !== false ? "#fbbf24" : "var(--muted)",
+        }}
+      >
+        <Clock size={14} style={{ color: indicators?.stagedTrades !== false ? "#fbbf24" : "var(--muted)" }} />
+        {symbolStagedCount > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              padding: "1px 5px",
+              borderRadius: 8,
+              background: "#f59e0b",
+              color: "#000",
+              fontWeight: 800,
+            }}
+          >
+            {symbolStagedCount}
+          </span>
+        )}
+      </button>
+
+      <div style={{ position: "relative", flexShrink: 0 }} className="hide-mobile">
         <button
           className={themeMenuOpen ? "primary" : "ghost"}
           onClick={() => setThemeMenuOpen(!themeMenuOpen)}
-          title="Switch Theme"
-          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+          title={`Theme: ${THEME_LIST.find(t => t.id === activeTheme)?.label || "Dark"}`}
+          aria-label="Switch Theme"
+          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", flexShrink: 0 }}
         >
           {activeTheme === "light" ? <Sun size={14} /> :
            activeTheme === "navyblue" ? <Compass size={14} /> :
            activeTheme === "creamy" ? <Coffee size={14} /> :
            <Moon size={14} />}
-          <span>{THEME_LIST.find(t => t.id === activeTheme)?.label || "Theme"}</span>
         </button>
 
         {themeMenuOpen && (
@@ -338,18 +482,19 @@ export default function TopBar({
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+      <div style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center", flexShrink: 0 }}>
         {/* Autonomous Live Cockpit Trigger */}
         <button
           className={autoCockpitOpen ? "primary" : "ghost"}
           onClick={onOpenAutoCockpit}
-          title="Toggle Autonomous Trading Cockpit Drawer"
+          title={`Autonomous Cockpit${activeAutoTrades.length > 0 ? ` (${activeAutoTrades.length} Active${hasAutoR ? ` · ${formatR(autoNetR)}` : ""})` : stagedAutoTrades.length > 0 ? ` (${stagedAutoTrades.length} Staged)` : " (Idle)"}`}
+          aria-label="Toggle Autonomous Cockpit"
           style={{
             fontSize: 12,
-            padding: "4px 10px",
+            padding: "4px 8px",
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: 5,
             borderRadius: 6,
             border: activeAutoTrades.length > 0
               ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.45)" : "rgba(239, 83, 80, 0.45)"}`
@@ -362,6 +507,8 @@ export default function TopBar({
               : "var(--fg)",
             fontWeight: 600,
             cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
             transition: "all 0.15s ease",
           }}
         >
@@ -381,13 +528,12 @@ export default function TopBar({
             }}
           />
           <Zap size={13} style={{ color: activeAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
-          <span>Auto</span>
           {activeAutoTrades.length > 0 ? (
             <span style={{ fontFamily: "monospace", fontSize: 11 }}>
-              {activeAutoTrades.length} Active{hasAutoR ? ` · ${formatR(autoNetR)}` : ""}
+              {activeAutoTrades.length}A{hasAutoR ? ` · ${formatR(autoNetR)}` : ""}
             </span>
           ) : stagedAutoTrades.length > 0 ? (
-            <span style={{ fontSize: 11, color: "var(--accent)" }}>{stagedAutoTrades.length} Staged</span>
+            <span style={{ fontSize: 11, color: "var(--accent)" }}>{stagedAutoTrades.length}S</span>
           ) : null}
         </button>
 
@@ -395,20 +541,26 @@ export default function TopBar({
           <button 
             className="ghost" 
             onClick={onOpenPip} 
-            title="Pop out chart to floating window (PiP)" 
-            style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, color: isPipActive ? "var(--brand)" : "inherit" }}
+            title={isPipActive ? "Floating Window Active" : "Pop out chart to floating window (PiP)"} 
+            aria-label="Picture in Picture"
+            style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", color: isPipActive ? "var(--brand)" : "inherit", flexShrink: 0 }}
           >
-            <ExternalLink size={14} /> <span className="hide-mobile">{isPipActive ? "Floating" : "Pop Out"}</span>
+            <ExternalLink size={14} />
           </button>
         )}
-        <button className="ghost" onClick={onOpenAlerts} title="View alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-          <Bell size={14} /> Alerts
+        <button className="ghost" onClick={onOpenAlerts} title="View Alerts" aria-label="View Alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <Bell size={14} />
+          {activeAlertCount > 0 && (
+            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--accent)", color: "#fff", fontWeight: 700 }}>
+              {activeAlertCount}
+            </span>
+          )}
         </button>
-        <button onClick={onAddAlert} title="Create alert at market price" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
-          <Bell size={14} /> <span className="hide-mobile">Alert</span>{activeAlertCount ? ` · ${activeAlertCount}` : ""}
+        <button onClick={onAddAlert} title="Create alert at market price" aria-label="Create Alert" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", flexShrink: 0 }}>
+          <BellPlus size={14} />
         </button>
-        <button className="ghost hide-mobile" onClick={() => setWatchlistOpen(!watchlistOpen)} title="Toggle Watchlist" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-          <Sidebar size={14} /> {watchlistOpen ? "Hide" : "Show"}
+        <button className="ghost hide-mobile" onClick={() => setWatchlistOpen(!watchlistOpen)} title={watchlistOpen ? "Hide Watchlist" : "Show Watchlist"} aria-label="Toggle Watchlist" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", flexShrink: 0 }}>
+          <Sidebar size={14} />
         </button>
       </div>
       </div>
@@ -586,6 +738,59 @@ export default function TopBar({
                 <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>Idle</span>
               )}
             </button>
+            <button
+              className={indicators?.autoTrades !== false ? "primary" : "ghost"}
+              onClick={() => {
+                setIndicators?.((prev) => ({ ...prev, autoTrades: prev?.autoTrades === false ? true : false }));
+              }}
+              style={{
+                fontSize: 12,
+                padding: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                justifyContent: "flex-start",
+                background: indicators?.autoTrades !== false ? "rgba(41, 98, 255, 0.15)" : "transparent",
+                color: indicators?.autoTrades !== false ? "var(--brand)" : "var(--text)",
+                border: indicators?.autoTrades !== false ? "1px solid rgba(41, 98, 255, 0.3)" : "1px solid transparent",
+                borderRadius: 6
+              }}
+            >
+              <Zap size={14} style={{ color: "var(--accent)" }} />
+              <span>Auto Trades Overlay</span>
+              <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700 }}>
+                {indicators?.autoTrades !== false ? "ON" : "OFF"}
+              </span>
+            </button>
+            <button
+              className={indicators?.stagedTrades !== false ? "primary" : "ghost"}
+              onClick={() => {
+                setIndicators?.((prev) => ({ ...prev, stagedTrades: prev?.stagedTrades === false ? true : false }));
+              }}
+              style={{
+                fontSize: 12,
+                padding: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                justifyContent: "flex-start",
+                background: indicators?.stagedTrades !== false ? "rgba(245, 158, 11, 0.15)" : "transparent",
+                color: indicators?.stagedTrades !== false ? "#fbbf24" : "var(--text)",
+                border: indicators?.stagedTrades !== false ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid transparent",
+                borderRadius: 6
+              }}
+            >
+              <Clock size={14} style={{ color: "#f59e0b" }} />
+              <span>Staged Setups Overlay</span>
+              {symbolStagedCount > 0 && (
+                <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "#f59e0b", color: "#000", fontWeight: 700 }}>
+                  {symbolStagedCount}
+                </span>
+              )}
+              <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700 }}>
+                {indicators?.stagedTrades !== false ? "ON" : "OFF"}
+              </span>
+            </button>
             <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenStrength(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
               <Activity size={14} /> Currency Strength Meter
             </button>
@@ -601,10 +806,10 @@ export default function TopBar({
               </button>
             )}
             <Link href="/autonomous" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
-              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous Overview
+              <Zap size={14} style={{ color: "var(--accent)" }} /> Autonomous
             </Link>
             <Link href="/autonomous?section=journal" className="ghost" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start", textDecoration: "none", color: "inherit" }}>
-              <BookOpen size={14} /> Trading Journal
+              <BookOpen size={14} /> Journal
             </Link>
             <button 
               className={biasEnabled ? "primary" : "ghost"} 

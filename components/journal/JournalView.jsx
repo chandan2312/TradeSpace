@@ -48,6 +48,10 @@ const darkGridTheme = themeQuartz.withPart(colorSchemeDark).withParams({
   oddRowBackgroundColor: "rgba(0, 0, 0, 0.16)",
   fontSize: 12,
   fontFamily: "var(--font, -apple-system, sans-serif)",
+  headerHeight: 40,
+  rowHeight: 42,
+  cellHorizontalPadding: 12,
+  headerCellHorizontalPadding: 12,
 });
 
 // Helper: Format EET & UTC date
@@ -493,7 +497,7 @@ export default function JournalView() {
     return {
       sortable: true,
       filter: true,
-      floatingFilter: true,
+      floatingFilter: false,
       resizable: true,
       minWidth: 90,
     };
@@ -971,8 +975,8 @@ export default function JournalView() {
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 5,
-                padding: "6px 11px",
+                justifyContent: "center",
+                padding: "6px 9px",
                 borderRadius: 5,
                 border: "none",
                 fontSize: 11,
@@ -982,17 +986,18 @@ export default function JournalView() {
                 color: viewMode === "spreadsheet" ? "#fff" : "var(--muted)",
                 transition: "all 0.15s ease",
               }}
-              title="Excel-like interactive spreadsheet with column filtering & sorting"
+              title="Spreadsheet (AG-Grid)"
+              aria-label="Spreadsheet View"
             >
-              <BarChart2 size={12} /> Spreadsheet (AG-Grid)
+              <BarChart2 size={13} />
             </button>
             <button
               onClick={() => setViewMode("table")}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 5,
-                padding: "6px 11px",
+                justifyContent: "center",
+                padding: "6px 9px",
                 borderRadius: 5,
                 border: "none",
                 fontSize: 11,
@@ -1002,9 +1007,10 @@ export default function JournalView() {
                 color: viewMode === "table" ? "#fff" : "var(--muted)",
                 transition: "all 0.15s ease",
               }}
-              title="Institutional high-density table view with direct drawer inspection"
+              title="Table View"
+              aria-label="Table View"
             >
-              <Table size={12} /> Table View
+              <Table size={13} />
             </button>
           </div>
 
@@ -1070,8 +1076,8 @@ export default function JournalView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 7,
-            padding: "7px 14px",
+            gap: 6,
+            padding: "7px 12px",
             borderRadius: 7,
             border: activeSheet === "ALL" ? "1px solid rgba(41, 98, 255, 0.4)" : "1px solid transparent",
             background: activeSheet === "ALL" ? "rgba(41, 98, 255, 0.15)" : "transparent",
@@ -1081,9 +1087,10 @@ export default function JournalView() {
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
+          title="All Trades Sheet"
+          aria-label="All Trades Sheet"
         >
           <FileSpreadsheet size={13} />
-          <span>All Trades Sheet</span>
           <span
             style={{
               fontSize: 10,
@@ -1091,6 +1098,7 @@ export default function JournalView() {
               borderRadius: 10,
               background: activeSheet === "ALL" ? "var(--accent)" : "rgba(255, 255, 255, 0.08)",
               color: activeSheet === "ALL" ? "#fff" : "var(--muted)",
+              fontWeight: 800,
             }}
           >
             {sheetCounts.all}
@@ -1102,8 +1110,8 @@ export default function JournalView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 7,
-            padding: "7px 14px",
+            gap: 6,
+            padding: "7px 12px",
             borderRadius: 7,
             border: activeSheet === "milestone_50" ? "1px solid rgba(41, 98, 255, 0.4)" : "1px solid transparent",
             background: activeSheet === "milestone_50" ? "rgba(41, 98, 255, 0.15)" : "transparent",
@@ -1113,9 +1121,10 @@ export default function JournalView() {
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
+          title="Default Model Sheet (50% Milestone + Runner)"
+          aria-label="Default Model Sheet (50% Milestone + Runner)"
         >
-          <span style={{ color: "var(--accent)" }}>●</span>
-          <span>Default Model Sheet (50% Milestone + Runner)</span>
+          <Zap size={13} />
           <span
             style={{
               fontSize: 10,
@@ -1123,6 +1132,7 @@ export default function JournalView() {
               borderRadius: 10,
               background: activeSheet === "milestone_50" ? "var(--accent)" : "rgba(255, 255, 255, 0.08)",
               color: activeSheet === "milestone_50" ? "#fff" : "var(--muted)",
+              fontWeight: 800,
             }}
           >
             {sheetCounts.def}
@@ -1134,8 +1144,8 @@ export default function JournalView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 7,
-            padding: "7px 14px",
+            gap: 6,
+            padding: "7px 12px",
             borderRadius: 7,
             border: activeSheet === "prop_firm_safe" ? "1px solid rgba(171, 71, 188, 0.4)" : "1px solid transparent",
             background: activeSheet === "prop_firm_safe" ? "rgba(171, 71, 188, 0.15)" : "transparent",
@@ -1145,9 +1155,10 @@ export default function JournalView() {
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
+          title="Prop-Firm Safe Sheet (1.5R–2.5R Target)"
+          aria-label="Prop-Firm Safe Sheet (1.5R–2.5R Target)"
         >
-          <span style={{ color: "var(--purple, #ab47bc)" }}>●</span>
-          <span>Prop-Firm Safe Sheet (1.5R–2.5R Target)</span>
+          <Shield size={13} />
           <span
             style={{
               fontSize: 10,
@@ -1155,6 +1166,7 @@ export default function JournalView() {
               borderRadius: 10,
               background: activeSheet === "prop_firm_safe" ? "var(--purple, #ab47bc)" : "rgba(255, 255, 255, 0.08)",
               color: activeSheet === "prop_firm_safe" ? "#fff" : "var(--muted)",
+              fontWeight: 800,
             }}
           >
             {sheetCounts.prop}
@@ -1302,7 +1314,7 @@ export default function JournalView() {
           options={[
             { value: "swing", label: "Swing (1D-1H)", short: "Swing" },
             { value: "day", label: "Day Trade (4H-15M)", short: "Day" },
-            { value: "scalp", label: "Scalp (15M-1M)", short: "Scalp" },
+            { value: "scalp", label: "Scalp (30M-5M)", short: "Scalp" },
           ]}
           selected={selectedHorizons}
           onChange={setSelectedHorizons}
@@ -1429,8 +1441,8 @@ export default function JournalView() {
             paginationPageSize={50}
             paginationPageSizeSelector={[25, 50, 100, 250, 500]}
             onRowClicked={(event) => setSelectedTrade(event.data)}
-            onGridReady={(params) => {
-              params.api.sizeColumnsToFit();
+            onGridReady={(_params) => {
+              // Maintain institutional column widths with horizontal scrolling
             }}
             reactiveCustomComponents={true}
             overlayLoadingTemplate={

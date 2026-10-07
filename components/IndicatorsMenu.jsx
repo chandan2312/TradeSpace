@@ -28,9 +28,15 @@ export default function IndicatorsMenu({ indicators, setIndicators }) {
         className={open || activeCount ? "primary" : "ghost"}
         onClick={() => setOpen(!open)}
         title="Indicators & Overlays"
-        style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, fontSize: 12, flexShrink: 0 }}
+        aria-label="Indicators & Overlays"
+        style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
       >
-        <Sparkles size={14} /> <span className="hide-mobile">Indicators</span>{activeCount ? ` · ${activeCount}` : ""}
+        <Sparkles size={14} />
+        {activeCount > 0 && (
+          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--accent)", color: "#fff", fontWeight: 700 }}>
+            {activeCount}
+          </span>
+        )}
       </button>
 
       {open && (

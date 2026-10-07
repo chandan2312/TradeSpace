@@ -661,23 +661,22 @@ export default function DrawingSettings({ api }) {
                   const currentProfitLevel = style.profitLevel ?? (selected.points?.[1] ? Math.abs(selected.points[1].price - entryPrice) : (selected.target ? Math.abs(selected.target - entryPrice) : 20));
                   const currentStopPrice = selected.stop ?? Number((entryPrice - dir * currentStopLevel).toFixed(4));
                   const currentTpPrice = selected.target ?? Number((entryPrice + dir * currentProfitLevel).toFixed(4));
-                  const currentRR = currentStopLevel > 0 ? Math.min(5.0, Math.round((currentProfitLevel / currentStopLevel) * 100) / 100) : (selected.ratio ? Math.min(5.0, selected.ratio) : 2.0);
+                  const currentRR = currentStopLevel > 0 ? Math.round((currentProfitLevel / currentStopLevel) * 100) / 100 : (selected.ratio ? Number(selected.ratio) : 2.0);
 
                   return (
                     <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
                       <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--accent)", letterSpacing: 0.5, marginBottom: 8 }}>
-                        Position Parameters (Max 5.0 R:R)
+                        Position Parameters
                       </div>
 
-                      <Row label="Target R:R (Max 5.0R)">
+                      <Row label="Target R:R">
                         <input
                           type="number"
                           step={0.1}
                           min={0.1}
-                          max={5.0}
                           value={currentRR}
                           onChange={(e) => {
-                            const newRR = Math.min(5.0, Math.max(0.1, Number(e.target.value) || 0.1));
+                            const newRR = Math.max(0.1, Number(e.target.value) || 0.1);
                             const newProfitLevel = newRR * (currentStopLevel || 1);
                             const newTargetPrice = Number((entryPrice + dir * newProfitLevel).toFixed(4));
                             set({
@@ -699,11 +698,10 @@ export default function DrawingSettings({ api }) {
                             const newTp = Number(e.target.value) || 0;
                             const profitDist = Math.abs(newTp - entryPrice);
                             const stopDist = currentStopLevel || 1;
-                            const calculatedRR = Math.min(5.0, Math.max(0.1, Math.round((profitDist / stopDist) * 100) / 100));
-                            const clampedProfit = calculatedRR * stopDist;
-                            const finalTp = Number((entryPrice + dir * clampedProfit).toFixed(4));
+                            const calculatedRR = Math.max(0.1, Math.round((profitDist / stopDist) * 100) / 100);
+                            const finalTp = Number(newTp.toFixed(4));
                             set({
-                              style: { ...style, profitLevel: clampedProfit },
+                              style: { ...style, profitLevel: profitDist },
                               target: finalTp,
                               ratio: calculatedRR,
                             });
@@ -720,10 +718,9 @@ export default function DrawingSettings({ api }) {
                           onChange={(e) => {
                             const newSl = Number(e.target.value) || 0;
                             const newStopDist = Math.max(0.0001, Math.abs(entryPrice - newSl));
-                            const clampedProfit = Math.min(5.0 * newStopDist, currentProfitLevel);
-                            const newRR = Math.min(5.0, Math.round((clampedProfit / newStopDist) * 100) / 100);
+                            const newRR = Math.max(0.1, Math.round((currentProfitLevel / newStopDist) * 100) / 100);
                             set({
-                              style: { ...style, stopLevel: newStopDist, profitLevel: clampedProfit },
+                              style: { ...style, stopLevel: newStopDist, profitLevel: currentProfitLevel },
                               stop: newSl,
                               ratio: newRR,
                             });

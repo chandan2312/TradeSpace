@@ -1,5 +1,5 @@
 ; FX Blue Trade Copier Receiver Settings Preset
-; Target: FTMO 100K · Indices 15M-1M Intraday Only
+; Target: FTMO 100K · Indices 30M-5M Intraday Only
 ; Compatible with TradeSpace Deterministic Magic Numbers & Structured Comments
 
 Channel=TradeSpace_Master

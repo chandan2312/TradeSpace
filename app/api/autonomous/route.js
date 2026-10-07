@@ -20,7 +20,7 @@ import {
   modifyTradeTarget,
   startAutonomousLoop,
 } from "../../../lib/autonomous/engine.js";
-import { getCurrentTimeSlot, getAllTimeSlots } from "../../../lib/autonomous/timeslots.js";
+import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
 import { syncMT5HistoryToJournalThrottled } from "../../../lib/journal/store.js";
@@ -60,7 +60,7 @@ export async function GET() {
       controlCol.findOne({ _id: "latest_autonomous_scan" }).catch(() => null),
     ]);
 
-    const currentTimeSlot = getCurrentTimeSlot();
+    const currentTimeSlot = getCurrentTimeSlot(new Date(), config);
 
     let brokerAccount = null;
     if (brokerAccountRes?.ok && brokerAccountRes.account) {
@@ -116,7 +116,8 @@ export async function GET() {
       recentClosed,
       leaderboard,
       currentTimeSlot,
-      allTimeSlots: getAllTimeSlots(),
+      allTimeSlots: getAllTimeSlots(config),
+      allSymbolProfiles: SYMBOL_SESSION_PROFILES,
       allEntryModels: ENTRY_MODEL_DEFINITIONS,
       logs,
       events,
@@ -134,6 +135,12 @@ export async function GET() {
       },
       generatedAt: new Date().toISOString(),
       isScanning: !!g._tsAutonomousScanning,
+    }, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
     });
   } catch (err) {
     console.error("[GET /api/autonomous error]", err);

@@ -234,7 +234,7 @@ assert(brain15mUnlocked.dayTraderContext?.ltfGatekeeper?.triggerStatus === "APPR
 assert(brain15mUnlocked.horizons !== undefined, "Brain output contains horizons matrix");
 assert(brain15mUnlocked.horizons.SWING?.timeframeCombo === "1D-1H", "Swing horizon configured as 1D-1H");
 assert(brain15mUnlocked.horizons.DAY?.timeframeCombo === "4H-15M", "Day Trade horizon configured as 4H-15M");
-assert(brain15mUnlocked.horizons.SCALP?.timeframeCombo === "15M-1M", "Scalp horizon configured as 15M-1M");
+assert(brain15mUnlocked.horizons.SCALP?.timeframeCombo === "30M-5M", "Scalp horizon configured as 30M-5M");
 
 console.log("\n=======================================================");
 console.log("TEST SUITE 5: Full Engine Integration & Schema Verification");

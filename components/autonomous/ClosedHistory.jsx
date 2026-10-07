@@ -9,29 +9,39 @@ import {
   TrendingUp,
   ArrowRight,
   Filter,
+  Layers,
+  Target,
+  Shield,
+  XCircle,
 } from "lucide-react";
 import { formatPrice, formatR, formatUsd, formatIR, formatAR, finiteNumber } from "./TradeTelemetry";
 
 export default function ClosedHistory({ closedTrades = [] }) {
   const [filter, setFilter] = useState("all"); // "all" | "tp" | "be" | "sl"
 
+  const actualClosedTrades = useMemo(() => {
+    return closedTrades.filter(
+      (t) => Boolean(t.filledAt) || Boolean(t.filledPrice) || ["closed_tp", "closed_sl", "closed_be"].includes(t.status)
+    );
+  }, [closedTrades]);
+
   const filteredTrades = useMemo(() => {
-    if (filter === "all") return closedTrades;
-    if (filter === "tp") return closedTrades.filter((t) => t.status === "closed_tp");
+    if (filter === "all") return actualClosedTrades;
+    if (filter === "tp") return actualClosedTrades.filter((t) => t.status === "closed_tp");
     if (filter === "be") {
-      return closedTrades.filter(
+      return actualClosedTrades.filter(
         (t) => t.status === "closed_be" || t.closeReason === "breakeven"
       );
     }
     if (filter === "sl") {
-      return closedTrades.filter(
+      return actualClosedTrades.filter(
         (t) =>
           t.status === "closed_sl" ||
           (t.status === "closed" && t.closeReason !== "breakeven" && t.closeReason !== "take_profit")
       );
     }
-    return closedTrades;
-  }, [closedTrades, filter]);
+    return actualClosedTrades;
+  }, [actualClosedTrades, filter]);
 
   // Aggregate stats across closed trades
   const stats = useMemo(() => {
@@ -40,7 +50,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
     let losses = 0;
     let netR = 0;
 
-    for (const t of closedTrades) {
+    for (const t of actualClosedTrades) {
       if (t.status === "closed_tp") {
         wins++;
         netR += finiteNumber(t.realizedR ?? t.pnlR ?? 2);
@@ -53,12 +63,12 @@ export default function ClosedHistory({ closedTrades = [] }) {
       }
     }
 
-    const total = closedTrades.length;
+    const total = actualClosedTrades.length;
     const decisive = wins + losses;
     const winRate = decisive > 0 ? ((wins / decisive) * 100).toFixed(1) : "0.0";
 
     return { total, wins, bes, losses, netR, winRate };
-  }, [closedTrades]);
+  }, [actualClosedTrades]);
 
   return (
     <div
@@ -135,8 +145,13 @@ export default function ClosedHistory({ closedTrades = [] }) {
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <button
           onClick={() => setFilter("all")}
+          title="All Closed Trades"
+          aria-label="All Closed Trades"
           style={{
-            padding: "5px 12px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 10px",
             fontSize: 11,
             fontWeight: 700,
             borderRadius: 6,
@@ -147,12 +162,20 @@ export default function ClosedHistory({ closedTrades = [] }) {
             cursor: "pointer",
           }}
         >
-          All ({closedTrades.length})
+          <Layers size={13} />
+          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+            {closedTrades.length}
+          </span>
         </button>
         <button
           onClick={() => setFilter("tp")}
+          title="Take Profit"
+          aria-label="Take Profit"
           style={{
-            padding: "5px 12px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 10px",
             fontSize: 11,
             fontWeight: 700,
             borderRadius: 6,
@@ -163,12 +186,20 @@ export default function ClosedHistory({ closedTrades = [] }) {
             cursor: "pointer",
           }}
         >
-          Take Profit ({stats.wins})
+          <Target size={13} />
+          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+            {stats.wins}
+          </span>
         </button>
         <button
           onClick={() => setFilter("be")}
+          title="Breakeven"
+          aria-label="Breakeven"
           style={{
-            padding: "5px 12px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 10px",
             fontSize: 11,
             fontWeight: 700,
             borderRadius: 6,
@@ -179,12 +210,20 @@ export default function ClosedHistory({ closedTrades = [] }) {
             cursor: "pointer",
           }}
         >
-          Breakeven ({stats.bes})
+          <Shield size={13} />
+          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+            {stats.bes}
+          </span>
         </button>
         <button
           onClick={() => setFilter("sl")}
+          title="Stop Loss"
+          aria-label="Stop Loss"
           style={{
-            padding: "5px 12px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "5px 10px",
             fontSize: 11,
             fontWeight: 700,
             borderRadius: 6,
@@ -195,7 +234,10 @@ export default function ClosedHistory({ closedTrades = [] }) {
             cursor: "pointer",
           }}
         >
-          Stop Loss ({stats.losses})
+          <XCircle size={13} />
+          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+            {stats.losses}
+          </span>
         </button>
       </div>
 

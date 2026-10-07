@@ -115,7 +115,8 @@ TradeSpace Enterprise
 │   └── /quant_quentin          (Quentin - Algo Architecture, Liquidity & Structure Engines)
 │
 ├── /qa_lead_quinn (Quinn — QA & Testing Lead)
-│   └── /tester_tina            (Tina - Cypress, Jest, E2E Testing)
+│   ├── /tester_tina            (Tina - Cypress, Jest, E2E Testing)
+│   └── /codereview             (Critical Adversarial Code Reviewer - User-first auditor)
 │
 └── /support_lead_winston (Winston — Support & Ops Lead)
     ├── /repo_organizer_clara   (Clara - File structure, naming conventions)

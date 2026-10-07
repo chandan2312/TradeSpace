@@ -25,12 +25,21 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
   const macroBias = brain.macroBias || brain.macroCompass || brain.htfLiquidity?.macroBias || (pair.dir === 1 ? "BULLISH" : pair.dir === -1 ? "BEARISH" : "NEUTRAL");
   const dirText = pair.dirLabel || (brain.macroDir === 1 ? "BUY / LONG" : brain.macroDir === -1 ? "SELL / SHORT" : "NEUTRAL");
   const thesisText = brain.thesisId || pair.thesisId || brain.htfLiquidity?.drawOnLiquidity?.catalyst || "HTF Structural Expansion";
+  const horizonKey = (pair.scenario?.id === "swing" || pair.horizon === "swing")
+    ? "SWING"
+    : (pair.scenario?.id === "scalp" || pair.horizon === "scalp")
+    ? "SCALP"
+    : "DAY";
+  const horizonGate = brain.horizons?.[horizonKey]?.gatekeeper;
   const gatekeeperVeto = typeof brain.gatekeeperVeto === "boolean"
     ? brain.gatekeeperVeto
-    : Boolean(brain.dayTraderContext?.ltfGatekeeper?.vetoActive || brain.horizons?.DAY?.gatekeeper?.vetoActive);
-  const gatekeeperStatus = brain.gatekeeperStatus || brain.dayTraderContext?.ltfGatekeeper?.triggerStatus || brain.horizons?.DAY?.gatekeeper?.triggerStatus || (gatekeeperVeto ? "VETO ACTIVE" : "APPROVED");
+    : Boolean(horizonGate?.vetoActive || brain.dayTraderContext?.ltfGatekeeper?.vetoActive);
+  const gatekeeperStatus = brain.gatekeeperStatus || horizonGate?.triggerStatus || brain.dayTraderContext?.ltfGatekeeper?.triggerStatus || (gatekeeperVeto ? "VETO ACTIVE" : "APPROVED");
   const modelName = pair.entryModel?.name || staged?.modelName || (pair.status === "WATCHING_RETRACE" ? "Scanning Retracement Entry (FVG / OTE)" : "Scanning Market Structure");
-  const modelRationale = pair.entryModel?.rationale || staged?.rationale || pair.statusReason || "Monitoring 4H/15M order flow and dealing range discount/premium.";
+  const modelRationale = pair.entryModel?.rationale || staged?.rationale || pair.statusReason || "Monitoring order flow and dealing range discount/premium.";
+
+  const macroLabel = pair.scenario?.macroTf ? `${pair.scenario.macroTf} Macro Compass` : "1D / 4H Macro Bias";
+  const gatekeeperLabel = `${pair.scenario?.gatekeeperTf || "15M"} Gatekeeper`;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: "min(4vw, 16px)" }} onClick={onClose}>
@@ -48,12 +57,12 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 10 }}>
           <div style={panel}>
-            <TelemetryValue label="1D / 4H macro bias" value={macroBias} color={pair.dir === 1 ? "var(--green)" : pair.dir === -1 ? "var(--red)" : "var(--accent)"} />
+            <TelemetryValue label={macroLabel} value={macroBias} color={pair.dir === 1 ? "var(--green)" : pair.dir === -1 ? "var(--red)" : "var(--accent)"} />
             <div style={{ fontSize: 11, marginTop: 6 }}>Direction: {dirText}</div>
             <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>Thesis: {thesisText}</div>
           </div>
           <div style={panel}>
-            <TelemetryValue label="15M gatekeeper" value={gatekeeperVeto ? "VETO ACTIVE" : "GATEKEEPER APPROVED"} color={gatekeeperVeto ? "var(--red)" : "var(--green)"} />
+            <TelemetryValue label={gatekeeperLabel} value={gatekeeperVeto ? "VETO ACTIVE" : "GATEKEEPER APPROVED"} color={gatekeeperVeto ? "var(--red)" : "var(--green)"} />
             <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{gatekeeperStatus}</div>
           </div>
         </div>
@@ -82,7 +91,8 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                 const entryVal = level.entry ?? level.price;
                 const slVal = level.sl;
                 const tpVal = level.tp ?? level.targetPrice;
-                const rrVal = level.rr ?? level.targetRR;
+                const rawRR = level.rr ?? level.targetRR;
+                const rrVal = finiteNumber(rawRR) !== null ? Number(rawRR) : null;
                 const scoreVal = level.confluenceScore;
                 const qualStatus = level.status
                   || (level.meetsMinRR === false ? "RR rejected" : level.meetsMinRR ? "Qualified" : "Pending qualification");
@@ -97,6 +107,18 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                     <div style={{ fontSize: 11, color: "var(--muted)" }}>
                       R:R {finiteNumber(rrVal) !== null ? `${Number(rrVal).toFixed(2)}R` : "—"} · {qualStatus}
                     </div>
+                    {level.slAudit && (
+                      <div style={{ fontSize: 10, color: "var(--muted)", display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ padding: "1px 5px", borderRadius: 3, background: "rgba(239, 68, 68, 0.12)", color: "var(--red)", fontWeight: 700, fontSize: 9 }}>
+                          {level.slAudit.anchorType?.replace(/_/g, " ") || "STRUCTURAL SL"}
+                        </span>
+                        {level.slAudit.isNoiseFree && (
+                          <span style={{ fontSize: 9, color: "var(--green)", fontWeight: 600 }}>
+                            ✓ Noise-safe ({level.slAudit.riskDistance != null ? `${Number(level.slAudit.riskDistance).toFixed(1)} ${level.slAudit.units?.unitLabel || "pts"}` : "verified"})
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <DecisionReasons vetoes={level.vetoes} reason={level.rejectionReason || level.rationale} title="Candidate decision" />
                     <ConfluenceBreakdown breakdown={level.confluenceBreakdown} score={scoreVal} />
                     <EvidenceDetails evidence={level.evidence} />

@@ -20,6 +20,7 @@ TF_SETTINGS = {
     "M1": {"lookback": 60, "left": 3, "right": 3},
     "M5": {"lookback": 64, "left": 3, "right": 3},
     "M15": {"lookback": 64, "left": 3, "right": 3},
+    "M30": {"lookback": 68, "left": 3, "right": 3},
     "H1": {"lookback": 72, "left": 3, "right": 3},
     "H4": {"lookback": 80, "left": 3, "right": 3},
     "D1": {"lookback": 60, "left": 2, "right": 2},
@@ -136,8 +137,8 @@ def compute_dealing_range(bars: Bars, tf: str = "H4", avg: float | None = None) 
 def analyze_all_dealing_ranges(frames: dict, structures: dict | None = None) -> dict:
     structures = structures or {}
     ranges = {}
-    for tf in ("M1", "M5", "M15", "H1", "H4", "D1"):
-        b = frames.get(tf)
+    for tf in ("M1", "M5", "M15", "M30", "H1", "H4", "D1"):
+        b = frames.get(tf) or (frames.get("30M") if tf == "M30" else None)
         if b is not None and len(b) >= 15:
             r = compute_dealing_range(b, tf)
             if r is not None:

@@ -137,6 +137,12 @@ def compute_symbol_bias(symbol: str, frames: dict, extras: dict | None = None, n
         if conf["pillar"] == "htf":
             htf_sum += direction * w
 
+    # Auxiliary structures for Market Brain & Horizon Gatekeepers (M30, M5)
+    for tf in ("M30", "M5") + (("M1",) if "M1" in frames else ()):
+        b = frames.get(tf) or (frames.get("30M") if tf == "M30" else None)
+        if b is not None and len(b) > 0 and tf not in structures:
+            structures[tf] = analyze_structure(b, avg_range(b))
+
     # Derive macro_trend objectively from higher timeframe structure
     macro_trend = (structures.get("D1") or {}).get("dir") or (structures.get("H4") or {}).get("dir") or 0
 
