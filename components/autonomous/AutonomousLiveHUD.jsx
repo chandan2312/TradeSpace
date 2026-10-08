@@ -23,6 +23,8 @@ import {
   Terminal,
   Maximize2,
   Minimize2,
+  Power,
+  Sliders,
 } from "lucide-react";
 import {
   tradeRiskTelemetry,
@@ -41,6 +43,8 @@ import BrainInspectorModal from "./BrainInspectorModal";
 import AuditLog from "./AuditLog";
 import StagedTradeModal from "./StagedTradeModal";
 import LiveTradeModal from "./LiveTradeModal";
+import ControlConsole from "./ControlConsole";
+import ExecutionDiagnostics from "./ExecutionDiagnostics";
 
 export default function AutonomousLiveHUD({
   trades = [],
@@ -67,6 +71,15 @@ export default function AutonomousLiveHUD({
 
   const [auxRadarPairs, setAuxRadarPairs] = useState(radarPairsProp || []);
   const [auxLogs, setAuxLogs] = useState(logsProp || []);
+  const [auxConfig, setAuxConfig] = useState({});
+  const [auxBrokerAccount, setAuxBrokerAccount] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [auxExecutionTrades, setAuxExecutionTrades] = useState([]);
+  const [auxDiagnostics, setAuxDiagnostics] = useState(null);
+  const [auxAllTimeSlots, setAuxAllTimeSlots] = useState([]);
+  const [auxAllSymbolProfiles, setAuxAllSymbolProfiles] = useState({});
+  const [auxAllEntryModels, setAuxAllEntryModels] = useState({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const fetchAuxState = useCallback(async () => {
     try {
@@ -74,6 +87,14 @@ export default function AutonomousLiveHUD({
       if (!res.ok) return;
       const data = await res.json();
       if (data?.ok) {
+        if (data.config) setAuxConfig(data.config);
+        if (data.brokerAccount !== undefined) setAuxBrokerAccount(data.brokerAccount);
+        if (typeof data.isScanning === "boolean") setIsScanning(data.isScanning);
+        if (Array.isArray(data.executionTrades)) setAuxExecutionTrades(data.executionTrades);
+        if (data.executionDiagnostics) setAuxDiagnostics(data.executionDiagnostics);
+        if (Array.isArray(data.allTimeSlots)) setAuxAllTimeSlots(data.allTimeSlots);
+        if (data.allSymbolProfiles) setAuxAllSymbolProfiles(data.allSymbolProfiles);
+        if (data.allEntryModels) setAuxAllEntryModels(data.allEntryModels);
         if (Array.isArray(data.leaderboard?.rankedPairs)) {
           setAuxRadarPairs(data.leaderboard.rankedPairs);
         }
@@ -83,6 +104,54 @@ export default function AutonomousLiveHUD({
       }
     } catch (_) {}
   }, []);
+
+  const mutate = useCallback(async (body, path = "/api/autonomous") => {
+    setLoadingAction(body.action || "saving");
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await res.json();
+      if (!res.ok || result.ok === false) {
+        throw new Error(result.error || result.reason || "Action failed");
+      }
+      setActionMsg({
+        type: "success",
+        text:
+          body.action === "toggle"
+            ? (result.config?.enabled ? "Autonomous Trading Activated" : "Autonomous Trading Paused")
+            : body.action === "toggleLive"
+            ? (result.config?.liveTrading ? "Live MT5 Execution Enabled" : "Paper Execution Mode Set")
+            : body.action === "scan"
+            ? "Universe Scan Triggered"
+            : "Settings Saved",
+      });
+      setTimeout(() => setActionMsg(null), 3500);
+      await fetchAuxState();
+      if (onRefresh) onRefresh();
+      return result;
+    } catch (err) {
+      setActionMsg({ type: "error", text: err.message || "Action failed" });
+      setTimeout(() => setActionMsg(null), 4000);
+      throw err;
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [fetchAuxState, onRefresh]);
+
+  const handleTogglePower = () => mutate({ action: "toggle" }).catch(() => {});
+  const handleToggleLiveTrading = () => mutate({ action: "toggleLive" }).catch(() => {});
+  const handleScanNow = async () => {
+    setIsScanning(true);
+    try {
+      await mutate({ action: "scan" });
+    } finally {
+      setTimeout(() => setIsScanning(false), 2000);
+    }
+  };
+  const handleSaveConfig = (patch) => mutate(patch, "/api/autonomous/config");
 
   useEffect(() => {
     if (isOpen) {
@@ -362,41 +431,166 @@ export default function AutonomousLiveHUD({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "12px 16px",
+            flexWrap: "wrap",
+            gap: 8,
+            padding: "10px 14px",
             borderBottom: "1px solid var(--border)",
             background: "rgba(255, 255, 255, 0.02)",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Left Title & Status Controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <div
               style={{
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                background: activeTrades.length > 0 ? "var(--green)" : "var(--muted)",
-                boxShadow: activeTrades.length > 0 ? "0 0 8px var(--green)" : "none",
+                background: (auxConfig.enabled ?? true) ? "var(--green)" : "var(--muted)",
+                boxShadow: (auxConfig.enabled ?? true) ? "0 0 8px var(--green)" : "none",
+                flexShrink: 0,
               }}
             />
-            <strong style={{ fontSize: 13, fontWeight: 700, letterSpacing: -0.2 }}>
-              Live Autonomous Cockpit
+            <strong style={{ fontSize: 13, fontWeight: 700, letterSpacing: -0.2, whiteSpace: "nowrap" }}>
+              Cockpit
             </strong>
-            <span
+
+            {/* Power Toggle Button */}
+            <button
+              onClick={handleTogglePower}
+              title={(auxConfig.enabled ?? true) ? "Click to Pause Autonomous Bot" : "Click to Enable Autonomous Bot"}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontSize: 10,
                 fontWeight: 700,
-                padding: "2px 6px",
-                borderRadius: 4,
-                background: "rgba(56, 189, 248, 0.15)",
-                color: "var(--accent)",
+                padding: "2px 7px",
+                borderRadius: 5,
+                cursor: "pointer",
+                border: (auxConfig.enabled ?? true)
+                  ? "1px solid rgba(34, 197, 94, 0.4)"
+                  : "1px solid rgba(239, 68, 68, 0.4)",
+                background: (auxConfig.enabled ?? true)
+                  ? "rgba(34, 197, 94, 0.15)"
+                  : "rgba(239, 68, 68, 0.15)",
+                color: (auxConfig.enabled ?? true) ? "var(--green)" : "var(--red)",
+                transition: "all 0.15s ease",
               }}
             >
-              LIVE MT5
-            </span>
+              <Power size={11} />
+              <span>{(auxConfig.enabled ?? true) ? "AUTO ON" : "AUTO OFF"}</span>
+            </button>
+
+            {/* Live MT5 / Paper Toggle Button */}
+            <button
+              onClick={handleToggleLiveTrading}
+              title={auxConfig.liveTrading ? "Live MT5 Execution (Click to switch to Paper)" : "Paper Mode (Click to switch to Live MT5)"}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "2px 7px",
+                borderRadius: 5,
+                cursor: "pointer",
+                border: auxConfig.liveTrading
+                  ? "1px solid rgba(56, 189, 248, 0.4)"
+                  : "1px solid rgba(245, 158, 11, 0.4)",
+                background: auxConfig.liveTrading
+                  ? "rgba(56, 189, 248, 0.15)"
+                  : "rgba(245, 158, 11, 0.15)",
+                color: auxConfig.liveTrading ? "var(--accent)" : "var(--orange)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>{auxConfig.liveTrading ? "LIVE MT5" : "PAPER"}</span>
+            </button>
+
+            {/* Broker Account Pill (if available) */}
+            {auxBrokerAccount && (
+              <span
+                title={`Broker: ${auxBrokerAccount.company || "MT5"} · Equity: $${auxBrokerAccount.equity?.toLocaleString() || "-"} · Margin: $${auxBrokerAccount.margin_free?.toLocaleString() || "-"}`}
+                style={{
+                  fontSize: 10,
+                  fontFamily: "monospace",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  color: "var(--muted)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    background: auxBrokerAccount.connected !== false ? "var(--green)" : "var(--red)",
+                  }}
+                />
+                <span>${auxBrokerAccount.equity ? Math.round(auxBrokerAccount.equity).toLocaleString() : "MT5"}</span>
+              </span>
+            )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <button
+          {/* Right Tools Row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {/* Scan Now Button */}
+            <button
+              onClick={handleScanNow}
+              disabled={isScanning}
+              title="Scan Universe Now"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: isScanning ? "var(--accent)" : "var(--muted)",
+                cursor: isScanning ? "wait" : "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Compass size={12} style={isScanning ? { animation: "spin 1s linear infinite" } : {}} />
+              <span>{isScanning ? "Scanning…" : "Scan"}</span>
+            </button>
+
+            {/* Settings Button */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              title="Autonomous Risk & Bot Settings"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--muted)",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--fg)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+            >
+              <Sliders size={12} />
+              <span>Config</span>
+            </button>
+
+            {/* Expand / Collapse Width */}
+            <button
               onClick={() => setIsExpanded(!isExpanded)}
               title={isExpanded ? "Collapse Width" : "Expand Cockpit Width"}
               style={{
@@ -415,6 +609,8 @@ export default function AutonomousLiveHUD({
             >
               {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
+
+            {/* Refresh Trades */}
             {onRefresh && (
               <button
                 onClick={onRefresh}
@@ -437,6 +633,7 @@ export default function AutonomousLiveHUD({
               </button>
             )}
 
+            {/* Full Page Link */}
             <Link
               href="/autonomous"
               title="Open Full Autonomous Page"
@@ -447,7 +644,7 @@ export default function AutonomousLiveHUD({
                 fontSize: 11,
                 color: "var(--muted)",
                 textDecoration: "none",
-                padding: "4px 8px",
+                padding: "3px 7px",
                 borderRadius: 6,
                 border: "1px solid var(--border)",
                 transition: "color 0.15s",
@@ -459,6 +656,7 @@ export default function AutonomousLiveHUD({
               <ExternalLink size={11} />
             </Link>
 
+            {/* Close Button */}
             <button
               onClick={handleDismiss}
               aria-label="Close Autonomous Cockpit"
@@ -466,8 +664,8 @@ export default function AutonomousLiveHUD({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 28,
-                height: 28,
+                width: 26,
+                height: 26,
                 borderRadius: 6,
                 background: "transparent",
                 border: "none",
@@ -485,7 +683,7 @@ export default function AutonomousLiveHUD({
               }}
               title="Close Cockpit (Esc)"
             >
-              <X size={18} />
+              <X size={17} />
             </button>
           </div>
         </div>
@@ -771,6 +969,14 @@ export default function AutonomousLiveHUD({
             {/* TAB: ACTIVE POSITIONS */}
             {tab === "active" && (
               <>
+                {auxExecutionTrades.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <ExecutionDiagnostics
+                      trades={auxExecutionTrades}
+                      diagnostics={auxDiagnostics}
+                    />
+                  </div>
+                )}
                 {activeTrades.length === 0 ? (
                   <div
                     style={{
@@ -1443,6 +1649,19 @@ export default function AutonomousLiveHUD({
               pair={effectiveRadarPairs.find((p) => (p.radarKey && inspectedPair.radarKey ? p.radarKey === inspectedPair.radarKey : p.symbol === inspectedPair.symbol)) || inspectedPair}
               ticks={ticks}
               onClose={() => setInspectedPair(null)}
+            />
+          )}
+
+          {settingsOpen && (
+            <ControlConsole
+              config={auxConfig}
+              brokerAccount={auxBrokerAccount}
+              allTimeSlots={auxAllTimeSlots}
+              allSymbolProfiles={auxAllSymbolProfiles}
+              allEntryModels={auxAllEntryModels}
+              universe={auxConfig.universe || []}
+              onSaveConfig={handleSaveConfig}
+              onClose={() => setSettingsOpen(false)}
             />
           )}
         </aside>

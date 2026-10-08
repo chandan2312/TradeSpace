@@ -320,7 +320,7 @@ export default function ControlConsole({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 200,
+        zIndex: 10000,
         background: "rgba(0,0,0,.75)",
         display: "flex",
         alignItems: "center",
