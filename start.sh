@@ -228,7 +228,7 @@ if [ "$MODE" = "prod" ]; then
     fi
 
     echo -e "\n${GREEN}🚀 Starting TradeSpace Production Server...${NC}"
-    NODE_ENV=production node server.js > "$LOG_FILE" 2>&1 &
+    NODE_ENV=production node --max-old-space-size=1024 server.js > "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
 else
     # Clean stale production build cache to prevent Webpack runtime chunk collisions (MODULE_NOT_FOUND)
@@ -237,7 +237,7 @@ else
         rm -rf .next
     fi
     echo -e "\n${GREEN}🚀 Starting TradeSpace Development Server (with hot reload)...${NC}"
-    NODE_ENV=development node server.js > "$LOG_FILE" 2>&1 &
+    NODE_ENV=development node --max-old-space-size=1024 server.js > "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
 fi
 

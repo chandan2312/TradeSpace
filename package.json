@@ -4,9 +4,9 @@
   "description": "MT5 live charts with TradingView-style alerts -> Telegram",
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development node server.js",
+    "dev": "NODE_ENV=development node --max-old-space-size=1024 server.js",
     "build": "next build",
-    "start": "node server.js"
+    "start": "node --max-old-space-size=1024 server.js"
   },
   "dependencies": {
     "ag-grid-community": "^36.2.0",

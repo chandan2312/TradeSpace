@@ -50,4 +50,4 @@ if "!NEED_BUILD!"=="1" (
 
 REM 4. Launch TradeSpace
 echo [Launcher] Starting TradeSpace Server on port 3000...
-node server.js
+node --max-old-space-size=1024 server.js
