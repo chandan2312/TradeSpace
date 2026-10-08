@@ -138,6 +138,7 @@ export default function Dashboard() {
   const symbolsRef = useRef([]); 
   const barsCache = useRef(new Map()); // `${sym}:${tf}` -> { bars, at }
   const toastTimer = useRef(null);
+  const autonomousLoadingRef = useRef(false);
 
   const [syncedLogicalRange, setSyncedLogicalRange] = useState(null);
   const [syncedCrosshair, setSyncedCrosshair] = useState(null);
@@ -724,19 +725,17 @@ export default function Dashboard() {
   }, [biasEnabled, biasSymbols.join(",")]);
 
   const loadAutonomousTrades = useCallback(async () => {
+    if (autonomousLoadingRef.current) return;
+    autonomousLoadingRef.current = true;
     try {
-      const [autoRes, journalRes] = await Promise.all([
-        api("/api/autonomous"),
-        api("/api/journal").catch(() => null),
-      ]);
+      const autoRes = await api("/api/autonomous");
       const autoList = autoRes?.ok ? [
         ...(Array.isArray(autoRes.activeTrades) ? autoRes.activeTrades : []),
         ...(Array.isArray(autoRes.stagedTrades) ? autoRes.stagedTrades : []),
         ...(Array.isArray(autoRes.executionTrades) ? autoRes.executionTrades : []),
         ...(Array.isArray(autoRes.recentClosed) ? autoRes.recentClosed : []),
       ] : [];
-      const journalList = journalRes?.ok && Array.isArray(journalRes.trades) ? journalRes.trades : [];
-      const rawList = [...autoList, ...journalList].filter((t) =>
+      const rawList = autoList.filter((t) =>
         !["invalidated", "cancelled", "expired", "dismissed"].includes(t.status) &&
         (
           ["staged", "armed", "confirming", "placing", "pending"].includes(t.status) ||
@@ -760,7 +759,9 @@ export default function Dashboard() {
       if (autoRes?.ok && Array.isArray(autoRes.leaderboard?.rankedPairs)) {
         setRadarPairs(autoRes.leaderboard.rankedPairs);
       }
-    } catch {}
+    } catch {} finally {
+      autonomousLoadingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {

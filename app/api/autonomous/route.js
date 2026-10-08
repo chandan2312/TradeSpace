@@ -35,133 +35,185 @@ const CLOSED_TRADES_PROJECTION = {
 };
 
 let lastBackgroundScanTriggerAt = 0;
+let cachedResponsePayload = null;
+let cachedResponseAt = 0;
+let inFlightGetPromise = null;
+const CACHE_TTL_MS = 2500; // 2.5s response cache deduplicates rapid client hits
+
+export function invalidateAutonomousRouteCache() {
+  cachedResponsePayload = null;
+  cachedResponseAt = 0;
+}
 
 export async function GET() {
-  try {
-    startAutonomousLoop();
-    // Non-blocking background sync of MT5 history so page loads instantly
-    syncMT5HistoryToJournalThrottled().catch(() => {});
-
-    const { tradesCol, logsCol, controlCol } = await autonomousCols();
-
-    // Fetch independent data sources concurrently (with 2500ms safety timeout on remote broker bridge)
-    const [config, metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan] = await Promise.all([
-      getConfig(),
-      getMetrics(),
-      Promise.race([
-        getMT5Account().catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
-      ]),
-      tradesCol.find({ status: { $in: OPEN_STATES } }).sort({ createdAt: -1 }).toArray(),
-      tradesCol.find({
-        $or: [
-          { status: { $in: ["closed_tp", "closed_sl", "closed_be", "closed"] } },
-          { filledAt: { $exists: true, $ne: null }, status: { $in: TERMINAL_STATES } },
-        ],
-      }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(25).toArray(),
-      logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
-      controlCol.findOne({ _id: "latest_autonomous_scan" }).catch(() => null),
-    ]);
-
-    const currentTimeSlot = getCurrentTimeSlot(new Date(), config);
-
-    let brokerAccount = null;
-    if (brokerAccountRes?.ok && brokerAccountRes.account) {
-      brokerAccount = brokerAccountRes.account;
-      const liveEq = Number(brokerAccount.equity ?? brokerAccount.balance);
-      if (liveEq > 0 && Math.abs((config.accountSize || 0) - liveEq) > 1) {
-        config.accountSize = liveEq;
-        setConfig({ accountSize: liveEq }).catch(() => {});
-      }
-    }
-
-    // Strip duplicate brain and stagedLevel to cut per-trade network payload in half
-    const sanitizeTrade = (t) => {
-      if (!t) return t;
-      const { brain, stagedLevel, ...rest } = t;
-      return rest;
-    };
-    const openTrades = rawOpenTrades.map(sanitizeTrade);
-
-    const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status));
-    const stagedTrades = openTrades.filter((trade) => ["staged", "armed", "confirming"].includes(trade.status));
-    // Surface every nonterminal execution/reconciliation state without reproducing engine transitions.
-    const executionTrades = openTrades.filter((trade) => !activeTrades.includes(trade) && !stagedTrades.includes(trade));
-
-    // Hydrate leaderboard from memory or persisted scan from previous cycle
-    if (!g._tsAutonomousLeaderboard && persistedScan?.leaderboard) {
-      g._tsAutonomousLeaderboard = persistedScan.leaderboard;
-    }
-    let leaderboard = g._tsAutonomousLeaderboard || null;
-    if (leaderboard) {
-      // Strip 50KB raw candle snapshot bars per pair and duplicate primeSetups array (saving ~1.1MB)
-      const sanitizedRanked = (leaderboard.rankedPairs || []).map((pair) => {
-        const { snapshot, ...rest } = pair;
-        return rest;
-      });
-      leaderboard = {
-        ...leaderboard,
-        rankedPairs: sanitizedRanked,
-        primeSetups: [],
-      };
-    }
-
-    // Check if scan is stale beyond the configured cycle period
-    const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
-    const scanIntervalMs = Number(config?.scanIntervalMs || 180000);
-    const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
-
-    // If scan is stale and engine is not already scanning, trigger background scan without blocking page load (throttled to max 1 attempt per 60s)
-    const now = Date.now();
-    if (isScanStale && !g._tsAutonomousScanning && config?.enabled && (now - lastBackgroundScanTriggerAt > 60000)) {
-      lastBackgroundScanTriggerAt = now;
-      runAutonomousScan("interval").catch(() => {});
-    }
-
-    const events = [...rawOpenTrades, ...recentClosed].flatMap((trade) =>
-      (Array.isArray(trade.events) ? trade.events : []).map((event, index, timeline) => ({
-        ...event,
-        tradeId: trade._id,
-        symbol: trade.symbol,
-        vetoes: event.vetoes || (index === timeline.length - 1 ? trade.vetoes : undefined),
-      }))
-    ).sort((a, b) => new Date(b.time || b.createdAt) - new Date(a.time || a.createdAt)).slice(0, 80);
-
-    return NextResponse.json({
-      ok: true,
-      config,
-      metrics,
-      brokerAccount,
-      activeTrades,
-      stagedTrades,
-      executionTrades,
-      recentClosed,
-      leaderboard,
-      currentTimeSlot,
-      allTimeSlots: getAllTimeSlots(config),
-      allSymbolProfiles: SYMBOL_SESSION_PROFILES,
-      allEntryModels: ENTRY_MODEL_DEFINITIONS,
-      logs,
-      events,
-      executionDiagnostics: {
-        openStates: OPEN_STATES,
-        pendingCount: executionTrades.length,
-        brokerStates: [...new Set(rawOpenTrades.map((trade) => trade.brokerStatus).filter(Boolean))],
-        operations: rawOpenTrades.filter((trade) => trade.operation).map((trade) => ({
-          tradeId: trade._id,
-          symbol: trade.symbol,
-          status: trade.status,
-          brokerStatus: trade.brokerStatus,
-          operation: trade.operation,
-        })),
-      },
-      generatedAt: new Date().toISOString(),
-      isScanning: !!g._tsAutonomousScanning,
-    }, {
+  const now = Date.now();
+  if (cachedResponsePayload && (now - cachedResponseAt < CACHE_TTL_MS)) {
+    return NextResponse.json(cachedResponsePayload, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
         "Pragma": "no-cache",
         "Expires": "0",
+        "X-Autonomous-Cache": "HIT",
+      },
+    });
+  }
+
+  if (inFlightGetPromise) {
+    try {
+      const coalesced = await inFlightGetPromise;
+      return NextResponse.json(coalesced, {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0",
+          "X-Autonomous-Cache": "COALESCED",
+        },
+      });
+    } catch (_) {}
+  }
+
+  inFlightGetPromise = (async () => {
+    try {
+      startAutonomousLoop();
+      // Non-blocking background sync of MT5 history so page loads instantly
+      syncMT5HistoryToJournalThrottled().catch(() => {});
+
+      const { tradesCol, logsCol, controlCol } = await autonomousCols();
+
+      // Fetch independent data sources concurrently (with 1500ms safety timeout on remote broker bridge)
+      // Only query latest_autonomous_scan if leaderboard is not already hydrated in memory
+      const [config, metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan] = await Promise.all([
+        getConfig(),
+        getMetrics(),
+        Promise.race([
+          getMT5Account().catch(() => null),
+          new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]),
+        tradesCol.find({ status: { $in: OPEN_STATES } }, { projection: CLOSED_TRADES_PROJECTION }).sort({ createdAt: -1 }).toArray(),
+        tradesCol.find({
+          $or: [
+            { status: { $in: ["closed_tp", "closed_sl", "closed_be", "closed"] } },
+            { filledAt: { $exists: true, $ne: null }, status: { $in: TERMINAL_STATES } },
+          ],
+        }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(25).toArray(),
+        logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
+        !g._tsAutonomousLeaderboard && controlCol
+          ? controlCol.findOne({ _id: "latest_autonomous_scan" }, { projection: { "leaderboard.rankedPairs.snapshot": 0, "leaderboard.rankedPairs.ranges": 0 } }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const currentTimeSlot = getCurrentTimeSlot(new Date(), config);
+
+      let brokerAccount = null;
+      if (brokerAccountRes?.ok && brokerAccountRes.account) {
+        brokerAccount = brokerAccountRes.account;
+        const liveEq = Number(brokerAccount.equity ?? brokerAccount.balance);
+        if (liveEq > 0 && Math.abs((config.accountSize || 0) - liveEq) > 1) {
+          config.accountSize = liveEq;
+          setConfig({ accountSize: liveEq }).catch(() => {});
+        }
+      }
+
+      // Strip duplicate brain and stagedLevel to cut per-trade network payload in half
+      const sanitizeTrade = (t) => {
+        if (!t) return t;
+        const { brain, stagedLevel, ...rest } = t;
+        return rest;
+      };
+      const openTrades = rawOpenTrades.map(sanitizeTrade);
+
+      const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status));
+      const stagedTrades = openTrades.filter((trade) => ["staged", "armed", "confirming"].includes(trade.status));
+      // Surface every nonterminal execution/reconciliation state without reproducing engine transitions.
+      const executionTrades = openTrades.filter((trade) => !activeTrades.includes(trade) && !stagedTrades.includes(trade));
+
+      // Hydrate leaderboard from memory or persisted scan from previous cycle
+      if (!g._tsAutonomousLeaderboard && persistedScan?.leaderboard) {
+        g._tsAutonomousLeaderboard = persistedScan.leaderboard;
+      }
+      let leaderboard = g._tsAutonomousLeaderboard || null;
+      if (leaderboard) {
+        // Strip raw candle snapshot bars per pair and duplicate primeSetups array
+        const sanitizedRanked = (leaderboard.rankedPairs || []).map((pair) => {
+          const { snapshot, ...rest } = pair;
+          return rest;
+        });
+        leaderboard = {
+          ...leaderboard,
+          rankedPairs: sanitizedRanked,
+          primeSetups: [],
+        };
+      }
+
+      // Check if scan is stale beyond the configured cycle period
+      const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
+      const scanIntervalMs = Number(config?.scanIntervalMs || 180000);
+      const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
+
+      // If scan is stale and engine is not already scanning, trigger background scan without blocking page load (throttled to max 1 attempt per 60s)
+      const scanNow = Date.now();
+      if (isScanStale && !g._tsAutonomousScanning && config?.enabled && (scanNow - lastBackgroundScanTriggerAt > 60000)) {
+        lastBackgroundScanTriggerAt = scanNow;
+        runAutonomousScan("interval").catch(() => {});
+      }
+
+      const events = [...rawOpenTrades, ...recentClosed].flatMap((trade) =>
+        (Array.isArray(trade.events) ? trade.events : []).map((event, index, timeline) => ({
+          ...event,
+          tradeId: trade._id,
+          symbol: trade.symbol,
+          vetoes: event.vetoes || (index === timeline.length - 1 ? trade.vetoes : undefined),
+        }))
+      ).sort((a, b) => new Date(b.time || b.createdAt) - new Date(a.time || a.createdAt)).slice(0, 80);
+
+      const payload = {
+        ok: true,
+        config,
+        metrics,
+        brokerAccount,
+        activeTrades,
+        stagedTrades,
+        executionTrades,
+        recentClosed,
+        leaderboard,
+        currentTimeSlot,
+        allTimeSlots: getAllTimeSlots(config),
+        allSymbolProfiles: SYMBOL_SESSION_PROFILES,
+        allEntryModels: ENTRY_MODEL_DEFINITIONS,
+        logs,
+        events,
+        executionDiagnostics: {
+          openStates: OPEN_STATES,
+          pendingCount: executionTrades.length,
+          brokerStates: [...new Set(rawOpenTrades.map((trade) => trade.brokerStatus).filter(Boolean))],
+          operations: rawOpenTrades.filter((trade) => trade.operation).map((trade) => ({
+            tradeId: trade._id,
+            symbol: trade.symbol,
+            status: trade.status,
+            brokerStatus: trade.brokerStatus,
+            operation: trade.operation,
+          })),
+        },
+        generatedAt: new Date().toISOString(),
+        isScanning: !!g._tsAutonomousScanning,
+      };
+
+      cachedResponsePayload = payload;
+      cachedResponseAt = Date.now();
+      return payload;
+    } finally {
+      inFlightGetPromise = null;
+    }
+  })();
+
+  try {
+    const payload = await inFlightGetPromise;
+    return NextResponse.json(payload, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "X-Autonomous-Cache": "MISS",
       },
     });
   } catch (err) {
@@ -171,6 +223,7 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  invalidateAutonomousRouteCache();
   try {
     const body = await req.json().catch(() => ({}));
     const { action } = body;
