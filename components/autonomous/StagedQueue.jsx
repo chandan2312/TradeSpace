@@ -839,146 +839,168 @@ export default function StagedQueue({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Modal Header */}
+              {/* Pinned Sticky Header & Navigation Tabs Container */}
               <div
                 style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 25,
+                  background: "var(--panel)",
                   display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 8,
+                  flexDirection: "column",
+                  gap: 12,
+                  flexShrink: 0,
+                  paddingTop: 2,
+                  paddingBottom: 8,
                   borderBottom: "1px solid var(--border)",
-                  paddingBottom: 12,
                 }}
               >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>
-                      {trade.symbol} · {isDual ? "Dual-Leg Execution Setup" : "Setup Details"}
-                    </h2>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 800,
-                        padding: "2px 7px",
-                        borderRadius: 4,
-                        background:
-                          trade.dir === 1
-                            ? "rgba(34, 197, 94, 0.2)"
-                            : "rgba(239, 68, 68, 0.2)",
-                        color: trade.dir === 1 ? "var(--green)" : "var(--red)",
-                      }}
-                    >
-                      {trade.dir === 1 ? "BUY SETUP ▲" : "SELL SETUP ▼"}
-                    </span>
-                    {isDual && (
+                {/* Modal Header */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    flexShrink: 0,
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>
+                        {trade.symbol} · {isDual ? "Dual-Leg Execution Setup" : "Setup Details"}
+                      </h2>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          padding: "2px 7px",
+                          borderRadius: 4,
+                          background:
+                            trade.dir === 1
+                              ? "rgba(34, 197, 94, 0.2)"
+                              : "rgba(239, 68, 68, 0.2)",
+                          color: trade.dir === 1 ? "var(--green)" : "var(--red)",
+                        }}
+                      >
+                        {trade.dir === 1 ? "BUY SETUP ▲" : "SELL SETUP ▼"}
+                      </span>
+                      {isDual && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            background: "rgba(168, 85, 247, 0.18)",
+                            color: "var(--purple, #c084fc)",
+                            border: "1px solid rgba(168, 85, 247, 0.3)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <Layers size={11} /> DUAL EXECUTION (50% + PROP)
+                        </span>
+                      )}
                       <span
                         style={{
                           fontSize: 10,
                           fontWeight: 800,
-                          padding: "2px 6px",
+                          padding: "2px 7px",
                           borderRadius: 4,
-                          background: "rgba(168, 85, 247, 0.18)",
-                          color: "var(--purple, #c084fc)",
-                          border: "1px solid rgba(168, 85, 247, 0.3)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
+                          background: armed
+                            ? "rgba(34, 197, 94, 0.2)"
+                            : confirming
+                            ? "rgba(234, 179, 8, 0.2)"
+                            : "rgba(56, 189, 248, 0.15)",
+                          color: armed
+                            ? "var(--green)"
+                            : confirming
+                            ? "var(--orange)"
+                            : "var(--accent)",
                         }}
                       >
-                        <Layers size={11} /> DUAL EXECUTION (50% + PROP)
+                        {armed ? "⚡ READY TO FIRE" : confirming ? "CONFIRMING" : "STAGED"}
                       </span>
-                    )}
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 800,
-                        padding: "2px 7px",
-                        borderRadius: 4,
-                        background: armed
-                          ? "rgba(34, 197, 94, 0.2)"
-                          : confirming
-                          ? "rgba(234, 179, 8, 0.2)"
-                          : "rgba(56, 189, 248, 0.15)",
-                        color: armed
-                          ? "var(--green)"
-                          : confirming
-                          ? "var(--orange)"
-                          : "var(--accent)",
-                      }}
-                    >
-                      {armed ? "⚡ READY TO FIRE" : confirming ? "CONFIRMING" : "STAGED"}
-                    </span>
+                    </div>
+
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                      Model: <strong style={{ color: "var(--accent)" }}>{trade.modelId || level.model || "ICT 2022"}</strong> · Timeframe: {trade.tf || "15M"} · Thesis: {trade.thesisId || brain.thesisId || "Confirmed"}
+                    </div>
                   </div>
 
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                    Model: <strong style={{ color: "var(--accent)" }}>{trade.modelId || level.model || "ICT 2022"}</strong> · Timeframe: {trade.tf || "15M"} · Thesis: {trade.thesisId || brain.thesisId || "Confirmed"}
-                  </div>
+                  <button
+                    onClick={closeDetails}
+                    aria-label="Close setup modal"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--muted)",
+                      cursor: "pointer",
+                      padding: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
 
-                <button
-                  onClick={closeDetails}
-                  aria-label="Close setup modal"
+                {/* Navigation Tabs */}
+                <div
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--muted)",
-                    cursor: "pointer",
-                    padding: 4,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
+                    gap: 6,
+                    overflowX: "auto",
+                    flexShrink: 0,
+                    minHeight: 36,
+                    padding: "2px 2px 4px 2px",
+                    scrollbarWidth: "none",
                   }}
                 >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Navigation Tabs */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  overflowX: "auto",
-                  paddingBottom: 4,
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                {[
-                  { id: "chart", label: "Chart & Overview", icon: CandlestickChart },
-                  { id: "targets", label: "Dual Targets & Modifiers", icon: Target },
-                  { id: "confluence", label: "Confluence & Evidence", icon: Sparkles },
-                  { id: "gatekeeper", label: "Gatekeeper & Veto", icon: Shield },
-                  { id: "all", label: "All Details (Audit)", icon: Layers },
-                ].map((tab) => {
-                  const Icon = tab.icon;
-                  const active = modalTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setModalTab(tab.id)}
-                      style={{
-                        padding: "6px 11px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        borderRadius: 6,
-                        border: "1px solid",
-                        borderColor: active ? "var(--accent)" : "transparent",
-                        background: active ? "var(--panel-2)" : "transparent",
-                        color: active ? "var(--fg)" : "var(--muted)",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        whiteSpace: "nowrap",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      <Icon size={13} style={{ color: active ? "var(--accent)" : "currentColor" }} />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
+                  {[
+                    { id: "chart", label: "Chart & Overview", icon: CandlestickChart },
+                    { id: "targets", label: "Dual Targets & Modifiers", icon: Target },
+                    { id: "confluence", label: "Confluence & Evidence", icon: Sparkles },
+                    { id: "gatekeeper", label: "Gatekeeper & Veto", icon: Shield },
+                    { id: "all", label: "All Details (Audit)", icon: Layers },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const active = modalTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setModalTab(tab.id)}
+                        style={{
+                          flexShrink: 0,
+                          minHeight: 30,
+                          padding: "6px 12px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          borderRadius: 6,
+                          border: "1px solid",
+                          borderColor: active ? "var(--accent)" : "transparent",
+                          background: active ? "var(--panel-2)" : "transparent",
+                          color: active ? "var(--fg)" : "var(--muted)",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          whiteSpace: "nowrap",
+                          lineHeight: 1.2,
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <Icon size={13} style={{ color: active ? "var(--accent)" : "currentColor", flexShrink: 0 }} />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* TAB 1: CHART & OVERVIEW */}
