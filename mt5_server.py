@@ -708,6 +708,13 @@ def handle_order(payload):
         request["position"] = int(close_ticket)
 
     result = mt5.order_send(request)
+    # Automatic fallback to GTC if broker rejects specified expiration (TRADE_RETCODE_INVALID_EXPIRATION == 10022)
+    invalid_exp_retcode = getattr(mt5, "TRADE_RETCODE_INVALID_EXPIRATION", 10022)
+    if result and getattr(result, "retcode", None) == invalid_exp_retcode and request.get("type_time") != mt5.ORDER_TIME_GTC:
+        request["type_time"] = mt5.ORDER_TIME_GTC
+        request.pop("expiration", None)
+        result = mt5.order_send(request)
+
     failure = send_result(result, [mt5.TRADE_RETCODE_DONE, getattr(mt5, "TRADE_RETCODE_PLACED", 10008), getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)], "order-failed")
     if failure:
         return failure

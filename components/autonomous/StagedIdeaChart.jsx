@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { RotateCcw, AlertCircle, Loader2, ZoomIn, ZoomOut } from "lucide-react";
-import {
-  buildRadarTradeIdeaDrawing,
-  resolveRadarTradeIdeaPricing,
-} from "../../lib/autonomous/tradeDrawing";
+import { RotateCcw, AlertCircle, Loader2, ZoomIn, ZoomOut, Target, Shield } from "lucide-react";
+import { tradeToStagedPositionDrawings } from "../../lib/autonomous/tradeDrawing";
 import { formatPrice, markPriceFor } from "./TradeTelemetry";
 import { normalizeCandles } from "../../lib/candleNormalization";
 
@@ -16,8 +13,8 @@ const TF_OPTIONS = [
   { id: "4h", label: "4H", apiTf: "H4", sec: 14400 },
 ];
 
-export default function RadarIdeaChart({
-  pair,
+export default function StagedIdeaChart({
+  trade,
   ticks = {},
   defaultTf,
   height = 320,
@@ -29,14 +26,14 @@ export default function RadarIdeaChart({
   const barsRef = useRef([]);
   const ratesCacheRef = useRef({});
   const initialRangeFramedRef = useRef({});
-  const pairRef = useRef(pair);
-  pairRef.current = pair;
+  const tradeRef = useRef(trade);
+  tradeRef.current = trade;
 
   const initialTf =
     defaultTf ||
-    (pair?.horizon === "swing" || pair?.scenario?.id === "swing"
+    (trade?.horizon === "swing" || trade?.scenario?.id === "swing"
       ? "1h"
-      : pair?.horizon === "scalp" || pair?.scenario?.id === "scalp"
+      : trade?.horizon === "scalp" || trade?.scenario?.id === "scalp"
       ? "5m"
       : "15m");
 
@@ -45,23 +42,29 @@ export default function RadarIdeaChart({
   const [error, setError] = useState(null);
   const [chartReady, setChartReady] = useState(false);
 
-  const symbol = pair?.tradeableSymbol || pair?.symbol;
+  const symbol = trade?.tradeableSymbol || trade?.symbol;
+  const dir = trade?.dir === -1 || String(trade?.direction || trade?.dirLabel).toLowerCase() === "sell" ? -1 : 1;
+  const isShort = dir === -1;
 
-  // Exact structural pricing from single source of truth
-  const pricing = useMemo(() => resolveRadarTradeIdeaPricing(pair), [pair]);
-  const { isLong, dir, entry: entryVal, sl: slVal, tp: tpVal, rr: rrVal, hasSetup } = pricing;
-  const currentMark = markPriceFor(pair, ticks);
+  const level = trade?.levelDetails || trade?.stagedLevel || {};
+  const entryVal = Number(trade?.entryPrice ?? level.entry ?? 0);
+  const slVal = Number(trade?.initialSlPrice ?? trade?.slPrice ?? level.sl ?? 0);
+  const fullTpVal = Number(trade?.fullTp ?? trade?.defaultLeg?.tpPrice ?? level.fullTp ?? trade?.tpPrice ?? 0);
+  const propTpVal = Number(trade?.propTp ?? trade?.propLeg?.tpPrice ?? trade?.propTarget?.tpPrice ?? 0);
+  const halfPriceVal = Number(trade?.halfPrice ?? trade?.halfTarget?.price ?? 0);
 
-  // Redraw RR drawing onto existing chart without reloading candles or resetting zoom
-  const updateRadarDrawing = useCallback(
+  const currentMark = markPriceFor(trade, ticks);
+
+  // Redraw Staged RR drawings onto existing chart without reloading candles or resetting zoom
+  const updateStagedDrawing = useCallback(
     (bars = barsRef.current) => {
       if (!drawingManagerRef.current) return;
-      const currentPair = pairRef.current;
-      if (!currentPair) return;
+      const currentTrade = tradeRef.current;
+      if (!currentTrade) return;
       const activeTf = TF_OPTIONS.find((t) => t.id === selectedTf) || TF_OPTIONS[1];
       const tfSec = activeTf.sec || 900;
-      const radarDrawing = buildRadarTradeIdeaDrawing(currentPair, bars || [], tfSec, 0);
-      drawingManagerRef.current.list = radarDrawing ? [radarDrawing] : [];
+      const stagedDrawings = tradeToStagedPositionDrawings(currentTrade, bars || [], tfSec, 0);
+      drawingManagerRef.current.list = stagedDrawings || [];
       drawingManagerRef.current.redraw();
     },
     [selectedTf]
@@ -116,14 +119,14 @@ export default function RadarIdeaChart({
           },
           crosshair: {
             mode: CrosshairMode.Normal,
-            vertLine: { color: "rgba(168, 85, 247, 0.4)", width: 1, style: 3 },
-            horzLine: { color: "rgba(168, 85, 247, 0.4)", width: 1, style: 3 },
+            vertLine: { color: "rgba(245, 158, 11, 0.4)", width: 1, style: 3 },
+            horzLine: { color: "rgba(245, 158, 11, 0.4)", width: 1, style: 3 },
           },
           timeScale: {
             borderColor: borderCol,
             timeVisible: true,
             secondsVisible: false,
-            rightOffset: 16,
+            rightOffset: 18,
             barSpacing: 9,
             minBarSpacing: 3,
             fixLeftEdge: false,
@@ -156,25 +159,26 @@ export default function RadarIdeaChart({
         chartRef.current = chart;
 
         const series =
-          typeof chart.addSeries === "function" && CandlestickSeries
-            ? chart.addSeries(CandlestickSeries, {
-                upColor: "#22c55e",
-                downColor: "#ef4444",
-                borderVisible: false,
-                wickUpColor: "#22c55e",
-                wickDownColor: "#ef4444",
+          typeof chart.addCandlestickSeries === "function"
+            ? chart.addCandlestickSeries({
+                upColor: "#26a69a",
+                downColor: "#ef5350",
+                borderUpColor: "#26a69a",
+                borderDownColor: "#ef5350",
+                wickUpColor: "#26a69a",
+                wickDownColor: "#ef5350",
               })
-            : chart.addCandlestickSeries({
-                upColor: "#22c55e",
-                downColor: "#ef4444",
-                borderVisible: false,
-                wickUpColor: "#22c55e",
-                wickDownColor: "#ef4444",
+            : chart.addSeries(CandlestickSeries, {
+                upColor: "#26a69a",
+                downColor: "#ef5350",
+                borderUpColor: "#26a69a",
+                borderDownColor: "#ef5350",
+                wickUpColor: "#26a69a",
+                wickDownColor: "#ef5350",
               });
-
         seriesRef.current = series;
 
-        // Native TradingView drawing manager from lightweight-charts-drawing
+        // DrawingManager integration for Staged RR Tool
         const drawingManager = new DrawingManager(chart, series, {
           magnet: "off",
           stayInDrawingMode: false,
@@ -183,23 +187,22 @@ export default function RadarIdeaChart({
         });
         drawingManagerRef.current = drawingManager;
 
-        setChartReady(true);
-
-        // Fluid responsive resizing without layout thrashing
+        // ResizeObserver for dynamic container dimensions
         resizeObserver = new ResizeObserver((entries) => {
-          if (!entries || !entries[0] || !chartRef.current) return;
-          const { width } = entries[0].contentRect;
-          if (width > 0) {
-            chartRef.current.applyOptions({ width });
+          if (!entries || !entries.length || !chartRef.current) return;
+          const entry = entries[0];
+          const newWidth = entry.contentRect.width;
+          if (newWidth > 0) {
+            chartRef.current.applyOptions({ width: newWidth });
           }
         });
         resizeObserver.observe(containerRef.current);
+
+        setChartReady(true);
       } catch (err) {
-        if (!isCancelled) {
-          console.error("RadarIdeaChart initialization error:", err);
-          setError(err.message);
-          setLoading(false);
-        }
+        console.error("StagedIdeaChart initialization error:", err);
+        setError("Failed to initialize candlestick engine");
+        setLoading(false);
       }
     }
 
@@ -207,57 +210,60 @@ export default function RadarIdeaChart({
 
     return () => {
       isCancelled = true;
-      setChartReady(false);
       if (resizeObserver) resizeObserver.disconnect();
+      if (drawingManagerRef.current) {
+        try {
+          drawingManagerRef.current.destroy?.();
+        } catch {}
+        drawingManagerRef.current = null;
+      }
       if (chartRef.current) {
         try {
           chartRef.current.remove();
         } catch {}
         chartRef.current = null;
       }
-      drawingManagerRef.current = null;
       seriesRef.current = null;
+      setChartReady(false);
     };
   }, [symbol, height]);
 
-  // 2. Fetch and apply candle data strictly upon TF or symbol change
-  // DECOUPLED FROM pair: updates to pair will NEVER re-fetch candles or reset user zoom/pan!
+  // 2. Data Fetching Lifecycle: Strictly decoupled from trade updates
+  // Changing trade or polling status will NEVER re-fetch rates or reset user zoom/pan!
   useEffect(() => {
-    if (!chartReady || !symbol) return;
     let isCancelled = false;
 
-    async function loadCandles() {
+    async function loadRates() {
+      if (!chartReady || !seriesRef.current || !symbol) return;
+
       const activeTf = TF_OPTIONS.find((t) => t.id === selectedTf) || TF_OPTIONS[1];
       const tfParam = activeTf.apiTf || "M15";
       const cacheKey = `${symbol}:${tfParam}`;
       const isAlreadyFramed = !!initialRangeFramedRef.current[cacheKey];
 
-      // Instant cache hit: render immediately with zero network delay or flicker
-      const cachedBars = ratesCacheRef.current[cacheKey];
-      if (cachedBars && cachedBars.length > 0) {
-        barsRef.current = cachedBars;
-        if (seriesRef.current) {
-          seriesRef.current.setData(cachedBars);
-          if (!isAlreadyFramed && chartRef.current) {
-            const total = cachedBars.length;
-            chartRef.current.timeScale().setVisibleLogicalRange({
-              from: Math.max(0, total - 55),
-              to: total + 14,
-            });
-            initialRangeFramedRef.current[cacheKey] = true;
-          }
+      // Instant cache retrieval for immediate display
+      const cached = ratesCacheRef.current[cacheKey];
+      if (cached && cached.length > 0) {
+        barsRef.current = cached;
+        seriesRef.current.setData(cached);
+        if (!isAlreadyFramed && chartRef.current) {
+          const totalBars = cached.length;
+          chartRef.current.timeScale().setVisibleLogicalRange({
+            from: Math.max(0, totalBars - 60),
+            to: totalBars + 22,
+          });
+          initialRangeFramedRef.current[cacheKey] = true;
         }
-        updateRadarDrawing(cachedBars);
+        updateStagedDrawing(cached);
         setLoading(false);
+        setError(null);
       } else {
         setLoading(true);
       }
 
-      setError(null);
-
       try {
         const res = await fetch(
-          `/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tfParam}&count=200`,
+          `/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tfParam}&count=220`,
           { cache: "no-store" }
         );
         const data = await res.json();
@@ -265,7 +271,7 @@ export default function RadarIdeaChart({
         if (isCancelled) return;
 
         if (!data.ok || !Array.isArray(data.bars) || data.bars.length === 0) {
-          if (!ratesCacheRef.current[cacheKey]) {
+          if (!cached || cached.length === 0) {
             setError(data.message || `No candle data returned for ${symbol}`);
           }
           setLoading(false);
@@ -282,47 +288,52 @@ export default function RadarIdeaChart({
         bars = bars.filter((b) => b.close > 0 && b.high > 0 && b.low > 0);
         bars = normalizeCandles(bars, tfParam);
 
-        ratesCacheRef.current[cacheKey] = bars;
         barsRef.current = bars;
+        ratesCacheRef.current[cacheKey] = bars;
 
         if (seriesRef.current) {
           seriesRef.current.setData(bars);
-          // Only frame logical range on first initial load for this symbol & timeframe!
-          // Strictly preserves user's manual zoom and pan on all subsequent calls!
-          if (!initialRangeFramedRef.current[cacheKey] && chartRef.current) {
-            const total = bars.length;
-            chartRef.current.timeScale().setVisibleLogicalRange({
-              from: Math.max(0, total - 55),
-              to: total + 14,
-            });
-            initialRangeFramedRef.current[cacheKey] = true;
-          }
-          updateRadarDrawing(bars);
         }
+
+        updateStagedDrawing(bars);
+
+        // Autofit visible logical range strictly once per timeframe to preserve user manual zoom
+        if (!initialRangeFramedRef.current[cacheKey] && chartRef.current) {
+          const totalBars = bars.length;
+          chartRef.current.timeScale().setVisibleLogicalRange({
+            from: Math.max(0, totalBars - 60),
+            to: totalBars + 22,
+          });
+          initialRangeFramedRef.current[cacheKey] = true;
+        }
+
+        setError(null);
       } catch (err) {
-        if (!isCancelled && !ratesCacheRef.current[cacheKey]) {
-          console.error("RadarIdeaChart rates fetch error:", err);
-          setError(err.message);
+        console.error("StagedIdeaChart rates fetch error:", err);
+        if (!cached || cached.length === 0) {
+          setError("Failed to load historical candles");
         }
       } finally {
-        if (!isCancelled) setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadCandles();
+    loadRates();
 
     return () => {
       isCancelled = true;
     };
-  }, [chartReady, symbol, selectedTf, updateRadarDrawing]);
+  }, [chartReady, symbol, selectedTf, updateStagedDrawing]);
 
-  // 3. Separate Effect: Update drawing overlays when pair evolves without touching candles or zoom
+  // 3. Separate Effect: Update staged drawing overlay when trade details change without reloading candles
   useEffect(() => {
     if (!chartReady || !drawingManagerRef.current || !barsRef.current.length) return;
-    updateRadarDrawing(barsRef.current);
-  }, [chartReady, pair, selectedTf, updateRadarDrawing]);
+    updateStagedDrawing(barsRef.current);
+  }, [chartReady, trade, selectedTf, updateStagedDrawing]);
 
-  // 4. Live Tick Streaming: Animate the live candle wick/close in real-time without re-render or lag
+  // 4. Live Tick Streaming: Animate the live candle in real-time
   useEffect(() => {
     if (!seriesRef.current || !barsRef.current || barsRef.current.length === 0) return;
     const tickPrice = currentMark;
@@ -374,14 +385,13 @@ export default function RadarIdeaChart({
     });
   }, []);
 
-  // Fit View: Frames the recent 55 bars + 14 bars future runway
-  const handleFit = useCallback(() => {
+  // Reset Zoom & Center Setup
+  const handleResetZoom = useCallback(() => {
     if (!chartRef.current || !barsRef.current.length) return;
-    const total = barsRef.current.length;
-    chartRef.current.timeScale().setVisibleLogicalRange({
-      from: Math.max(0, total - 55),
-      to: total + 14,
-    });
+    const totalBars = barsRef.current.length;
+    const from = Math.max(0, totalBars - 60);
+    const to = totalBars + 22;
+    chartRef.current.timeScale().setVisibleLogicalRange({ from, to });
     chartRef.current.priceScale("right").applyOptions({ autoScale: true });
   }, []);
 
@@ -391,152 +401,130 @@ export default function RadarIdeaChart({
         display: "flex",
         flexDirection: "column",
         background: "var(--panel)",
-        borderRadius: 8,
         border: "1px solid var(--border)",
+        borderRadius: 10,
         overflow: "hidden",
         position: "relative",
       }}
     >
-      {/* Chart Control Toolbar */}
+      {/* 1. Chart Toolbar Header */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 6,
-          padding: "6px 10px",
+          padding: "8px 12px",
           background: "var(--panel-2)",
           borderBottom: "1px solid var(--border)",
-          fontSize: 11,
+          gap: 8,
+          flexWrap: "wrap",
         }}
       >
-        {/* Left: Timeframe pills */}
-        <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <span style={{ fontSize: 10, color: "var(--muted)", marginRight: 4, fontWeight: 700 }}>
-            TF:
+        {/* Left: Symbol, Direction, Staged badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 13, color: "var(--fg)" }}>{symbol}</strong>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: isShort ? "rgba(239, 68, 68, 0.18)" : "rgba(34, 197, 94, 0.18)",
+              color: isShort ? "var(--red)" : "var(--green)",
+            }}
+          >
+            {isShort ? "SELL SETUP ▼" : "BUY SETUP ▲"}
           </span>
-          {TF_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setSelectedTf(opt.id)}
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                padding: "2px 7px",
-                borderRadius: 4,
-                border: "1px solid",
-                borderColor: selectedTf === opt.id ? "var(--purple, #a855f7)" : "var(--border)",
-                background: selectedTf === opt.id ? "rgba(168, 85, 247, 0.2)" : "transparent",
-                color: selectedTf === opt.id ? "var(--purple, #c084fc)" : "var(--muted)",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: "rgba(245, 158, 11, 0.15)",
+              color: "var(--orange, #f59e0b)",
+              border: "1px solid rgba(245, 158, 11, 0.35)",
+            }}
+          >
+            STAGED RR BOX
+          </span>
         </div>
 
-        {/* Center: Setup Price Geometry Telemetry */}
+        {/* Center: Key Levels Quick Summary */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            fontFamily: "monospace",
+            gap: 10,
             fontSize: 10,
+            fontFamily: "monospace",
             flexWrap: "wrap",
           }}
         >
-          {/* Direction Pill */}
-          <span
-            style={{
-              padding: "1px 5px",
-              borderRadius: 3,
-              fontWeight: 800,
-              background:
-                dir === 1
-                  ? "rgba(34, 197, 94, 0.15)"
-                  : dir === -1
-                  ? "rgba(239, 68, 68, 0.15)"
-                  : "var(--panel)",
-              color: dir === 1 ? "var(--green)" : dir === -1 ? "var(--red)" : "var(--muted)",
-            }}
-          >
-            {isLong ? "BUY ▲" : dir === -1 ? "SELL ▼" : "NEUTRAL ⬌"}
-          </span>
-
-          {/* Current Live Mark */}
-          {currentMark !== null && (
+          {entryVal > 0 && (
             <span>
-              <span style={{ color: "var(--muted)" }}>Mark: </span>
-              <strong style={{ color: "var(--fg)" }}>{formatPrice(currentMark)}</strong>
+              Entry: <strong style={{ color: "var(--accent)" }}>{formatPrice(entryVal)}</strong>
             </span>
           )}
-
-          {/* Structural Setup Levels */}
-          {hasSetup ? (
-            <>
-              {entryVal !== null && (
-                <span>
-                  <span style={{ color: "var(--muted)" }}>Entry: </span>
-                  <strong style={{ color: "var(--accent)" }}>{formatPrice(entryVal)}</strong>
-                </span>
-              )}
-
-              {slVal !== null && (
-                <span>
-                  <span style={{ color: "var(--muted)" }}>SL: </span>
-                  <strong style={{ color: "#ea580c" }}>{formatPrice(slVal)}</strong>
-                </span>
-              )}
-
-              {tpVal !== null && (
-                <span>
-                  <span style={{ color: "var(--muted)" }}>TP: </span>
-                  <strong style={{ color: "#a855f7" }}>{formatPrice(tpVal)}</strong>
-                </span>
-              )}
-
-              {rrVal !== null && (
-                <span
-                  style={{
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                    fontWeight: 800,
-                    background: "rgba(168, 85, 247, 0.2)",
-                    color: "var(--purple, #c084fc)",
-                    border: "1px solid rgba(168, 85, 247, 0.35)",
-                  }}
-                >
-                  {rrVal.toFixed(1)}R
-                </span>
-              )}
-            </>
-          ) : (
-            <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 9.5 }}>
-              Awaiting Retracement Level ({pair?.status?.replace(/_/g, " ") || "SCANNING"})
+          {slVal > 0 && (
+            <span>
+              SL: <strong style={{ color: "var(--red)" }}>{formatPrice(slVal)}</strong>
+            </span>
+          )}
+          {halfPriceVal > 0 && (
+            <span style={{ color: "#f59e0b" }}>
+              50%: <strong>{formatPrice(halfPriceVal)}</strong>
+            </span>
+          )}
+          {propTpVal > 0 && (
+            <span style={{ color: "#06b6d4" }}>
+              Prop: <strong>{formatPrice(propTpVal)}</strong>
+            </span>
+          )}
+          {fullTpVal > 0 && (
+            <span style={{ color: "var(--green)" }}>
+              Full: <strong>{formatPrice(fullTpVal)}</strong>
             </span>
           )}
         </div>
 
-        {/* Right: Zoom In, Zoom Out, and Fit Controls */}
+        {/* Right: Timeframe Switcher & Zoom Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {TF_OPTIONS.map((tf) => (
+            <button
+              key={tf.id}
+              onClick={() => setSelectedTf(tf.id)}
+              style={{
+                padding: "3px 7px",
+                fontSize: 10,
+                fontWeight: selectedTf === tf.id ? 700 : 500,
+                borderRadius: 4,
+                border: "1px solid",
+                borderColor: selectedTf === tf.id ? "var(--accent)" : "var(--border)",
+                background: selectedTf === tf.id ? "var(--accent-soft)" : "transparent",
+                color: selectedTf === tf.id ? "var(--accent)" : "var(--muted)",
+                cursor: "pointer",
+              }}
+            >
+              {tf.label}
+            </button>
+          ))}
+
           <button
             onClick={handleZoomIn}
             title="Zoom In (+)"
             aria-label="Zoom in"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
               padding: "3px 6px",
-              borderRadius: 4,
-              border: "1px solid var(--border)",
               background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
               color: "var(--muted)",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginLeft: 2,
             }}
           >
             <ZoomIn size={12} />
@@ -547,45 +535,43 @@ export default function RadarIdeaChart({
             title="Zoom Out (-)"
             aria-label="Zoom out"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
               padding: "3px 6px",
-              borderRadius: 4,
-              border: "1px solid var(--border)",
               background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
               color: "var(--muted)",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <ZoomOut size={12} />
           </button>
 
           <button
-            onClick={handleFit}
-            title="Reset View & Center Setup"
-            aria-label="Reset view"
+            onClick={handleResetZoom}
+            title="Reset Chart Zoom & Center Setup"
+            aria-label="Reset zoom"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "2px 7px",
-              fontSize: 10,
-              borderRadius: 4,
-              border: "1px solid var(--border)",
+              padding: "3px 6px",
               background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
               color: "var(--muted)",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <RotateCcw size={10} />
-            <span>Fit</span>
+            <RotateCcw size={12} />
           </button>
         </div>
       </div>
 
-      {/* Chart Canvas Area with touchAction: 'none' for smooth mobile swipe & gestures */}
-      <div style={{ position: "relative", width: "100%", height }}>
+      {/* 2. Interactive Chart Canvas Container with touchAction: 'none' for smooth mobile swipe & gestures */}
+      <div style={{ position: "relative", width: "100%", height: height || 320 }}>
         <div
           ref={containerRef}
           style={{
@@ -603,41 +589,36 @@ export default function RadarIdeaChart({
             style={{
               position: "absolute",
               inset: 0,
-              background: "rgba(0,0,0,0.35)",
-              backdropFilter: "blur(2px)",
+              background: "rgba(0, 0, 0, 0.45)",
               display: "flex",
-              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: 8,
               zIndex: 10,
-              color: "var(--purple, #c084fc)",
-              fontSize: 11,
-              fontWeight: 600,
+              gap: 8,
+              fontSize: 12,
+              color: "var(--fg)",
             }}
           >
-            <Loader2 size={20} className="animate-spin" />
-            <span>Rendering institutional trade idea candles...</span>
+            <Loader2 size={16} className="animate-spin" />
+            <span>Loading {symbol} candles...</span>
           </div>
         )}
 
         {/* Error Overlay */}
-        {error && (
+        {error && !loading && (
           <div
             style={{
               position: "absolute",
               inset: 0,
-              background: "rgba(0,0,0,0.6)",
+              background: "rgba(0, 0, 0, 0.65)",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
+              zIndex: 10,
               gap: 6,
-              zIndex: 11,
+              fontSize: 12,
               color: "var(--red)",
-              fontSize: 11,
-              padding: 16,
-              textAlign: "center",
             }}
           >
             <AlertCircle size={20} />
@@ -646,36 +627,39 @@ export default function RadarIdeaChart({
         )}
       </div>
 
-      {/* Footer Legend Bar */}
+      {/* 3. Legend Footer: Explaining the 3 Target Boundaries */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "4px 10px",
+          padding: "5px 12px",
           background: "var(--panel-2)",
           borderTop: "1px solid var(--border)",
-          fontSize: 9.5,
+          fontSize: 10,
           color: "var(--muted)",
           flexWrap: "wrap",
-          gap: 6,
+          gap: 8,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: "#a855f7" }} />
-            Target (Violet)
+            <span style={{ width: 10, height: 10, background: "rgba(250, 204, 21, 0.3)", border: "1px solid #facc15", borderRadius: 2 }} />
+            <span>Full TP (TradeDefault Target)</span>
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: "#ea580c" }} />
-            Stop Loss (Burnt Orange)
+            <span style={{ width: 14, height: 2, borderTop: "2px dashed #06b6d4" }} />
+            <span style={{ color: "#06b6d4" }}>Prop-Firm Target Line</span>
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 8, height: 2, background: "#c084fc" }} />
-            Planned Entry
+            <span style={{ width: 14, height: 2, borderTop: "2px dotted #f59e0b" }} />
+            <span style={{ color: "#f59e0b" }}>50% Milestone Level Line</span>
           </span>
         </div>
-        <span>Pinch or scroll to zoom · Drag to pan · Drag price axis to scale</span>
+
+        <span style={{ fontSize: 9.5, opacity: 0.8 }}>
+          Pinch or scroll to zoom · Drag to pan · Drag price axis to scale
+        </span>
       </div>
     </div>
   );

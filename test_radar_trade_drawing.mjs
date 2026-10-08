@@ -82,4 +82,38 @@ console.log("✅ PASS: Target and Stop sides strictly avoid green, red, and blue
 assert(longDrawing.id.startsWith("auto_radar_"), "ID must start with auto_radar_ so DrawingManager does not persist it to local user drawings");
 console.log("✅ PASS: Ephemeral ID prefix auto_radar_ verified");
 
+// 6. Anti-regression test: Drawing price MUST NOT anchor to current market price when structural stagedLevel differs
+const mockPairWithStaged = {
+  symbol: "EURUSD",
+  side: "BUY",
+  currentPrice: 1.0850, // Current market mark
+  stagedLevel: {
+    entry: 1.0815,     // Structural FVG / OTE entry
+    sl: 1.0785,
+    tp: 1.0905,
+    rr: 3.0,
+  },
+};
+const stagedDrawing = buildRadarTradeIdeaDrawing(mockPairWithStaged, mockBars, 300, 0);
+assert(stagedDrawing !== null, "Staged radar drawing should be generated");
+assert.strictEqual(stagedDrawing.points[0].price, 1.0815, "RR tool entry must be exactly 1.0815 (NOT currentPrice 1.0850)");
+assert.strictEqual(stagedDrawing.points[1].price, 1.0815, "RR tool second point must match entry price");
+assert.strictEqual(Number(stagedDrawing.style.stopLevel.toFixed(4)), 0.0030, "Stop level must match structural distance Math.abs(1.0815 - 1.0785)");
+assert.strictEqual(Number(stagedDrawing.style.profitLevel.toFixed(4)), 0.0090, "Profit level must match structural distance Math.abs(1.0905 - 1.0815)");
+console.log("✅ PASS: RR tool price strictly matches structural stagedLevel and ignores currentPrice");
+
+// 7. Anti-regression test: Pair in SCANNING status without setup MUST NOT synthesize fake drawing from currentPrice
+const mockPairScanningNoSetup = {
+  symbol: "GBPUSD",
+  side: "BUY",
+  currentPrice: 1.2720,
+  status: "SCANNING_NEUTRAL",
+  stagedLevel: null,
+  entryModel: null,
+};
+const nullDrawing = buildRadarTradeIdeaDrawing(mockPairScanningNoSetup, mockBars, 300, 0);
+assert.strictEqual(nullDrawing, null, "buildRadarTradeIdeaDrawing MUST return null when pair has no structural entry/sl/tp");
+console.log("✅ PASS: Pair without structural setup returns null (no bogus RR tool anchored to currentPrice)");
+
 console.log("\n🎯 ALL RADAR TRADE IDEA DRAWING TESTS PASSED 100%!\n");
+

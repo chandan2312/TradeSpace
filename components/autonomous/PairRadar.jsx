@@ -21,6 +21,7 @@ import {
   Target,
 } from "lucide-react";
 import { finiteNumber, formatPrice, markPriceFor } from "./TradeTelemetry";
+import { resolveRadarTradeIdeaPricing } from "../../lib/autonomous/tradeDrawing";
 
 const HORIZON_ICONS = {
   all: Layers,
@@ -727,18 +728,11 @@ export default function PairRadar({
               : "var(--muted)";
 
             const level = pair.stagedLevel;
-            const candidate =
-              Array.isArray(pair.candidates) && pair.candidates.length > 0
-                ? pair.candidates[0]
-                : Array.isArray(pair.entryModel?.allCandidates) && pair.entryModel.allCandidates.length > 0
-                ? pair.entryModel.allCandidates[0]
-                : null;
-
-            const entry = finiteNumber(level?.entry ?? candidate?.entry ?? candidate?.price);
-            const sl = finiteNumber(level?.sl ?? candidate?.sl);
-            const tp = finiteNumber(level?.tp ?? candidate?.tp ?? candidate?.targetPrice ?? level?.targets?.[0]?.price);
-            const rawRR = level?.rr ?? level?.targetRR ?? candidate?.rr;
-            const displayRR = finiteNumber(rawRR);
+            const pricing = resolveRadarTradeIdeaPricing(pair);
+            const entry = pricing.entry;
+            const sl = pricing.sl;
+            const tp = pricing.tp;
+            const displayRR = pricing.rr;
 
             const conviction = finiteNumber(pair.brain?.conviction);
             const isWhitelisted = whitelistSet.has(pair.symbol);
