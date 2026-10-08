@@ -35,7 +35,7 @@ set "NEED_BUILD=0"
 if "!FORCE_BUILD!"=="1" set "NEED_BUILD=1"
 if not exist ".next" set "NEED_BUILD=1"
 if not exist ".next\BUILD_ID" set "NEED_BUILD=1"
-if not exist ".next\server\app\autonomous.html" set "NEED_BUILD=1"
+if not exist ".next\server\app\autonomous\page.js" set "NEED_BUILD=1"
 
 if "!NEED_BUILD!"=="1" (
     echo [Launcher] Compiling fresh Next.js production build (npm run build)...

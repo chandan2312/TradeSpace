@@ -213,7 +213,7 @@ fi
 # -----------------------------------------------------------------------------
 if [ "$MODE" = "prod" ]; then
     echo -e "\n${BLUE}ℹ Production Mode Selected.${NC}"
-    if [ "$FORCE_BUILD" = true ] || [ ! -d ".next" ] || [ ! -f ".next/BUILD_ID" ] || [ ! -f ".next/server/app/autonomous.html" ]; then
+    if [ "$FORCE_BUILD" = true ] || [ ! -d ".next" ] || [ ! -f ".next/BUILD_ID" ] || [ ! -f ".next/server/app/autonomous/page.js" ]; then
         if [ "$FORCE_BUILD" = true ]; then
             echo -e "${YELLOW}Fresh build requested via --build flag.${NC}"
         else
