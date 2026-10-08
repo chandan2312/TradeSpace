@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { RotateCcw, Maximize2, AlertCircle, Loader2 } from "lucide-react";
 import { buildRadarTradeIdeaDrawing } from "../../lib/autonomous/tradeDrawing";
 import { formatPrice, finiteNumber } from "./TradeTelemetry";
+import { normalizeCandles } from "../../lib/candleNormalization";
 
 const TF_OPTIONS = [
   { id: "5m", label: "5M", apiTf: "M5", sec: 300 },
@@ -153,6 +154,7 @@ export default function RadarIdeaChart({
           close: b.c,
         }));
         bars = bars.filter((b) => b.close > 0 && b.high > 0 && b.low > 0);
+        bars = normalizeCandles(bars, tfParam);
         barsRef.current = bars;
         series.setData(bars);
 

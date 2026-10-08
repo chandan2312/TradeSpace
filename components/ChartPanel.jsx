@@ -651,12 +651,16 @@ export default function ChartPanel({
     if (!tick || !seriesRef.current || !entry || entry.key !== `${symbol}:${tf}`) return;
     const price = tick.bid || tick.ask;
     if (!price) return;
-    const sec = TF_SEC[tf];
-    const barTime = Math.floor((tick.time / 1000) / sec) * sec;
+    const sec = TF_SEC[tf] || 300;
+    const rawTime = tick.time != null ? tick.time : Date.now();
+    const tickSec = rawTime > 1e11 ? Math.floor(rawTime / 1000) : rawTime;
+    const barTime = Math.floor(tickSec / sec) * sec;
     const last = entry.bar;
     const isNewBar = barTime > last.time;
     const gap = barTime - last.time;
-    const isNextConsecutive = gap === sec;
+    const isNextConsecutive = (tf === "D1" || tf === "1D")
+      ? (gap >= 86400 && gap <= 86400 * 1.5)
+      : (Math.abs(gap - sec) <= 2);
     // To prevent artificial visual gaps caused by polling missing the exact first millisecond tick,
     // we seamlessly connect the new candle's open to the previous candle's close ONLY if it's the immediate next bar.
     // If there's a large gap (e.g. stale cache or weekend), we open at the true tick price.
@@ -1057,7 +1061,7 @@ export default function ChartPanel({
                   const filteredNewBars = newBars.filter(b => b.time < oldestExistingTime);
                   
                   if (filteredNewBars.length > 0) {
-                    const combined = [...filteredNewBars, ...barsRef.current];
+                    const combined = normalizeCandles([...filteredNewBars, ...barsRef.current], tf);
                     barsRef.current = combined;
                     // Preserve the scroll position by shifting logical indices
                     const currentRange = chart.timeScale().getVisibleLogicalRange();
