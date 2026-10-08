@@ -1,5 +1,7 @@
 "use client";
 
+import { isValidElement } from "react";
+
 // Display-only math: never infer fills, stop confirmations, or terminal state from ticks.
 export function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -128,10 +130,22 @@ export function tradeRiskTelemetry(trade, ticks = {}) {
 }
 
 export function TelemetryValue({ label, value, color = "var(--fg)" }) {
-  const displayVal =
-    value && typeof value === "object"
-      ? value.name || value.label || value.title || value.target || JSON.stringify(value)
-      : (value ?? "Unavailable");
+  let displayVal;
+  if (isValidElement(value)) {
+    displayVal = value;
+  } else if (value && typeof value === "object") {
+    displayVal = value.name || value.label || value.title || value.target;
+    if (!displayVal) {
+      try {
+        displayVal = JSON.stringify(value);
+      } catch {
+        displayVal = String(value);
+      }
+    }
+  } else {
+    displayVal = value ?? "Unavailable";
+  }
+
   return (
     <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
       <div style={{ color: "var(--muted)", fontSize: 10, marginBottom: 3 }}>{label}</div>

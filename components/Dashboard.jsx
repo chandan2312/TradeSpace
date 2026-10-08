@@ -1910,6 +1910,7 @@ export default function Dashboard() {
       <AutonomousLiveHUD
         trades={autonomousTrades}
         ticks={ticks}
+        radarPairs={radarPairs}
         onRefresh={loadAutonomousTrades}
         isOpen={autoCockpitOpen}
         onClose={() => setAutoCockpitOpen(false)}

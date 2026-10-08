@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   Zap,
@@ -18,6 +18,11 @@ import {
   Layers,
   Clock,
   FileText,
+  FileSpreadsheet,
+  Compass,
+  Terminal,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import {
   tradeRiskTelemetry,
@@ -30,10 +35,18 @@ import {
   finiteNumber,
 } from "./TradeTelemetry";
 import { groupStagedTrades } from "./StagedQueue";
+import JournalView from "../journal/JournalView";
+import PairRadar from "./PairRadar";
+import BrainInspectorModal from "./BrainInspectorModal";
+import AuditLog from "./AuditLog";
+import StagedTradeModal from "./StagedTradeModal";
+import LiveTradeModal from "./LiveTradeModal";
 
 export default function AutonomousLiveHUD({
   trades = [],
   ticks = {},
+  radarPairs: radarPairsProp = [],
+  logs: logsProp = [],
   onRefresh,
   isOpen: isOpenProp,
   onClose,
@@ -42,10 +55,43 @@ export default function AutonomousLiveHUD({
   const isControlled = typeof isOpenProp === "boolean";
   const isOpen = isControlled ? isOpenProp : internalOpen;
 
-  const [tab, setTab] = useState("active"); // "active" | "staged" | "closed"
+  const [tab, setTab] = useState("active"); // "active" | "staged" | "journal" | "radar" | "logs"
+  const [isExpanded, setIsExpanded] = useState(false);
   const [loadingAction, setLoadingAction] = useState(null);
   const [actionMsg, setActionMsg] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  const [selectedActiveTrade, setSelectedActiveTrade] = useState(null);
+  const [selectedStagedSetup, setSelectedStagedSetup] = useState(null);
+  const [inspectedPair, setInspectedPair] = useState(null);
+
+  const [auxRadarPairs, setAuxRadarPairs] = useState(radarPairsProp || []);
+  const [auxLogs, setAuxLogs] = useState(logsProp || []);
+
+  const fetchAuxState = useCallback(async () => {
+    try {
+      const res = await fetch("/api/autonomous", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.ok) {
+        if (Array.isArray(data.leaderboard?.rankedPairs)) {
+          setAuxRadarPairs(data.leaderboard.rankedPairs);
+        }
+        if (Array.isArray(data.logs)) {
+          setAuxLogs(data.logs);
+        }
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchAuxState();
+    }
+  }, [isOpen, fetchAuxState]);
+
+  const effectiveRadarPairs = radarPairsProp.length > 0 ? radarPairsProp : auxRadarPairs;
+  const effectiveLogs = logsProp.length > 0 ? logsProp : auxLogs;
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -288,9 +334,10 @@ export default function AutonomousLiveHUD({
                 fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
               }
             : {
-                width: 440,
-                maxWidth: "92vw",
+                width: (isExpanded || tab === "journal" || tab === "radar") ? "min(1080px, 96vw)" : 460,
+                maxWidth: "96vw",
                 height: "100vh",
+                transition: "width 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
                 background: "var(--panel)",
                 borderLeft: "1px solid var(--border-hi)",
                 boxShadow: "-12px 0 40px rgba(0, 0, 0, 0.7)",
@@ -349,6 +396,25 @@ export default function AutonomousLiveHUD({
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? "Collapse Width" : "Expand Cockpit Width"}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--muted)",
+                cursor: "pointer",
+                padding: 4,
+                display: "flex",
+                alignItems: "center",
+                borderRadius: 4,
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--fg)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+            >
+              {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
             {onRefresh && (
               <button
                 onClick={onRefresh}
@@ -491,21 +557,26 @@ export default function AutonomousLiveHUD({
             </div>
           )}
 
-          {/* Tab Filter */}
+          {/* Tab Filter (5 Institutional Cockpit Tabs) */}
           <div
             style={{
               display: "flex",
               borderBottom: "1px solid var(--border)",
               background: "var(--panel-2)",
+              overflowX: "auto",
+              flexShrink: 0,
+              scrollbarWidth: "none",
             }}
           >
+            {/* Tab 1: Active Positions */}
             <button
               onClick={() => setTab("active")}
-              title="Active Trades"
-              aria-label="Active Trades"
+              title="Active Positions"
+              aria-label="Active Positions"
               style={{
                 flex: 1,
-                padding: "8px 12px",
+                minWidth: 70,
+                padding: "8px 10px",
                 fontSize: 11,
                 fontWeight: 700,
                 border: "none",
@@ -517,13 +588,15 @@ export default function AutonomousLiveHUD({
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 5,
+                whiteSpace: "nowrap",
               }}
             >
-              <Zap size={14} />
+              <Zap size={13} />
+              <span>Active</span>
               <span
                 style={{
                   fontSize: 10,
-                  padding: "1px 6px",
+                  padding: "1px 5px",
                   borderRadius: 10,
                   background: tab === "active" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
                   color: tab === "active" ? "#fff" : "var(--muted)",
@@ -533,13 +606,16 @@ export default function AutonomousLiveHUD({
                 {activeTrades.length}
               </span>
             </button>
+
+            {/* Tab 2: Staged Setups */}
             <button
               onClick={() => setTab("staged")}
               title="Staged Setups"
               aria-label="Staged Setups"
               style={{
                 flex: 1,
-                padding: "8px 12px",
+                minWidth: 72,
+                padding: "8px 10px",
                 fontSize: 11,
                 fontWeight: 700,
                 border: "none",
@@ -551,13 +627,15 @@ export default function AutonomousLiveHUD({
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 5,
+                whiteSpace: "nowrap",
               }}
             >
-              <Clock size={14} />
+              <Clock size={13} />
+              <span>Staged</span>
               <span
                 style={{
                   fontSize: 10,
-                  padding: "1px 6px",
+                  padding: "1px 5px",
                   borderRadius: 10,
                   background: unifiedStagedSetups.length > 0 ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
                   color: unifiedStagedSetups.length > 0 ? "var(--accent)" : "var(--muted)",
@@ -567,51 +645,127 @@ export default function AutonomousLiveHUD({
                 {unifiedStagedSetups.length}
               </span>
             </button>
+
+            {/* Tab 3: Trading Journal */}
             <button
-              onClick={() => setTab("history")}
-              title="Closed Trades History"
-              aria-label="Closed Trades History"
+              onClick={() => setTab("journal")}
+              title="Trading Journal"
+              aria-label="Trading Journal"
               style={{
                 flex: 1,
-                padding: "8px 12px",
+                minWidth: 72,
+                padding: "8px 10px",
                 fontSize: 11,
                 fontWeight: 700,
                 border: "none",
-                background: tab === "history" ? "rgba(255, 255, 255, 0.06)" : "transparent",
-                color: tab === "history" ? "var(--fg)" : "var(--muted)",
-                borderBottom: tab === "history" ? "2px solid var(--accent)" : "none",
+                background: tab === "journal" ? "rgba(255, 255, 255, 0.06)" : "transparent",
+                color: tab === "journal" ? "var(--fg)" : "var(--muted)",
+                borderBottom: tab === "journal" ? "2px solid var(--accent)" : "none",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 5,
+                whiteSpace: "nowrap",
               }}
             >
-              <FileText size={14} />
-              <span
-                style={{
-                  fontSize: 10,
-                  padding: "1px 6px",
-                  borderRadius: 10,
-                  background: tab === "history" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                  color: tab === "history" ? "#fff" : "var(--muted)",
-                  fontWeight: 800,
-                }}
-              >
-                {closedTrades.length}
-              </span>
+              <FileSpreadsheet size={13} />
+              <span>Journal</span>
+            </button>
+
+            {/* Tab 4: Market Radar */}
+            <button
+              onClick={() => setTab("radar")}
+              title="Market Radar"
+              aria-label="Market Radar"
+              style={{
+                flex: 1,
+                minWidth: 68,
+                padding: "8px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                border: "none",
+                background: tab === "radar" ? "rgba(255, 255, 255, 0.06)" : "transparent",
+                color: tab === "radar" ? "var(--fg)" : "var(--muted)",
+                borderBottom: tab === "radar" ? "2px solid var(--accent)" : "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Compass size={13} />
+              <span>Radar</span>
+              {effectiveRadarPairs.length > 0 && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: "1px 5px",
+                    borderRadius: 10,
+                    background: tab === "radar" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                    color: tab === "radar" ? "#fff" : "var(--muted)",
+                    fontWeight: 800,
+                  }}
+                >
+                  {effectiveRadarPairs.length}
+                </span>
+              )}
+            </button>
+
+            {/* Tab 5: Audit Logs */}
+            <button
+              onClick={() => setTab("logs")}
+              title="Audit Logs"
+              aria-label="Audit Logs"
+              style={{
+                flex: 1,
+                minWidth: 62,
+                padding: "8px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                border: "none",
+                background: tab === "logs" ? "rgba(255, 255, 255, 0.06)" : "transparent",
+                color: tab === "logs" ? "var(--fg)" : "var(--muted)",
+                borderBottom: tab === "logs" ? "2px solid var(--accent)" : "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Terminal size={13} />
+              <span>Logs</span>
+              {effectiveLogs.length > 0 && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: "1px 5px",
+                    borderRadius: 10,
+                    background: tab === "logs" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                    color: tab === "logs" ? "#fff" : "var(--muted)",
+                    fontWeight: 800,
+                  }}
+                >
+                  {effectiveLogs.length}
+                </span>
+              )}
             </button>
           </div>
 
           {/* Body Content / Card List */}
           <div
             style={{
-              padding: 12,
+              padding: tab === "journal" || tab === "radar" || tab === "logs" ? 6 : 12,
               overflowY: "auto",
               display: "flex",
               flexDirection: "column",
               gap: 10,
               minHeight: 120,
+              flex: 1,
             }}
           >
             {/* TAB: ACTIVE POSITIONS */}
@@ -676,6 +830,8 @@ export default function AutonomousLiveHUD({
                     return (
                       <div
                         key={trade._id || `${trade.symbol}-${trade.createdAt}`}
+                        onClick={() => setSelectedActiveTrade(trade)}
+                        title="Click to view live trade popup"
                         style={{
                           background: "rgba(255, 255, 255, 0.02)",
                           border: "1px solid var(--border)",
@@ -684,6 +840,16 @@ export default function AutonomousLiveHUD({
                           display: "flex",
                           flexDirection: "column",
                           gap: 10,
+                          cursor: "pointer",
+                          transition: "border-color 0.15s ease, background 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--accent)";
+                          e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "var(--border)";
+                          e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)";
                         }}
                       >
                         {/* Top Line: Symbol, Direction, Status, Live P&L */}
@@ -918,7 +1084,10 @@ export default function AutonomousLiveHUD({
                           </div>
 
                           <button
-                            onClick={() => handleCloseTrade(trade._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCloseTrade(trade._id);
+                            }}
                             disabled={isClosing}
                             style={{
                               padding: "3px 8px",
@@ -968,6 +1137,8 @@ export default function AutonomousLiveHUD({
                     return (
                       <div
                         key={setup.groupKey || setup.primaryId || setup._id}
+                        onClick={() => setSelectedStagedSetup(setup)}
+                        title="Click to view staged setup popup"
                         style={{
                           background: "rgba(255, 255, 255, 0.02)",
                           border: isDual ? "1px solid rgba(56, 189, 248, 0.25)" : "1px solid var(--border)",
@@ -976,6 +1147,16 @@ export default function AutonomousLiveHUD({
                           display: "flex",
                           flexDirection: "column",
                           gap: 8,
+                          cursor: "pointer",
+                          transition: "border-color 0.15s ease, background 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--accent)";
+                          e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = isDual ? "rgba(56, 189, 248, 0.25)" : "var(--border)";
+                          e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)";
                         }}
                       >
                         <div
@@ -1130,7 +1311,10 @@ export default function AutonomousLiveHUD({
 
                         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 2 }}>
                           <button
-                            onClick={() => handleDismissSetup(setup)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDismissSetup(setup);
+                            }}
                             disabled={isApproving}
                             style={{
                               padding: "4px 10px",
@@ -1146,7 +1330,10 @@ export default function AutonomousLiveHUD({
                             Dismiss
                           </button>
                           <button
-                            onClick={() => handleApprove(setup)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleApprove(setup);
+                            }}
                             disabled={isApproving}
                             style={{
                               padding: "4px 10px",
@@ -1169,113 +1356,29 @@ export default function AutonomousLiveHUD({
               </>
             )}
 
-            {/* TAB: HISTORY / CLOSED TRADES */}
-            {tab === "history" && (
-              <>
-                {closedTrades.length === 0 ? (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: "24px 16px",
-                      color: "var(--muted)",
-                      fontSize: 12,
-                    }}
-                  >
-                    No closed trades recorded.
-                  </div>
-                ) : (
-                  closedTrades.map((trade) => {
-                    const isWin = trade.status === "closed_tp";
-                    const isBe = trade.status === "closed_be" || trade.closeReason === "breakeven";
-                    const outcomeLabel = isWin ? "TAKE PROFIT" : isBe ? "BREAKEVEN" : "STOP LOSS";
-                    const outcomeColor = isWin ? "var(--green)" : isBe ? "var(--accent)" : "var(--red)";
-                    const outcomeBg = isWin ? "rgba(34, 197, 94, 0.15)" : isBe ? "rgba(56, 189, 248, 0.15)" : "rgba(239, 68, 68, 0.15)";
-                    const realizedR = isWin ? "+2.0R" : isBe ? "0.0R" : "-1.0R";
+            {/* TAB: TRADING JOURNAL */}
+            {tab === "journal" && (
+              <div style={{ flex: 1, minHeight: 480, overflowY: "auto" }}>
+                <JournalView />
+              </div>
+            )}
 
-                    return (
-                      <div
-                        key={trade._id}
-                        style={{
-                          background: "rgba(255, 255, 255, 0.02)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 10,
-                          padding: 12,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <strong style={{ fontSize: 13 }}>{trade.symbol}</strong>
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                background:
-                                  trade.dir === -1 || String(trade.direction || trade.dirLabel).toUpperCase() === "SELL"
-                                    ? "rgba(239, 68, 68, 0.2)"
-                                    : "rgba(34, 197, 94, 0.2)",
-                                color:
-                                  trade.dir === -1 || String(trade.direction || trade.dirLabel).toUpperCase() === "SELL"
-                                    ? "var(--red)"
-                                    : "var(--green)",
-                              }}
-                            >
-                              {trade.dir === -1 || String(trade.direction || trade.dirLabel).toUpperCase() === "SELL" ? "SELL" : "BUY"}
-                            </span>
-                            {trade.lot && (
-                              <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "monospace" }}>
-                                {trade.lot}L
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                background: outcomeBg,
-                                color: outcomeColor,
-                              }}
-                            >
-                              {outcomeLabel}
-                            </span>
-                            <span style={{ fontSize: 12, fontWeight: 800, fontFamily: "monospace", color: outcomeColor }}>
-                              {realizedR}
-                            </span>
-                          </div>
-                        </div>
+            {/* TAB: MARKET RADAR */}
+            {tab === "radar" && (
+              <div style={{ flex: 1, minHeight: 480, overflowY: "auto" }}>
+                <PairRadar
+                  pairs={effectiveRadarPairs}
+                  ticks={ticks}
+                  onInspectPair={(p) => setInspectedPair(p)}
+                />
+              </div>
+            )}
 
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            fontSize: 10,
-                            fontFamily: "monospace",
-                            background: "var(--panel-2)",
-                            padding: "6px 8px",
-                            borderRadius: 6,
-                          }}
-                        >
-                          <span>Entry: {formatPrice(trade.filledPrice ?? trade.entryPrice)}</span>
-                          <span>SL: {formatPrice(trade.initialSlPrice ?? trade.slPrice)}</span>
-                          <span>TP: {formatPrice(trade.tpPrice)}</span>
-                        </div>
-
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)" }}>
-                          <span>Filled: {trade.filledAt ? new Date(trade.filledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</span>
-                          <span>Closed: {trade.closedAt ? new Date(trade.closedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </>
+            {/* TAB: AUDIT LOGS */}
+            {tab === "logs" && (
+              <div style={{ flex: 1, minHeight: 480, overflowY: "auto" }}>
+                <AuditLog logs={effectiveLogs} />
+              </div>
             )}
           </div>
 
@@ -1304,6 +1407,44 @@ export default function AutonomousLiveHUD({
               Open Full Cockpit →
             </Link>
           </div>
+
+          {/* Modals: Staged Setup, Live Position, and Radar Brain Inspector */}
+          {selectedStagedSetup && (
+            <StagedTradeModal
+              setup={selectedStagedSetup}
+              ticks={ticks}
+              onClose={() => setSelectedStagedSetup(null)}
+              onApprove={(s) => {
+                handleApprove(s);
+                setSelectedStagedSetup(null);
+              }}
+              onDismiss={(s) => {
+                handleDismissSetup(s);
+                setSelectedStagedSetup(null);
+              }}
+              pendingAction={loadingAction}
+            />
+          )}
+
+          {selectedActiveTrade && (
+            <LiveTradeModal
+              trade={selectedActiveTrade}
+              ticks={ticks}
+              onClose={() => setSelectedActiveTrade(null)}
+              onCloseTrade={(id) => {
+                handleCloseTrade(id);
+                setSelectedActiveTrade(null);
+              }}
+            />
+          )}
+
+          {inspectedPair && (
+            <BrainInspectorModal
+              pair={effectiveRadarPairs.find((p) => (p.radarKey && inspectedPair.radarKey ? p.radarKey === inspectedPair.radarKey : p.symbol === inspectedPair.symbol)) || inspectedPair}
+              ticks={ticks}
+              onClose={() => setInspectedPair(null)}
+            />
+          )}
         </aside>
     </div>
   );

@@ -116,7 +116,7 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 200,
+        zIndex: 10000,
         background: "rgba(0,0,0,.75)",
         backdropFilter: "blur(4px)",
         WebkitBackdropFilter: "blur(4px)",

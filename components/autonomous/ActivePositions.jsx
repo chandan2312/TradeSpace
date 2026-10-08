@@ -469,7 +469,11 @@ function DefaultLegCard({ item, setup, ticks, onCloseTrade }) {
       >
         <TelemetryValue label="Fill" value={formatPrice(fill)} />
         <TelemetryValue label="Mark" value={formatPrice(mark)} color="var(--accent)" />
-        <TelemetryValue label="SL" value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)} color={isMilestoneBooked ? "var(--green)" : "var(--red)"} />
+        <TelemetryValue
+          label={trade.isBreakeven ? "SL (BE)" : trade.isTrailing ? "SL (Trail)" : trade.isHalfRisk || trade.slHalfMoved ? "SL (50%)" : "SL"}
+          value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}
+          color={isMilestoneBooked || trade.isBreakeven ? "var(--green)" : trade.isHalfRisk ? "var(--orange)" : "var(--red)"}
+        />
         <TelemetryValue label="Runner TP" value={formatPrice(target)} color="var(--green)" />
         <TelemetryValue label="Ideal R (IR)" value={formatR(tel.idealR)} color="var(--accent)" />
         <TelemetryValue label="Actual R (AR)" value={formatR(tel.actualR)} color={(tel.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)"} />
@@ -802,7 +806,11 @@ function PropFirmLegCard({ item, setup, ticks, onCloseTrade }) {
       >
         <TelemetryValue label="Fill" value={formatPrice(fill)} />
         <TelemetryValue label="Mark" value={formatPrice(mark)} color="var(--accent)" />
-        <TelemetryValue label="SL" value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)} color={is1_5RReached ? "var(--green)" : is1RReached ? "var(--orange)" : "var(--red)"} />
+        <TelemetryValue
+          label={trade.isBreakeven ? "SL (BE)" : trade.isTrailing ? "SL (Trail)" : trade.isHalfRisk || trade.slHalfMoved ? "SL (-0.5R)" : "SL"}
+          value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}
+          color={is1_5RReached || trade.isBreakeven ? "var(--green)" : is1RReached || trade.isHalfRisk ? "var(--orange)" : "var(--red)"}
+        />
         <TelemetryValue label="Target TP" value={`${formatPrice(target)} (${targetRR}R)`} color="var(--green)" />
         <TelemetryValue label="Ideal R (IR)" value={formatR(tel.idealR)} color="var(--accent)" />
         <TelemetryValue label="Actual R (AR)" value={formatR(tel.actualR)} color={(tel.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)"} />

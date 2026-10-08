@@ -3,7 +3,6 @@ import { getFrames } from "@/lib/bias/data";
 import { computeSymbolBias, aggregate } from "@/lib/bias/engine";
 import { getMarketContext, SMT_PAIRS } from "@/lib/bias/context";
 import { getNews } from "@/lib/bias/news";
-import { notifySetups } from "@/lib/bias/notify";
 import { confirmSetups } from "@/lib/bias/group";
 import { json } from "@/lib/http";
 
@@ -95,7 +94,6 @@ export async function GET(req) {
 
     await confirmSetups(results, framesMap); // group check BEFORE aggregate (adjusts dampMult)
     const { categories, currencyStrength } = aggregate(results);
-    notifySetups(results).catch(() => {});
     
     const body = {
       ok: true,
