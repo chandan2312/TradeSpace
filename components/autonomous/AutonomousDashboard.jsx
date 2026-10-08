@@ -44,6 +44,8 @@ export default function AutonomousDashboard() {
   const wsRef = useRef(null);
   const stateAbortRef = useRef(null);
   const stateRequestRef = useRef(0);
+  const inFlightRef = useRef(false);
+  const debounceTimerRef = useRef(null);
   const symbolsRef = useRef([]);
 
   const closeInspector = useCallback(() => setInspectedPair(null), []);
@@ -70,10 +72,16 @@ export default function AutonomousDashboard() {
     }
   }, []);
 
-  // Fetch full state from /api/autonomous
-  const loadState = useCallback(async () => {
+  // Fetch full state from /api/autonomous with in-flight guard to prevent interval abort loops
+  const loadState = useCallback(async (isForced = false) => {
+    if (inFlightRef.current && !isForced) {
+      return; // Never abort or stomp an active in-flight request
+    }
+    inFlightRef.current = true;
     const requestId = ++stateRequestRef.current;
-    stateAbortRef.current?.abort();
+    if (isForced) {
+      stateAbortRef.current?.abort();
+    }
     const controller = new AbortController();
     stateAbortRef.current = controller;
     try {
@@ -101,22 +109,29 @@ export default function AutonomousDashboard() {
         setStateError(err.message || "Autonomous state unavailable");
       }
     } finally {
-      if (requestId === stateRequestRef.current) setLoading(false);
+      if (requestId === stateRequestRef.current) {
+        inFlightRef.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    loadState();
-    const iv = setInterval(loadState, 12_000);
+    loadState(false);
+    const iv = setInterval(() => {
+      loadState(false);
+    }, 12_000);
     return () => {
       clearInterval(iv);
+      clearTimeout(debounceTimerRef.current);
       stateAbortRef.current?.abort();
       stateRequestRef.current++;
+      inFlightRef.current = false;
     };
   }, [loadState]);
 
   const symbolKey = Array.from(new Set([
-    ...(data?.openTrades || [...(data?.activeTrades || []), ...(data?.stagedTrades || [])]).flatMap((t) => [t.symbol, t.tradeableSymbol, t.canonicalSymbol]),
+    ...([...(data?.activeTrades || []), ...(data?.stagedTrades || []), ...(data?.executionTrades || [])]).flatMap((t) => [t.symbol, t.tradeableSymbol, t.canonicalSymbol]),
     ...((data?.leaderboard?.rankedPairs || []).filter((p) => p.isInMainWatchlist || p.symbol === inspectedPair?.symbol).flatMap((p) => [p.symbol, p.tradeableSymbol])),
   ].filter(Boolean).map(String))).sort().join(",");
 
@@ -172,7 +187,10 @@ export default function AutonomousDashboard() {
               }
               setTicks((prev) => ({ ...prev, ...batch }));
             } else if (m.type === "autonomous_changed") {
-              loadState();
+              clearTimeout(debounceTimerRef.current);
+              debounceTimerRef.current = setTimeout(() => {
+                loadState(false);
+              }, 500);
             }
           } catch {}
         };
@@ -249,11 +267,11 @@ export default function AutonomousDashboard() {
       });
       const result = await response.json();
       if (!response.ok || result.ok === false) throw new Error(result.error || result.reason || "Autonomous action failed");
-      await loadState();
+      await loadState(true);
       return result;
     } catch (err) {
       setActionError(err.message);
-      loadState();
+      loadState(true);
       throw err;
     } finally {
       actionRef.current = null;

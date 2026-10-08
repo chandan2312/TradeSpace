@@ -44,7 +44,7 @@ export async function GET() {
     const { tradesCol, logsCol, controlCol } = await autonomousCols();
 
     // Fetch independent data sources concurrently (with 2500ms safety timeout on remote broker bridge)
-    const [config, metrics, brokerAccountRes, openTrades, recentClosed, logs, persistedScan] = await Promise.all([
+    const [config, metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan] = await Promise.all([
       getConfig(),
       getMetrics(),
       Promise.race([
@@ -57,7 +57,7 @@ export async function GET() {
           { status: { $in: ["closed_tp", "closed_sl", "closed_be", "closed"] } },
           { filledAt: { $exists: true, $ne: null }, status: { $in: TERMINAL_STATES } },
         ],
-      }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(100).toArray(),
+      }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(25).toArray(),
       logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
       controlCol.findOne({ _id: "latest_autonomous_scan" }).catch(() => null),
     ]);
@@ -74,6 +74,14 @@ export async function GET() {
       }
     }
 
+    // Strip duplicate brain and stagedLevel to cut per-trade network payload in half
+    const sanitizeTrade = (t) => {
+      if (!t) return t;
+      const { brain, stagedLevel, ...rest } = t;
+      return rest;
+    };
+    const openTrades = rawOpenTrades.map(sanitizeTrade);
+
     const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status));
     const stagedTrades = openTrades.filter((trade) => ["staged", "armed", "confirming"].includes(trade.status));
     // Surface every nonterminal execution/reconciliation state without reproducing engine transitions.
@@ -83,7 +91,19 @@ export async function GET() {
     if (!g._tsAutonomousLeaderboard && persistedScan?.leaderboard) {
       g._tsAutonomousLeaderboard = persistedScan.leaderboard;
     }
-    const leaderboard = g._tsAutonomousLeaderboard || null;
+    let leaderboard = g._tsAutonomousLeaderboard || null;
+    if (leaderboard) {
+      // Strip 50KB raw candle snapshot bars per pair and duplicate primeSetups array (saving ~1.1MB)
+      const sanitizedRanked = (leaderboard.rankedPairs || []).map((pair) => {
+        const { snapshot, ...rest } = pair;
+        return rest;
+      });
+      leaderboard = {
+        ...leaderboard,
+        rankedPairs: sanitizedRanked,
+        primeSetups: [],
+      };
+    }
 
     // Check if scan is stale beyond the configured cycle period
     const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
@@ -97,7 +117,7 @@ export async function GET() {
       runAutonomousScan("interval").catch(() => {});
     }
 
-    const events = [...openTrades, ...recentClosed].flatMap((trade) =>
+    const events = [...rawOpenTrades, ...recentClosed].flatMap((trade) =>
       (Array.isArray(trade.events) ? trade.events : []).map((event, index, timeline) => ({
         ...event,
         tradeId: trade._id,
@@ -113,7 +133,6 @@ export async function GET() {
       brokerAccount,
       activeTrades,
       stagedTrades,
-      openTrades,
       executionTrades,
       recentClosed,
       leaderboard,
@@ -126,8 +145,8 @@ export async function GET() {
       executionDiagnostics: {
         openStates: OPEN_STATES,
         pendingCount: executionTrades.length,
-        brokerStates: [...new Set(openTrades.map((trade) => trade.brokerStatus).filter(Boolean))],
-        operations: openTrades.filter((trade) => trade.operation).map((trade) => ({
+        brokerStates: [...new Set(rawOpenTrades.map((trade) => trade.brokerStatus).filter(Boolean))],
+        operations: rawOpenTrades.filter((trade) => trade.operation).map((trade) => ({
           tradeId: trade._id,
           symbol: trade.symbol,
           status: trade.status,
