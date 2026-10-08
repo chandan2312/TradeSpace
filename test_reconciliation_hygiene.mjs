@@ -213,6 +213,171 @@ console.log("✅ PASS: accountFreshnessMs default is 60,000ms (60s tolerance)");
   console.log("✅ PASS: MT5 'Order not found' error is recognized as confirmation of order removal");
 }
 
+// TEST 5: Cancelling trade with pending order still active on broker re-dispatches cancelMT5Order
+{
+  const mock = createMockCols();
+  const tradeDoc = {
+    _id: "trade_test_cancelling_retry",
+    symbol: "NAS100",
+    dir: 1,
+    entryPrice: 20000,
+    slPrice: 19950,
+    tpPrice: 20100,
+    lotSize: 0.1,
+    status: "cancelling",
+    brokerStatus: "reconciliation_required",
+    isLive: true,
+    orderTicket: "999111",
+    operation: {
+      kind: "cancel",
+      state: "unknown",
+      requestId: "req_retry_1",
+      payload: { orderTicket: "999111", reason: "Test cancel" },
+    },
+  };
+  mock.trades.push(tradeDoc);
+
+  let cancelCalledWith = null;
+  const engine = createAutonomousEngine({
+    autonomousCols: async () => mock,
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, liveTrading: true, enabled: true }),
+    getMainWatchlistSymbols: async () => ["NAS100"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date(),
+    broadcast: () => {},
+    sendTelegram: async () => {},
+    now: () => Date.now(),
+    releaseTradeCapacity: async () => true,
+    logEvent: async () => {},
+    cancelMT5Order: async (params) => {
+      cancelCalledWith = params;
+      return { ok: true, status: "cancelled", ticket: params.orderTicket };
+    },
+    getMT5State: async () => ({
+      ok: true,
+      account: { login: 12345, balance: 50000, equity: 50000 },
+      positions: [],
+      orders: [
+        { ticket: 999111, symbol: "NAS100", type: 2, state: 1, volume_current: 0.1, price_open: 20000, comment: "TS:trade_test_cancelling_retry" }
+      ],
+      history: [],
+      order_history: [],
+      requests: [],
+      dailyPnl: 0,
+      dayStartEquity: 50000,
+      brokerDayStart: Math.floor(Date.now() / 1000) - 3600,
+      at: Math.floor(Date.now() / 1000),
+    }),
+  });
+
+  await engine.pollBroker();
+
+  assert.ok(cancelCalledWith, "cancelMT5Order must have been re-dispatched during reconciliation");
+  assert.equal(String(cancelCalledWith.orderTicket), "999111");
+  const resolvedTrade = mock.trades.find((t) => t._id === "trade_test_cancelling_retry");
+  assert.equal(resolvedTrade.status, "cancelled", "Trade must resolve to cancelled once broker confirms");
+  assert.equal(resolvedTrade.brokerStatus, "cancelled");
+  console.log("✅ PASS: Reconciliation actively re-dispatches cancelMT5Order when pending limit order is still resting on broker");
+}
+
+// TEST 6: pollBroker sweeps orphaned MT5 orders not tracked in TradeSpace database
+{
+  const mock = createMockCols();
+  // No active trades in mock.trades
+
+  const cancelledTickets = [];
+  const engine = createAutonomousEngine({
+    autonomousCols: async () => mock,
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, liveTrading: true, enabled: true }),
+    getMainWatchlistSymbols: async () => ["SP500"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date(),
+    broadcast: () => {},
+    sendTelegram: async () => {},
+    now: () => Date.now(),
+    releaseTradeCapacity: async () => true,
+    logEvent: async () => {},
+    cancelMT5Order: async (params) => {
+      cancelledTickets.push(Number(params.orderTicket));
+      return { ok: true, status: "cancelled" };
+    },
+    getMT5State: async () => ({
+      ok: true,
+      account: { login: 12345, balance: 50000, equity: 50000 },
+      positions: [],
+      orders: [
+        // Rogue orphaned order with TS: comment prefix
+        { ticket: 66626531, symbol: "SP500", type: 2, state: 1, volume_current: 0.05, price_open: 5850.5, comment: "TS:old_dead_trade", magic: 230101 },
+        // External non-TradeSpace manual order (should NOT be touched)
+        { ticket: 77777777, symbol: "EURUSD", type: 2, state: 1, volume_current: 0.1, price_open: 1.08, comment: "Manual discretionary", magic: 0 }
+      ],
+      history: [],
+      order_history: [],
+      requests: [],
+      dailyPnl: 0,
+      dayStartEquity: 50000,
+      brokerDayStart: Math.floor(Date.now() / 1000) - 3600,
+      at: Math.floor(Date.now() / 1000),
+    }),
+  });
+
+  await engine.pollBroker();
+
+  assert.equal(cancelledTickets.length, 1, "Exactly one orphaned order must be cancelled");
+  assert.equal(cancelledTickets[0], 66626531, "Orphaned SP500 order 66626531 must be cancelled");
+  console.log("✅ PASS: pollBroker orphan sweep detects and cancels orphaned TradeSpace orders on MT5 while leaving external orders alone");
+}
+
+// TEST 7: Placed pending limit orders are immune to transient ACCOUNT_STALE
+{
+  const mock = createMockCols();
+  const tradeDoc = {
+    _id: "trade_test_pending_safe",
+    symbol: "NAS100",
+    dir: 1,
+    entryPrice: 20000,
+    slPrice: 19950,
+    tpPrice: 20100,
+    lotSize: 0.1,
+    status: "pending",
+    brokerStatus: "pending_limit",
+    executionMode: "paper",
+    isLive: true,
+    orderTicket: "888222",
+  };
+  mock.trades.push(tradeDoc);
+
+  let cancelCalled = false;
+  const engine = createAutonomousEngine({
+    autonomousCols: async () => mock,
+    getConfig: async () => ({ ...DEFAULT_AUTONOMOUS_CONFIG, liveTrading: true, enabled: true, accountFreshnessMs: 5000 }),
+    getMainWatchlistSymbols: async () => ["NAS100"],
+    isTradingPermittedNow: () => ({ permitted: true }),
+    getStartOfTradingDay: () => new Date(),
+    revalidateTradeIdea: async () => ({ permitted: true }),
+    broadcast: () => {},
+    sendTelegram: async () => {},
+    now: () => Date.now(),
+    releaseTradeCapacity: async () => true,
+    logEvent: async () => {},
+    cancelMT5Order: async () => {
+      cancelCalled = true;
+      return { ok: true };
+    },
+    getMT5State: async () => null, // Snapshot unavailable (stale)
+  });
+
+  // Hot tick arrives on NAS100 (price within safe bounds, stop not hit)
+  await engine.autonomousOnTicks({
+    NAS100: { bid: 20020, ask: 20021, time: Date.now() },
+  });
+
+  assert.equal(cancelCalled, false, "Transient ACCOUNT_STALE must NOT revoke placed resting limit order");
+  const tradeAfterTick = mock.trades.find((t) => t._id === "trade_test_pending_safe");
+  assert.equal(tradeAfterTick.status, "pending", "Trade must remain pending");
+  console.log("✅ PASS: Placed resting limit orders are immune to transient ACCOUNT_STALE network latency");
+}
+
 console.log("\n=======================================================");
 console.log("🎯 ALL BROKER RECONCILIATION & CANCELLATION HYGIENE TESTS PASSED!");
 console.log("=======================================================\n");
