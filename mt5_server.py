@@ -475,6 +475,25 @@ def handle_rates(payload):
         except Exception:
             continue
     bars.sort(key=lambda b: b["t"])
+
+    # Seamlessly normalize consecutive continuous-session candle opens
+    tf_seconds_map = {
+        "M1": 60, "1M": 60, "M5": 300, "5M": 300, "M15": 900, "15M": 900,
+        "M30": 1800, "30M": 1800, "H1": 3600, "1H": 3600, "H4": 14400, "4H": 14400,
+        "D1": 86400, "1D": 86400,
+    }
+    tf_sec = tf_seconds_map.get(tf_name, 300)
+    is_d1 = tf_name in ("D1", "1D")
+    for i in range(1, len(bars)):
+        prev = bars[i - 1]
+        curr = bars[i]
+        dt = (curr["t"] - prev["t"]) // 1000
+        is_consec = (86400 <= dt <= 86400 * 1.5) if is_d1 else (abs(dt - tf_sec) <= 2)
+        if is_consec and prev["c"] > 0:
+            curr["o"] = prev["c"]
+            curr["h"] = max(curr["h"], curr["o"])
+            curr["l"] = min(curr["l"], curr["o"])
+
     return {
         "ok": bool(bars),
         "status": "rates" if bars else "rates-empty",
