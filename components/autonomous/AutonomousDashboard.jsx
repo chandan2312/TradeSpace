@@ -113,6 +113,8 @@ export default function AutonomousDashboard() {
   useEffect(() => {
     let dead = false;
     let reconnectTimer;
+    let pingTimer;
+
     const connect = () => {
       if (dead) return;
       try {
@@ -125,6 +127,14 @@ export default function AutonomousDashboard() {
           if (dead || ws !== wsRef.current) return;
           setSocketState("connected");
           ws.send(JSON.stringify({ type: "subscribe", symbols: symbolsRef.current }));
+
+          // Periodic client keepalive ping every 15s
+          clearInterval(pingTimer);
+          pingTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
+            }
+          }, 15000);
         };
 
         ws.onmessage = (ev) => {
@@ -156,24 +166,51 @@ export default function AutonomousDashboard() {
           } catch {}
         };
 
-        ws.onclose = () => {
-          if (!dead && ws === wsRef.current) {
+        const handleDisconnect = () => {
+          if (dead) return;
+          clearInterval(pingTimer);
+          if (ws === wsRef.current) {
             setSocketState("reconnecting");
             setTicks({});
-            reconnectTimer = setTimeout(connect, 3000);
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, 2000);
           }
         };
-        ws.onerror = () => { if (!dead && ws === wsRef.current) setSocketState("error"); };
+
+        ws.onclose = handleDisconnect;
+        ws.onerror = () => {
+          if (ws === wsRef.current) {
+            setSocketState("reconnecting");
+            try { ws.close(); } catch {}
+          }
+        };
       } catch {
-        setSocketState("error");
-        reconnectTimer = setTimeout(connect, 3000);
+        setSocketState("reconnecting");
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 2000);
       }
     };
 
     connect();
+
+    // Reconnect immediately when user returns to this tab or network reconnects
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && !dead) {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          clearTimeout(reconnectTimer);
+          connect();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("online", handleVisibility);
+
     return () => {
       dead = true;
       clearTimeout(reconnectTimer);
+      clearInterval(pingTimer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("online", handleVisibility);
       const ws = wsRef.current;
       wsRef.current = null;
       if (ws) ws.close();

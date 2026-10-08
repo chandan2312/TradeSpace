@@ -381,27 +381,40 @@ const dynamicBarsPullback = mockBars.map((b, i) => {
   return { ...b, open: 86550, high: 86700, low: 86450, close: 86650 }; // Future candles after tap
 });
 
-const managingBtcTrade = {
+const closedBeBtcTrade = {
   _id: "btc_tap_test_1",
   symbol: "BTCUSD",
   dir: -1,
   direction: "SELL",
-  status: "managing",
+  status: "closed_be",
   entryPrice: 86512.33,
   initialSlPrice: 87139.00,
   slPrice: 86512.33, // Breakeven active
   isBreakeven: true,
   tpPrice: 84468.00,
   filledAt: new Date(dynamicBarsPullback[10].time * 1000).toISOString(),
+  closedAt: new Date(dynamicBarsPullback[45].time * 1000).toISOString(),
 };
 
-const tapDrawings = tradeToPositionDrawings(managingBtcTrade, dynamicBarsPullback, tfSec);
+const tapDrawings = tradeToPositionDrawings(closedBeBtcTrade, dynamicBarsPullback, tfSec);
 assert.equal(tapDrawings.length, 2, "Must produce position tool + trailing line");
 const tapPos = tapDrawings[0];
 const tapLine = tapDrawings[1];
 assert.equal(tapPos.points[1].time, dynamicBarsPullback[25].time, "RR tool right boundary must strictly truncate at candle 25 where trailing SL was tapped");
 assert.equal(tapLine.points[1].time, dynamicBarsPullback[25].time, "Trailing line right boundary must strictly truncate at candle 25 where trailing SL was tapped");
-console.log("✅ PASS: Price pullback tapping trailing SL line strictly truncates RR tool and trailing line at tap candle");
+console.log("✅ PASS: Price pullback tapping trailing SL line strictly truncates RR tool and trailing line at tap candle for closed trade");
+
+// Verify active running trade with BE/trailing NEVER prematurely truncates and spans to live candle + 1 offset:
+const activeManagingBtcTrade = {
+  ...closedBeBtcTrade,
+  status: "managing",
+  closedAt: null,
+};
+const activeManagingDrawings = tradeToPositionDrawings(activeManagingBtcTrade, dynamicBarsPullback, tfSec);
+const expectedActiveP2 = dynamicBarsPullback[dynamicBarsPullback.length - 1].time + tfSec;
+assert.equal(activeManagingDrawings[0].points[1].time, expectedActiveP2, "Active managing trade must span to live candle + 1 offset");
+assert.equal(activeManagingDrawings[1].points[1].time, expectedActiveP2, "Active trailing line must span to live candle + 1 offset");
+console.log("✅ PASS: Active running trade with BE/trailing spans continuously to live candle + 1 offset");
 
 // -------------------------------------------------------------
 // TEST 14: Dynamic Timeframe Switch (M5 -> M15 -> H1 -> H4) on TP Trade

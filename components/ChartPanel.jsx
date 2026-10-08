@@ -744,10 +744,12 @@ export default function ChartPanel({
 
     for (const t of (autonomousTrades || [])) {
       if (!t) continue;
+      const isOpenTrade = ["active", "managing", "open"].includes(String(t.status || "").toLowerCase());
       const isClosedTrade =
-        ["closed_tp", "closed_sl", "closed_be", "closed"].includes(t.status) ||
+        !isOpenTrade &&
+        (["closed_tp", "closed_sl", "closed_be", "closed"].includes(t.status) ||
         Boolean(t.closedAt) ||
-        Boolean(t.closeTime);
+        Boolean(t.closeTime));
 
       if (isClosedTrade) {
         const closedTime = new Date(t.closedAt || t.closeTime || t.updatedAt || t.createdAt || t.entryTime || 0).getTime();

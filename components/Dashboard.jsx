@@ -788,6 +788,7 @@ export default function Dashboard() {
   useEffect(() => {
     let dead = false;
     let sock;
+    let pingTimer;
     const connect = () => {
       if (dead) return;
       sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -795,10 +796,20 @@ export default function Dashboard() {
       sock.onopen = () => {
         setConnected(true);
         sock.send(JSON.stringify({ type: "subscribe", symbols: symbolsRef.current }));
+        clearInterval(pingTimer);
+        pingTimer = setInterval(() => {
+          if (sock.readyState === WebSocket.OPEN) {
+            try { sock.send(JSON.stringify({ type: "ping" })); } catch {}
+          }
+        }, 15000);
       };
       sock.onclose = () => {
+        clearInterval(pingTimer);
         setConnected(false);
         if (!dead) setTimeout(connect, 2000);
+      };
+      sock.onerror = () => {
+        try { sock.close(); } catch {}
       };
       sock.onmessage = (ev) => {
         const msg = JSON.parse(ev.data);
@@ -844,7 +855,24 @@ export default function Dashboard() {
       };
     };
     connect();
-    return () => { dead = true; sock?.close(); };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && !dead) {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          connect();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("online", handleVisibility);
+
+    return () => {
+      dead = true;
+      clearInterval(pingTimer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("online", handleVisibility);
+      sock?.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -73,38 +73,49 @@ async function main() {
   const wss = new WebSocketServer({ noServer: true });
   setWss(wss);
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
     ws.symbol = null;
     ws.isAlive = true;
     ws.on("pong", () => { ws.isAlive = true; });
+    ws.on("error", () => {}); // prevent unhandled socket error crashes
     ws.on("message", (raw) => {
       try {
         const msg = JSON.parse(raw);
         if (msg.type === "subscribe") {
           if (msg.symbol) ws.symbol = String(msg.symbol).toUpperCase();
           if (Array.isArray(msg.symbols)) ws.symbols = new Set(msg.symbols.map(s => String(s).toUpperCase()));
+        } else if (msg.type === "ping") {
+          ws.isAlive = true;
+          try { ws.send(JSON.stringify({ type: "pong" })); } catch {}
         }
       } catch { /* ignore bad frames */ }
     });
   });
 
-  // Heartbeat: reap clients that vanished without a close frame, so the poll
-  // loop doesn't keep broadcasting to (and tracking symbols for) dead sockets.
+  // Heartbeat: reap clients that vanished without a close frame.
+  // Allow 2 missed cycles (60s) before terminating so mobile / background tabs are not killed prematurely.
   const heartbeat = setInterval(() => {
     for (const ws of wss.clients) {
-      if (!ws.isAlive) { ws.terminate(); continue; }
+      if (ws.isAlive === false) {
+        ws.terminate();
+        continue;
+      }
       ws.isAlive = false;
-      ws.ping();
+      try { ws.ping(); } catch { ws.terminate(); }
     }
   }, 30_000);
 
   // Route the HTTP upgrade: /ws -> our WSS, everything else (incl. Next HMR) -> Next.
   server.on("upgrade", (req, socket, head) => {
-    const { pathname } = new URL(req.url, "http://localhost");
-    if (pathname === "/ws") {
-      wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
-    } else {
-      nextUpgrade(req, socket, head);
+    try {
+      const { pathname } = new URL(req.url, "http://localhost");
+      if (pathname === "/ws" || pathname === "/ws/" || pathname.startsWith("/ws?")) {
+        wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+      } else {
+        nextUpgrade(req, socket, head);
+      }
+    } catch {
+      socket.destroy();
     }
   });
 
