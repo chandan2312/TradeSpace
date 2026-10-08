@@ -27,6 +27,8 @@ export default function AutonomousHeader({
   pendingAction,
   onOpenJournal,
   activeSection,
+  loading = false,
+  stateError = null,
 }) {
   const [eetTime, setEetTime] = useState("");
   const [activeSession, setActiveSession] = useState("");
@@ -354,7 +356,7 @@ export default function AutonomousHeader({
         {/* Master Power Toggle */}
         <button
           onClick={onTogglePower}
-          disabled={!!pendingAction || !configAvailable}
+          disabled={!!pendingAction || !configAvailable || loading}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -363,12 +365,21 @@ export default function AutonomousHeader({
             height: 32,
             padding: 0,
             borderRadius: 8,
-            cursor: "pointer",
+            cursor: loading || !configAvailable ? "not-allowed" : "pointer",
             background: isRunning ? "rgba(239, 68, 68, 0.15)" : "rgba(34, 197, 94, 0.15)",
             color: isRunning ? "var(--red)" : "var(--green)",
             border: `1px solid ${isRunning ? "rgba(239, 68, 68, 0.4)" : "rgba(34, 197, 94, 0.4)"}`,
+            opacity: loading || !configAvailable ? 0.6 : 1,
           }}
-          title={!configAvailable ? "System Unavailable" : isRunning ? "Halt Autonomous Trading" : "Engage Autonomous Trading"}
+          title={
+            loading
+              ? "Connecting to Autonomous Brain..."
+              : !configAvailable
+              ? (stateError ? `System Unavailable: ${stateError}` : "System Unavailable — Reconnecting to Backend...")
+              : isRunning
+              ? "Halt Autonomous Trading"
+              : "Engage Autonomous Trading"
+          }
           aria-label={isRunning ? "Halt Trading" : "Engage Trading"}
         >
           {isRunning ? <Pause size={14} /> : <Play size={14} />}

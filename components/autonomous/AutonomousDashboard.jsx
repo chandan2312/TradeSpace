@@ -78,6 +78,17 @@ export default function AutonomousDashboard() {
     stateAbortRef.current = controller;
     try {
       const res = await fetch("/api/autonomous", { cache: "no-store", signal: controller.signal });
+      if (!res.ok) {
+        let errMsg = `Server returned HTTP ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.error) errMsg = errJson.error;
+        } catch (_) {}
+        if (requestId === stateRequestRef.current) {
+          setStateError(errMsg);
+        }
+        return;
+      }
       const json = await res.json();
       if (requestId === stateRequestRef.current && json.ok) {
         setData(json);
@@ -348,6 +359,8 @@ export default function AutonomousDashboard() {
           pendingAction={pendingAction}
           onOpenJournal={() => handleSelectSection("journal")}
           activeSection={section}
+          loading={loading}
+          stateError={stateError}
         />
 
         {/* System Error Banner if present */}

@@ -231,6 +231,11 @@ if [ "$MODE" = "prod" ]; then
     NODE_ENV=production node server.js > "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
 else
+    # Clean stale production build cache to prevent Webpack runtime chunk collisions (MODULE_NOT_FOUND)
+    if [ -f ".next/BUILD_ID" ]; then
+        echo -e "${YELLOW}ℹ Clearing stale production build cache for development mode...${NC}"
+        rm -rf .next
+    fi
     echo -e "\n${GREEN}🚀 Starting TradeSpace Development Server (with hot reload)...${NC}"
     NODE_ENV=development node server.js > "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
