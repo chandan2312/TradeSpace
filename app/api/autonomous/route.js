@@ -30,9 +30,6 @@ const g = globalThis;
 const CLOSED_TRADES_PROJECTION = {
   brainSnapshot: 0,
   brain: 0,
-  levelDetails: 0,
-  stagedLevel: 0,
-  entryModel: 0,
   copierRouting: 0,
 };
 
@@ -55,7 +52,12 @@ export async function GET() {
         new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
       ]),
       tradesCol.find({ status: { $in: OPEN_STATES } }).sort({ createdAt: -1 }).toArray(),
-      tradesCol.find({ status: { $in: TERMINAL_STATES } }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, createdAt: -1 }).limit(50).toArray(),
+      tradesCol.find({
+        $or: [
+          { status: { $in: ["closed_tp", "closed_sl", "closed_be", "closed"] } },
+          { filledAt: { $exists: true, $ne: null }, status: { $in: TERMINAL_STATES } },
+        ],
+      }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(100).toArray(),
       logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
       controlCol.findOne({ _id: "latest_autonomous_scan" }).catch(() => null),
     ]);

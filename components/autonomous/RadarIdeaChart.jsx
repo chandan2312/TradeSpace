@@ -6,10 +6,10 @@ import { buildRadarTradeIdeaDrawing } from "../../lib/autonomous/tradeDrawing";
 import { formatPrice, finiteNumber } from "./TradeTelemetry";
 
 const TF_OPTIONS = [
-  { id: "5m", label: "5M", sec: 300 },
-  { id: "15m", label: "15M", sec: 900 },
-  { id: "1h", label: "1H", sec: 3600 },
-  { id: "4h", label: "4H", sec: 14400 },
+  { id: "5m", label: "5M", apiTf: "M5", sec: 300 },
+  { id: "15m", label: "15M", apiTf: "M15", sec: 900 },
+  { id: "1h", label: "1H", apiTf: "H1", sec: 3600 },
+  { id: "4h", label: "4H", apiTf: "H4", sec: 14400 },
 ];
 
 export default function RadarIdeaChart({
@@ -131,8 +131,10 @@ export default function RadarIdeaChart({
         seriesRef.current = series;
 
         // Fetch bars from rates endpoint
-        const tfSec = TF_OPTIONS.find((t) => t.id === selectedTf)?.sec || 900;
-        const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${selectedTf.toUpperCase()}&count=200`, { cache: "no-store" });
+        const activeTf = TF_OPTIONS.find((t) => t.id === selectedTf) || TF_OPTIONS[1];
+        const tfSec = activeTf.sec || 900;
+        const tfParam = activeTf.apiTf || "M15";
+        const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tfParam}&count=200`, { cache: "no-store" });
         const data = await res.json();
 
         if (isCancelled) return;

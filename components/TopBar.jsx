@@ -76,6 +76,26 @@ export default function TopBar({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showLayoutMenu, toolsMenuOpen, themeMenuOpen, mobileTfOpen]);
   
+  const [isCompactTf, setIsCompactTf] = useState(false);
+
+  useEffect(() => {
+    const checkCompact = () => {
+      if (typeof window === "undefined") return;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const isLandscape = window.matchMedia("(orientation: landscape)").matches || (w > h && w <= 1024);
+      const isMobileLandscape = isLandscape && h <= 550;
+      setIsCompactTf(w <= 1080 || isMobileLandscape || h <= 500);
+    };
+    checkCompact();
+    window.addEventListener("resize", checkCompact);
+    window.addEventListener("orientationchange", checkCompact);
+    return () => {
+      window.removeEventListener("resize", checkCompact);
+      window.removeEventListener("orientationchange", checkCompact);
+    };
+  }, []);
+
   const toggleSync = (key) => setSyncOpts(prev => ({ ...prev, [key]: !prev[key] }));
 
   // Autonomous Trades Telemetry for TopBar status badge
@@ -174,34 +194,37 @@ export default function TopBar({
         )}
       </div>
 
-      {/* Desktop Timeframe Buttons */}
-      <div className="tf-container hide-mobile" style={{ display: "flex", gap: 4 }}>
+      {/* Desktop Timeframe Buttons (Full 7 buttons on wide screens) */}
+      <div className={`tf-container tf-full-group ${isCompactTf ? "hidden-tf" : ""}`} style={{ gap: 4, flexShrink: 0 }}>
         {TFS.map((t) => (
           <button
             key={t}
             onClick={() => setTf(t)}
             className={`tf-btn ${tf === t ? "primary" : "ghost"}`}
-            style={{ padding: "4px 9px", fontSize: 12 }}
+            style={{ padding: "4px 9px", fontSize: 12, whiteSpace: "nowrap", flexShrink: 0 }}
           >
             {TF_LABEL[t]}
           </button>
         ))}
       </div>
 
-      {/* Mobile Collapsed Timeframe Dropdown */}
-      <div className="hide-desktop" style={{ position: "relative" }} ref={mobileTfRef}>
+      {/* Collapsed Timeframe Dropdown (Active on Mobile Portrait, Mobile Landscape, and Compact Viewports) */}
+      <div className={`tf-dropdown-group ${isCompactTf ? "visible-tf" : ""}`} style={{ position: "relative", flexShrink: 0 }} ref={mobileTfRef}>
         <button
           className="primary"
           onClick={() => setMobileTfOpen(!mobileTfOpen)}
           title="Select Timeframe"
+          aria-label="Select Timeframe"
           style={{
-            padding: "4px 7px",
+            padding: "4px 8px",
             fontSize: 12,
             fontWeight: 700,
             display: "flex",
             alignItems: "center",
-            gap: 3,
+            gap: 4,
             borderRadius: 6,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
           }}
         >
           <span>{TF_LABEL[tf] || tf}</span>

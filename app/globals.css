@@ -985,3 +985,76 @@ a[href*="tradingview.com"],
   background: transparent !important;
   color: var(--muted) !important;
 }
+
+/* =====================================================================
+   Responsive Timeframe Selector Controls & Mobile Landscape Optimization
+   ===================================================================== */
+
+.tf-full-group {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tf-dropdown-group {
+  display: none !important;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Collapse full timeframe buttons into dropdown whenever:
+   - Screen width <= 1080px (tablets, small laptops, split windows)
+   - Mobile devices in landscape mode: (orientation: landscape) and (max-height: 550px)
+   - Compact viewports: max-height <= 500px
+   - Or when JS runtime applies .hidden-tf / .visible-tf
+*/
+.tf-full-group.hidden-tf {
+  display: none !important;
+}
+
+.tf-dropdown-group.visible-tf {
+  display: flex !important;
+  align-items: center;
+}
+
+@media (max-width: 1080px), ((orientation: landscape) and (max-height: 550px)), (max-height: 500px) {
+  .tf-full-group {
+    display: none !important;
+  }
+  .tf-dropdown-group {
+    display: flex !important;
+    align-items: center;
+  }
+}
+
+/* Dedicated Mobile Landscape Mode Optimizations */
+@media ((orientation: landscape) and (max-height: 550px)), (max-height: 500px) {
+  .hide-mobile {
+    display: flex !important;
+  }
+  span.hide-mobile {
+    display: inline !important;
+  }
+  .hide-desktop:not(.tf-dropdown-group) {
+    display: none !important;
+  }
+  .logo-text {
+    display: none !important;
+  }
+  .topbar-header {
+    gap: 4px !important;
+    padding: 0 8px !important;
+  }
+  .topbar-header button {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+}
+
+@media ((orientation: landscape) and (max-height: 550px) and (max-width: 750px)), ((max-height: 500px) and (max-width: 750px)) {
+  .topbar-header .num {
+    display: none !important;
+  }
+}
+

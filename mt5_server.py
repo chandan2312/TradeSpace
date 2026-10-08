@@ -185,6 +185,14 @@ TF_MAP = {
     "H1":  getattr(mt5, "TIMEFRAME_H1", 16385) if mt5 else 16385,
     "H4":  getattr(mt5, "TIMEFRAME_H4", 16388) if mt5 else 16388,
     "D1":  getattr(mt5, "TIMEFRAME_D1", 16408) if mt5 else 16408,
+    # Aliases
+    "1M":  getattr(mt5, "TIMEFRAME_M1", 1) if mt5 else 1,
+    "5M":  getattr(mt5, "TIMEFRAME_M5", 5) if mt5 else 5,
+    "15M": getattr(mt5, "TIMEFRAME_M15", 15) if mt5 else 15,
+    "30M": getattr(mt5, "TIMEFRAME_M30", 30) if mt5 else 30,
+    "1H":  getattr(mt5, "TIMEFRAME_H1", 16385) if mt5 else 16385,
+    "4H":  getattr(mt5, "TIMEFRAME_H4", 16388) if mt5 else 16388,
+    "1D":  getattr(mt5, "TIMEFRAME_D1", 16408) if mt5 else 16408,
 }
 
 

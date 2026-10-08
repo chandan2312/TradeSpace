@@ -742,13 +742,15 @@ export default function Dashboard() {
           ["staged", "armed", "confirming", "placing", "pending"].includes(t.status) ||
           Boolean(t.filledAt) ||
           Boolean(t.filledPrice) ||
-          ["active", "managing", "closing", "closed_tp", "closed_sl", "closed_be"].includes(t.status)
+          Boolean(t.entryTime) ||
+          Boolean(t.closeTime) ||
+          ["active", "managing", "closing", "closed_tp", "closed_sl", "closed_be", "closed"].includes(t.status)
         )
       );
       const seen = new Set();
       const deduped = [];
       for (const t of rawList) {
-        const id = String(t._id || t.id || t.ticket || `${t.symbol}:${t.createdAt}`);
+        const id = String(t._id || t.id || t.ticket || `${t.symbol}:${t.createdAt || t.entryTime}`);
         if (!seen.has(id)) {
           seen.add(id);
           deduped.push(t);

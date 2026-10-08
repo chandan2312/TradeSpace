@@ -11,6 +11,7 @@ import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
 import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
 import { tradeToPositionDrawing, tradeToPositionDrawings, tradeToStagedPositionDrawings, pairToRadarTradeIdeaDrawings } from "../lib/autonomous/tradeDrawing.js";
+import { normalizeCandles } from "../lib/candleNormalization.js";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
@@ -607,6 +608,7 @@ export default function ChartPanel({
         }
         let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
         bars = bars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+        bars = normalizeCandles(bars, tf);
         barsCache.current.set(key, { at: Date.now(), bars });
         try {
           // Keep only the last 800 bars in local storage to prevent quota exceeded errors
@@ -727,13 +729,11 @@ export default function ChartPanel({
     const tfSec = TF_SEC[tf] || 300;
     const isDismissed = (id) => draw.dismissedAutoIds?.current?.has(String(id));
 
-    // Clean institutional chart display:
+    // Institutional chart display:
     // 1. Keep ALL active / managing / open trades
-    // 2. Keep only trades closed within the last 24 hours (today's session), at most 2 most recent closed per symbol
-    // 3. Drop all stale historical trades older than 24 hours to prevent chart clutter
-    // 4. Staged setups rendered to the right of current candle with 4-5 candle gap
-    // 5. Radar ideas rendered with violet/burnt orange RR tool
-    const nowMs = Date.now();
+    // 2. Keep all previously executed closed trades for this symbol (historical RR review)
+    // 3. Staged setups rendered to the right of current candle with 4-5 candle gap
+    // 4. Radar ideas rendered with violet/burnt orange RR tool
     const activeList = [];
     const closedList = [];
     const stagedList = [];
@@ -741,14 +741,13 @@ export default function ChartPanel({
     for (const t of (autonomousTrades || [])) {
       if (!t) continue;
       const isClosedTrade =
-        ["closed_tp", "closed_sl", "closed_be", "closed", "invalidated", "cancelled", "expired"].includes(t.status) ||
-        Boolean(t.closedAt);
+        ["closed_tp", "closed_sl", "closed_be", "closed"].includes(t.status) ||
+        Boolean(t.closedAt) ||
+        Boolean(t.closeTime);
 
       if (isClosedTrade) {
-        const closedTime = new Date(t.closedAt || t.updatedAt || t.createdAt).getTime();
-        if (Math.abs(nowMs - closedTime) <= 7 * 24 * 3600 * 1000) {
-          closedList.push({ trade: t, time: closedTime });
-        }
+        const closedTime = new Date(t.closedAt || t.closeTime || t.updatedAt || t.createdAt || t.entryTime || 0).getTime();
+        closedList.push({ trade: t, time: Number.isFinite(closedTime) ? closedTime : 0 });
       } else if (["staged", "confirming", "armed"].includes(t.status)) {
         stagedList.push(t);
       } else {
@@ -756,8 +755,8 @@ export default function ChartPanel({
       }
     }
 
-    closedList.sort((a, b) => b.time - a.time);
-    const chartTrades = [...activeList, ...closedList.slice(0, 10).map((item) => item.trade)];
+    closedList.sort((a, b) => (b.time || 0) - (a.time || 0));
+    const chartTrades = [...activeList, ...closedList.slice(0, 50).map((item) => item.trade)];
 
     const autoDrawings = isEnabled
       ? chartTrades
