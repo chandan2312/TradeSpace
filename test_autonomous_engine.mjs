@@ -294,7 +294,7 @@ console.log("TEST SUITE 5: Trading Time Slots & Killzones Engine");
 console.log("=======================================================");
 
 const allSlots = getAllTimeSlots();
-assert(Array.isArray(allSlots) && allSlots.length === 8, "All 8 canonical institutional time slots defined");
+assert(Array.isArray(allSlots) && allSlots.length === 10, "All 10 canonical institutional time slots defined");
 
 const helperEetTime = (h, m) => h * 3600 + m * 60;
 
@@ -2447,13 +2447,13 @@ console.log("=======================================================");
   // 4. Staged Trade Invalidation: Tick reaches target TP before entry fill (move already completed)
   const tpTargetHitTrade = {
     _id: "tp_target_hit_1",
-    symbol: "NAS100_TP",
-    canonicalSymbol: "NAS100",
+    symbol: "US30",
+    canonicalSymbol: "US30",
     dir: 1,
-    entryPrice: 18000,
-    slPrice: 17950,
-    initialSlPrice: 17950,
-    tpPrice: 18150,
+    entryPrice: 38000,
+    slPrice: 37950,
+    initialSlPrice: 37950,
+    tpPrice: 38150,
     status: "staged",
     horizon: "day",
     horizonCode: 2,
@@ -2478,7 +2478,7 @@ console.log("=======================================================");
 
   // Test TP target hit invalidation (move left without entry fill at nowBase)
   await engine.autonomousOnTicks({
-    NAS100_TP: { bid: 18155, ask: 18156, time: nowBase }, // Hits TP (18150)
+    US30: { bid: 38155, ask: 38156, time: nowBase }, // Hits TP (38150)
   });
   assert(tpTargetHitTrade.status === "invalidated", "Staged trade is invalidated when price reaches target before entry");
   assert(tpTargetHitTrade.closeReason?.includes("Target reached prior to limit entry fill"), "Invalidation reason records target hit");

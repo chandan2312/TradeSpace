@@ -522,7 +522,7 @@ export default function StagedQueue({
                     display: "grid",
                     gridTemplateColumns: "repeat(2, 1fr)",
                     gap: 6,
-                    background: "rgba(0, 0, 0, 0.25)",
+                    background: "var(--panel-2)",
                     padding: "6px 10px",
                     borderRadius: 6,
                     fontFamily: "monospace",
@@ -580,7 +580,7 @@ export default function StagedQueue({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        background: "rgba(0, 0, 0, 0.25)",
+                        background: "var(--panel-2)",
                         padding: "3px 6px",
                         borderRadius: 4,
                       }}
@@ -599,7 +599,7 @@ export default function StagedQueue({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        background: "rgba(0, 0, 0, 0.25)",
+                        background: "var(--panel-2)",
                         padding: "3px 6px",
                         borderRadius: 4,
                       }}
@@ -650,7 +650,7 @@ export default function StagedQueue({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        background: "rgba(0, 0, 0, 0.25)",
+                        background: "var(--panel-2)",
                         padding: "3px 6px",
                         borderRadius: 4,
                       }}
@@ -917,7 +917,7 @@ export default function StagedQueue({
                   display: "grid",
                   gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 120px), 1fr))",
                   gap: 8,
-                  background: "rgba(0, 0, 0, 0.25)",
+                  background: "var(--panel-2)",
                   padding: 10,
                   borderRadius: 8,
                 }}
@@ -1022,7 +1022,7 @@ export default function StagedQueue({
                                     if (dist > 0) setEditTp(Number((entryVal + trade.dir * r * dist).toFixed(5)));
                                   }}
                                   style={{
-                                    background: "rgba(0, 0, 0, 0.4)",
+                                    background: "var(--bg)",
                                     border: "1px solid var(--border)",
                                     borderRadius: 4,
                                     padding: "6px 8px",
@@ -1050,7 +1050,7 @@ export default function StagedQueue({
                                     }
                                   }}
                                   style={{
-                                    background: "rgba(0, 0, 0, 0.4)",
+                                    background: "var(--bg)",
                                     border: "1px solid var(--border)",
                                     borderRadius: 4,
                                     padding: "6px 8px",
@@ -1167,7 +1167,7 @@ export default function StagedQueue({
                                     if (dist > 0) setEditTp(Number((entryVal + trade.dir * r * dist).toFixed(5)));
                                   }}
                                   style={{
-                                    background: "rgba(0, 0, 0, 0.4)",
+                                    background: "var(--bg)",
                                     border: "1px solid var(--border)",
                                     borderRadius: 4,
                                     padding: "6px 8px",
@@ -1195,7 +1195,7 @@ export default function StagedQueue({
                                     }
                                   }}
                                   style={{
-                                    background: "rgba(0, 0, 0, 0.4)",
+                                    background: "var(--bg)",
                                     border: "1px solid var(--border)",
                                     borderRadius: 4,
                                     padding: "6px 8px",
@@ -1303,12 +1303,12 @@ export default function StagedQueue({
 
                 {isDual ? (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: 8, fontFamily: "monospace", fontSize: 11 }}>
-                    <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "6px 8px", borderRadius: 5 }}>
+                    <div style={{ background: "var(--panel-2)", padding: "6px 8px", borderRadius: 5 }}>
                       <span style={{ color: "var(--accent)", fontWeight: 700 }}>Leg 1 (Default): </span>
                       <span>Magic #{defaultLeg?.magicNumber || modalRoutingDefault?.magicNumber}</span>
                       <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 2 }}>Comment: {defaultLeg?.brokerComment || modalRoutingDefault?.comment}</div>
                     </div>
-                    <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "6px 8px", borderRadius: 5 }}>
+                    <div style={{ background: "var(--panel-2)", padding: "6px 8px", borderRadius: 5 }}>
                       <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700 }}>Leg 2 (Prop Safe): </span>
                       <span>Magic #{propLeg?.magicNumber || modalRoutingProp?.magicNumber}</span>
                       <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 2 }}>Comment: {propLeg?.brokerComment || modalRoutingProp?.comment}</div>

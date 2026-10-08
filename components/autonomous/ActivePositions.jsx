@@ -462,7 +462,7 @@ function DefaultLegCard({ item, setup, ticks, onCloseTrade }) {
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 75px), 1fr))",
           gap: 6,
-          background: "rgba(0, 0, 0, 0.25)",
+          background: "var(--panel-2)",
           padding: 8,
           borderRadius: 6,
         }}
@@ -574,7 +574,7 @@ function DefaultLegCard({ item, setup, ticks, onCloseTrade }) {
 
       {/* Spread Friction Mitigation Telemetry */}
       {trade.coveredRR && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, background: "rgba(0, 0, 0, 0.2)", padding: "4px 8px", borderRadius: 4, fontFamily: "monospace" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, background: "var(--panel-2)", padding: "4px 8px", borderRadius: 4, fontFamily: "monospace" }}>
           <span style={{ color: "var(--muted)" }}>Friction Mitigation:</span>
           <span>
             <strong style={{ color: "var(--accent)" }}>{trade.coveredRR}R net</strong>
@@ -795,7 +795,7 @@ function PropFirmLegCard({ item, setup, ticks, onCloseTrade }) {
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 75px), 1fr))",
           gap: 6,
-          background: "rgba(0, 0, 0, 0.25)",
+          background: "var(--panel-2)",
           padding: 8,
           borderRadius: 6,
         }}
@@ -814,7 +814,7 @@ function PropFirmLegCard({ item, setup, ticks, onCloseTrade }) {
           display: "grid",
           gridTemplateColumns: "1fr 1fr 1fr",
           gap: 6,
-          background: "rgba(0, 0, 0, 0.2)",
+          background: "var(--panel-2)",
           padding: "6px 8px",
           borderRadius: 6,
           fontSize: 9,
@@ -939,7 +939,7 @@ function PropFirmLegCard({ item, setup, ticks, onCloseTrade }) {
 
       {/* Spread Friction Mitigation Telemetry */}
       {trade.coveredRR && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, background: "rgba(0, 0, 0, 0.2)", padding: "4px 8px", borderRadius: 4, fontFamily: "monospace" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10, background: "var(--panel-2)", padding: "4px 8px", borderRadius: 4, fontFamily: "monospace" }}>
           <span style={{ color: "var(--muted)" }}>Friction Mitigation:</span>
           <span>
             <strong style={{ color: "var(--purple, #c084fc)" }}>{trade.coveredRR}R net</strong>

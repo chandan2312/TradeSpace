@@ -7,6 +7,7 @@ import {
   AllCommunityModule,
   themeQuartz,
   colorSchemeDark,
+  colorSchemeLight,
 } from "ag-grid-community";
 import {
   TrendingUp,
@@ -33,26 +34,10 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import JournalDrawerModal from "./JournalDrawerModal";
+import { useChartSettings } from "../../lib/chartSettings";
 
 // Register AG Grid Community modules (required for AG Grid v33+)
 ModuleRegistry.registerModules([AllCommunityModule]);
-
-// Modern AG Grid v36 Dark Theme using Theming API
-const darkGridTheme = themeQuartz.withPart(colorSchemeDark).withParams({
-  backgroundColor: "#151a23",
-  foregroundColor: "#d7dce6",
-  borderColor: "#232a38",
-  headerBackgroundColor: "#10141d",
-  headerForegroundColor: "#8a93a6",
-  rowHoverColor: "rgba(41, 98, 255, 0.08)",
-  oddRowBackgroundColor: "rgba(0, 0, 0, 0.16)",
-  fontSize: 12,
-  fontFamily: "var(--font, -apple-system, sans-serif)",
-  headerHeight: 40,
-  rowHeight: 42,
-  cellHorizontalPadding: 12,
-  headerCellHorizontalPadding: 12,
-});
 
 // Helper: Format EET & UTC date
 function formatDateEET(iso) {
@@ -152,7 +137,7 @@ function MultiSelectFilter({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          background: isFiltered ? "rgba(41, 98, 255, 0.15)" : "rgba(0, 0, 0, 0.35)",
+          background: isFiltered ? "rgba(41, 98, 255, 0.15)" : "var(--panel-2)",
           border: `1px solid ${isFiltered ? "rgba(41, 98, 255, 0.4)" : "var(--border)"}`,
           borderRadius: 6,
           color: isFiltered ? "var(--accent)" : "var(--fg)",
@@ -176,10 +161,10 @@ function MultiSelectFilter({
             left: 0,
             zIndex: 1000,
             minWidth: 210,
-            background: "var(--panel, #151a23)",
-            border: "1px solid var(--border-hi, #2f3949)",
+            background: "var(--panel)",
+            border: "1px solid var(--border-hi)",
             borderRadius: 8,
-            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.7)",
+            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.25)",
             padding: "8px 6px",
             display: "flex",
             flexDirection: "column",
@@ -234,7 +219,7 @@ function MultiSelectFilter({
                     color: active ? "var(--fg)" : "var(--muted)",
                   }}
                   onMouseEnter={(e) => {
-                    if (!active) e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
+                    if (!active) e.currentTarget.style.background = "var(--panel-2)";
                   }}
                   onMouseLeave={(e) => {
                     if (!active) e.currentTarget.style.background = "transparent";
@@ -271,6 +256,28 @@ function MultiSelectFilter({
 }
 
 export default function JournalView() {
+  const [chartSettings] = useChartSettings();
+  const isLightOrCreamy = chartSettings?.appTheme === "light" || chartSettings?.appTheme === "creamy";
+
+  const gridTheme = useMemo(() => {
+    const basePart = isLightOrCreamy ? colorSchemeLight : colorSchemeDark;
+    return themeQuartz.withPart(basePart).withParams({
+      backgroundColor: "var(--panel)",
+      foregroundColor: "var(--fg)",
+      borderColor: "var(--border)",
+      headerBackgroundColor: "var(--panel-2)",
+      headerForegroundColor: "var(--fg)",
+      rowHoverColor: "var(--accent-soft)",
+      oddRowBackgroundColor: "var(--panel-2)",
+      fontSize: 12,
+      fontFamily: "var(--font, -apple-system, sans-serif)",
+      headerHeight: 40,
+      rowHeight: 42,
+      cellHorizontalPadding: 12,
+      headerCellHorizontalPadding: 12,
+    });
+  }, [isLightOrCreamy]);
+
   const [trades, setTrades] = useState([]);
   const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -964,7 +971,7 @@ export default function JournalView() {
             style={{
               display: "flex",
               alignItems: "center",
-              background: "rgba(0, 0, 0, 0.3)",
+              background: "var(--panel-2)",
               padding: 2,
               borderRadius: 6,
               border: "1px solid var(--border)",
@@ -1254,7 +1261,7 @@ export default function JournalView() {
             display: "flex",
             alignItems: "center",
             gap: 6,
-            background: "rgba(0, 0, 0, 0.35)",
+            background: "var(--panel-2)",
             border: "1px solid var(--border)",
             borderRadius: 6,
             padding: "5px 10px",
@@ -1353,13 +1360,12 @@ export default function JournalView() {
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             style={{
-              background: "rgba(0, 0, 0, 0.35)",
+              background: "var(--panel-2)",
               border: "1px solid var(--border)",
               borderRadius: 6,
               color: "var(--fg)",
               padding: "4px 8px",
               fontSize: 11,
-              colorScheme: "dark",
             }}
           />
           <span style={{ fontSize: 10, color: "var(--muted)" }}>To:</span>
@@ -1368,13 +1374,12 @@ export default function JournalView() {
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             style={{
-              background: "rgba(0, 0, 0, 0.35)",
+              background: "var(--panel-2)",
               border: "1px solid var(--border)",
               borderRadius: 6,
               color: "var(--fg)",
               padding: "4px 8px",
               fontSize: 11,
-              colorScheme: "dark",
             }}
           />
           {(startDate ||
@@ -1416,7 +1421,7 @@ export default function JournalView() {
       {/* 5. DATA PRESENTATION CONTAINER (SPREADSHEET OR TABLE VIEW) */}
       {viewMode === "spreadsheet" ? (
         <div
-          className="ag-theme-quartz-dark"
+          className={isLightOrCreamy ? "ag-theme-quartz" : "ag-theme-quartz-dark"}
           style={{
             width: "100%",
             height: "calc(100vh - 290px)",
@@ -1424,12 +1429,12 @@ export default function JournalView() {
             borderRadius: 12,
             border: "1px solid var(--border)",
             overflow: "hidden",
-            background: "var(--panel, #151a23)",
+            background: "var(--panel)",
           }}
         >
           <AgGridReact
             ref={gridRef}
-            theme={darkGridTheme}
+            theme={gridTheme}
             modules={[AllCommunityModule]}
             rowData={filteredTrades}
             columnDefs={colDefs}
@@ -1520,7 +1525,7 @@ export default function JournalView() {
                 <thead>
                   <tr
                     style={{
-                      background: "rgba(0, 0, 0, 0.45)",
+                      background: "var(--panel-2)",
                       borderBottom: "1px solid var(--border)",
                       color: "var(--muted)",
                       fontSize: 11,

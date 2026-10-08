@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Save, Repeat, Bell, BellPlus, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass, Zap, ChevronDown, Clock } from "lucide-react";
+import { Save, Repeat, Bell, BellPlus, Sidebar, LayoutGrid, Activity, ExternalLink, Power, Menu, X, Settings, Trash2, Wrench, BookOpen, Sun, Moon, Palette, Coffee, Compass, Zap, ChevronDown, Clock, Radar } from "lucide-react";
 import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
@@ -28,7 +28,8 @@ export default function TopBar({
   indicators, setIndicators,
   loadedLayoutId, onUpdateLayout, onRenameLayout, onDeleteLayout,
   onOpenCorrelated, onOpenStrength,
-  onOpenAutoCockpit, autoCockpitOpen, autonomousTrades = []
+  onOpenAutoCockpit, autoCockpitOpen, autonomousTrades = [],
+  radarPairs = []
 }) {
   const digits = tick?.digits ?? 5;
   const [settings] = useChartSettings();
@@ -92,6 +93,14 @@ export default function TopBar({
     return tCanon.includes(sCanon) || sCanon.includes(tCanon);
   });
   const symbolStagedCount = symbolStagedTrades.length;
+
+  const symbolRadarPairs = (radarPairs || []).filter((p) => {
+    if (!p || !symbol || p.dir === 0) return false;
+    const sCanon = symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const pCanon = (p.symbol || p.tradeableSymbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    return pCanon.includes(sCanon) || sCanon.includes(pCanon);
+  });
+  const symbolRadarCount = symbolRadarPairs.length;
 
   let autoNetR = 0;
   let hasAutoR = false;
@@ -430,6 +439,45 @@ export default function TopBar({
             }}
           >
             {symbolStagedCount}
+          </span>
+        )}
+      </button>
+
+      {/* Desktop Taskbar: Radar Ideas Indicator Toggle */}
+      <button
+        className={`hide-mobile ${indicators?.radarTrades !== false ? "primary" : "ghost"}`}
+        onClick={() => {
+          setIndicators?.((prev) => ({ ...prev, radarTrades: prev?.radarTrades === false ? true : false }));
+        }}
+        title="Toggle Market Opportunity Radar Ideas Overlay on Chart (Violet & Orange RR Box)"
+        aria-label="Toggle Radar Ideas Overlay"
+        style={{
+          padding: "4px 8px",
+          fontSize: 12,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          background: indicators?.radarTrades !== false ? "rgba(168, 85, 247, 0.2)" : "transparent",
+          border: indicators?.radarTrades !== false ? "1px solid rgba(168, 85, 247, 0.45)" : "1px solid transparent",
+          color: indicators?.radarTrades !== false ? "var(--purple, #c084fc)" : "var(--muted)",
+        }}
+      >
+        <Radar size={14} style={{ color: indicators?.radarTrades !== false ? "#c084fc" : "var(--muted)" }} />
+        {symbolRadarCount > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              padding: "1px 5px",
+              borderRadius: 8,
+              background: "#a855f7",
+              color: "#ffffff",
+              fontWeight: 800,
+            }}
+          >
+            {symbolRadarCount}
           </span>
         )}
       </button>
@@ -789,6 +837,35 @@ export default function TopBar({
               )}
               <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700 }}>
                 {indicators?.stagedTrades !== false ? "ON" : "OFF"}
+              </span>
+            </button>
+            <button
+              className={indicators?.radarTrades !== false ? "primary" : "ghost"}
+              onClick={() => {
+                setIndicators?.((prev) => ({ ...prev, radarTrades: prev?.radarTrades === false ? true : false }));
+              }}
+              style={{
+                fontSize: 12,
+                padding: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                justifyContent: "flex-start",
+                background: indicators?.radarTrades !== false ? "rgba(168, 85, 247, 0.15)" : "transparent",
+                color: indicators?.radarTrades !== false ? "#c084fc" : "var(--text)",
+                border: indicators?.radarTrades !== false ? "1px solid rgba(168, 85, 247, 0.3)" : "1px solid transparent",
+                borderRadius: 6
+              }}
+            >
+              <Radar size={14} style={{ color: "#c084fc" }} />
+              <span>Radar Ideas Overlay</span>
+              {symbolRadarCount > 0 && (
+                <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "#a855f7", color: "#ffffff", fontWeight: 700 }}>
+                  {symbolRadarCount}
+                </span>
+              )}
+              <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700 }}>
+                {indicators?.radarTrades !== false ? "ON" : "OFF"}
               </span>
             </button>
             <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenStrength(); }} style={{ fontSize: 12, padding: "8px", display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>

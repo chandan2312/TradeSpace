@@ -41,11 +41,11 @@ export default function ChecklistPanel({ symbol, items, notes, onSave, onClose }
       borderRadius: 6, zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
       display: "flex", flexDirection: "column", pointerEvents: "auto"
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)", background: "rgba(0,0,0,0.2)", borderRadius: "6px 6px 0 0" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)", background: "var(--panel-2)", borderRadius: "6px 6px 0 0" }}>
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "var(--accent)" }}>{symbol}</h3>
         <div style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 600 }}>
-          <div onClick={() => setActiveTab("checklist")} style={{ cursor: "pointer", color: activeTab === "checklist" ? "#fff" : "var(--muted)", textDecoration: activeTab === "checklist" ? "underline" : "none", textUnderlineOffset: 4 }}>Checklist</div>
-          <div onClick={() => setActiveTab("notes")} style={{ cursor: "pointer", color: activeTab === "notes" ? "#fff" : "var(--muted)", textDecoration: activeTab === "notes" ? "underline" : "none", textUnderlineOffset: 4 }}>Notes</div>
+          <div onClick={() => setActiveTab("checklist")} style={{ cursor: "pointer", color: activeTab === "checklist" ? "var(--fg)" : "var(--muted)", textDecoration: activeTab === "checklist" ? "underline" : "none", textUnderlineOffset: 4 }}>Checklist</div>
+          <div onClick={() => setActiveTab("notes")} style={{ cursor: "pointer", color: activeTab === "notes" ? "var(--fg)" : "var(--muted)", textDecoration: activeTab === "notes" ? "underline" : "none", textUnderlineOffset: 4 }}>Notes</div>
         </div>
         <button className="ghost" onClick={onClose} style={{ padding: "4px" }}><X size={14} /></button>
       </div>
@@ -103,7 +103,7 @@ export default function ChecklistPanel({ symbol, items, notes, onSave, onClose }
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid var(--border)", background: "rgba(0,0,0,0.1)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid var(--border)", background: "var(--panel-2)" }}>
         {activeTab === "checklist" ? (
           <button className="ghost" onClick={() => setEditing(!editing)} style={{ fontSize: 12, fontWeight: 600 }}>
             {editing ? "Done" : "Edit"}

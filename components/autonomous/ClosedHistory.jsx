@@ -157,7 +157,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
             borderRadius: 6,
             border: "1px solid",
             borderColor: filter === "all" ? "var(--accent)" : "var(--border)",
-            background: filter === "all" ? "var(--accent)" : "rgba(255, 255, 255, 0.02)",
+            background: filter === "all" ? "var(--accent)" : "var(--panel-2)",
             color: filter === "all" ? "#fff" : "var(--muted)",
             cursor: "pointer",
           }}
@@ -181,7 +181,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
             borderRadius: 6,
             border: "1px solid",
             borderColor: filter === "tp" ? "var(--green)" : "var(--border)",
-            background: filter === "tp" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.02)",
+            background: filter === "tp" ? "rgba(34, 197, 94, 0.2)" : "var(--panel-2)",
             color: filter === "tp" ? "var(--green)" : "var(--muted)",
             cursor: "pointer",
           }}
@@ -205,7 +205,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
             borderRadius: 6,
             border: "1px solid",
             borderColor: filter === "be" ? "var(--accent)" : "var(--border)",
-            background: filter === "be" ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.02)",
+            background: filter === "be" ? "rgba(56, 189, 248, 0.2)" : "var(--panel-2)",
             color: filter === "be" ? "var(--accent)" : "var(--muted)",
             cursor: "pointer",
           }}
@@ -229,7 +229,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
             borderRadius: 6,
             border: "1px solid",
             borderColor: filter === "sl" ? "var(--red)" : "var(--border)",
-            background: filter === "sl" ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.02)",
+            background: filter === "sl" ? "rgba(239, 68, 68, 0.2)" : "var(--panel-2)",
             color: filter === "sl" ? "var(--red)" : "var(--muted)",
             cursor: "pointer",
           }}
@@ -249,7 +249,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
             textAlign: "center",
             color: "var(--muted)",
             fontSize: 12,
-            background: "rgba(0, 0, 0, 0.2)",
+            background: "var(--panel-2)",
             borderRadius: 8,
             border: "1px dashed var(--border)",
           }}
@@ -262,7 +262,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
             overflowX: "auto",
             borderRadius: 8,
             border: "1px solid var(--border)",
-            background: "rgba(0, 0, 0, 0.25)",
+            background: "var(--panel)",
           }}
         >
           <table
@@ -277,7 +277,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
               <tr
                 style={{
                   borderBottom: "1px solid var(--border)",
-                  background: "rgba(255, 255, 255, 0.03)",
+                  background: "var(--panel-2)",
                   color: "var(--muted)",
                   fontSize: 10,
                   textTransform: "uppercase",
@@ -352,7 +352,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
                     key={t._id || idx}
                     style={{
                       borderBottom:
-                        idx === filteredTrades.length - 1 ? "none" : "1px solid rgba(255, 255, 255, 0.05)",
+                        idx === filteredTrades.length - 1 ? "none" : "1px solid var(--border)",
                       transition: "background 0.15s ease",
                     }}
                   >

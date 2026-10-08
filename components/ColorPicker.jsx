@@ -497,7 +497,7 @@ export default function ColorPicker({ value, onChange, label, size = 20 }) {
               spellCheck={false}
               style={{
                 flex: 1, fontSize: 11, fontFamily: "monospace", padding: "4px 6px",
-                background: "rgba(0,0,0,0.35)", border: "1px solid var(--border)",
+                background: "var(--bg)", border: "1px solid var(--border)",
                 borderRadius: 4, color: "var(--text)", textTransform: "uppercase",
               }}
             />
@@ -515,7 +515,7 @@ export default function ColorPicker({ value, onChange, label, size = 20 }) {
                 }}
                 style={{
                   width: 44, fontSize: 11, padding: "4px 4px", textAlign: "center",
-                  background: "rgba(0,0,0,0.35)", border: "1px solid var(--border)",
+                  background: "var(--bg)", border: "1px solid var(--border)",
                   borderRadius: 4, color: "var(--text)",
                 }}
               />
@@ -524,7 +524,7 @@ export default function ColorPicker({ value, onChange, label, size = 20 }) {
           </div>
 
           {/* Preset grid */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, paddingTop: 4, borderTop: "1px solid var(--border)" }}>
             {PRESETS.map((c, i) => (
               <button
                 key={i}

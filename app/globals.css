@@ -2,6 +2,7 @@
 @import "ag-grid-community/styles/ag-theme-quartz.css";
 
 :root, [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0e1116;
   --panel: #151a23;
   --panel-2: #1a202c;
@@ -25,6 +26,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg: #f4f5f8;
   --panel: #ffffff;
   --panel-2: #f0f3fa;
@@ -45,6 +47,7 @@
 }
 
 [data-theme="navyblue"] {
+  color-scheme: dark;
   --bg: #0a1322;
   --panel: #0f1d33;
   --panel-2: #152642;
@@ -65,6 +68,7 @@
 }
 
 [data-theme="creamy"] {
+  color-scheme: light;
   --bg: #fbf8f1;
   --panel: #f4eee0;
   --panel-2: #e9dfce;
@@ -85,6 +89,7 @@
 }
 
 [data-theme="midnight"] {
+  color-scheme: dark;
   --bg: #000000;
   --panel: #0a0a0a;
   --panel-2: #121212;
@@ -103,6 +108,7 @@
 }
 
 [data-theme="matrix"] {
+  color-scheme: dark;
   --bg: #000000;
   --panel: #001100;
   --panel-2: #001a00;
@@ -345,68 +351,95 @@ input::placeholder { color: var(--muted); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 18px;
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding: 8px 14px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-sizing: border-box;
+  min-height: 48px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.autonomous-header::-webkit-scrollbar {
+  display: none;
 }
 
 .autonomous-header-top {
   display: flex;
   align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
 .autonomous-header-badges {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 1;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.autonomous-header-badges::-webkit-scrollbar {
+  display: none;
+}
+
+.autonomous-badge-chip {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .autonomous-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 @media (max-width: 768px) {
-  /* Organized Mobile Header Layout: Clean 3-tier compact structure */
+  /* Clean Single-Row Header Layout on Mobile */
   .autonomous-header {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    padding: 10px 12px !important;
-    gap: 8px !important;
-  }
-
-  .autonomous-header-top {
-    display: flex !important;
+    flex-direction: row !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    gap: 8px !important;
-  }
-
-  .autonomous-header-title-box h1 {
-    font-size: 14px !important;
-  }
-
-  /* Swipeable horizontal telemetry strip on mobile */
-  .autonomous-header-badges {
-    display: flex !important;
+    justify-content: flex-start !important;
     flex-wrap: nowrap !important;
+    padding: 6px 10px !important;
+    gap: 8px !important;
+    height: 44px !important;
+    min-height: 44px !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
     scrollbar-width: none !important;
+  }
+
+  .autonomous-header-top {
+    flex-shrink: 0 !important;
     gap: 6px !important;
-    padding: 1px 0 3px !important;
-    width: 100% !important;
+  }
+
+  .autonomous-header-title-box h1 {
+    display: none !important;
+  }
+
+  .autonomous-header-title-box .inst-tag {
+    display: none !important;
+  }
+
+  .autonomous-header-badges {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    flex-shrink: 0 !important;
+    gap: 6px !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
   .autonomous-header-badges::-webkit-scrollbar {
@@ -416,24 +449,24 @@ input::placeholder { color: var(--muted); }
   .autonomous-badge-chip {
     flex-shrink: 0 !important;
     white-space: nowrap !important;
-    padding: 4px 8px !important;
+    padding: 3px 6px !important;
     font-size: 10px !important;
   }
 
-  /* Clean full-width 3-column action buttons grid */
   .autonomous-header-actions {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr 1.3fr !important;
-    gap: 6px !important;
-    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-shrink: 0 !important;
+    gap: 5px !important;
+    margin-left: auto !important;
   }
 
   .autonomous-header-actions button {
-    width: 100% !important;
-    justify-content: center !important;
-    padding: 6px 6px !important;
-    font-size: 11px !important;
-    white-space: nowrap !important;
+    width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    border-radius: 6px !important;
   }
 
   .tf-container {
@@ -777,34 +810,33 @@ a[href*="tradingview.com"],
   -webkit-touch-callout: none !important;
 }
 
-/* AG Grid Institutional Quartz Dark Theme Overrides */
+/* AG Grid Institutional Quartz Theme Overrides (Theme-Adaptive) */
 .ag-theme-quartz,
 .ag-theme-quartz-dark,
 [class*="ag-theme-"] {
-  --ag-background-color: var(--panel, #151a23) !important;
-  --ag-header-background-color: var(--panel-2, #10141d) !important;
-  --ag-border-color: var(--border, #232a38) !important;
-  --ag-foreground-color: var(--fg, #d7dce6) !important;
-  --ag-secondary-foreground-color: var(--muted, #8a93a6) !important;
-  --ag-row-hover-color: rgba(41, 98, 255, 0.08) !important;
+  --ag-background-color: var(--panel) !important;
+  --ag-header-background-color: var(--panel-2) !important;
+  --ag-border-color: var(--border) !important;
+  --ag-foreground-color: var(--fg) !important;
+  --ag-secondary-foreground-color: var(--muted) !important;
+  --ag-row-hover-color: var(--accent-soft) !important;
   --ag-selected-row-background-color: rgba(41, 98, 255, 0.16) !important;
-  --ag-header-foreground-color: #f1f5f9 !important;
-  --ag-data-color: var(--fg, #d7dce6) !important;
-  --ag-odd-row-background-color: rgba(0, 0, 0, 0.16) !important;
+  --ag-header-foreground-color: var(--fg) !important;
+  --ag-data-color: var(--fg) !important;
+  --ag-odd-row-background-color: var(--panel-2) !important;
   --ag-font-family: var(--font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif) !important;
   --ag-font-size: 11.5px !important;
   --ag-row-height: 42px !important;
   --ag-header-height: 38px !important;
   --ag-floating-filters-height: 34px !important;
-  --ag-control-panel-background-color: var(--panel, #151a23) !important;
-  --ag-subheader-background-color: var(--panel-2, #10141d) !important;
-  --ag-menu-background-color: var(--panel, #151a23) !important;
-  --ag-panel-background-color: var(--panel, #151a23) !important;
-  --ag-card-background-color: var(--panel, #151a23) !important;
-  --ag-modal-overlay-background-color: rgba(0, 0, 0, 0.6) !important;
-  color-scheme: dark !important;
-  background-color: var(--panel, #151a23) !important;
-  color: var(--fg, #d7dce6) !important;
+  --ag-control-panel-background-color: var(--panel) !important;
+  --ag-subheader-background-color: var(--panel-2) !important;
+  --ag-menu-background-color: var(--panel) !important;
+  --ag-panel-background-color: var(--panel) !important;
+  --ag-card-background-color: var(--panel) !important;
+  --ag-modal-overlay-background-color: rgba(0, 0, 0, 0.4) !important;
+  background-color: var(--panel) !important;
+  color: var(--fg) !important;
 }
 
 .ag-theme-quartz .ag-root-wrapper,
@@ -813,8 +845,8 @@ a[href*="tradingview.com"],
 .ag-theme-quartz-dark .ag-root,
 .ag-theme-quartz .ag-body-viewport,
 .ag-theme-quartz-dark .ag-body-viewport {
-  background-color: var(--panel, #151a23) !important;
-  color: var(--fg, #d7dce6) !important;
+  background-color: var(--panel) !important;
+  color: var(--fg) !important;
   border: none !important;
 }
 
@@ -822,32 +854,32 @@ a[href*="tradingview.com"],
 .ag-theme-quartz-dark .ag-header,
 .ag-theme-quartz .ag-header-row,
 .ag-theme-quartz-dark .ag-header-row {
-  background-color: var(--panel-2, #10141d) !important;
-  border-bottom: 1px solid var(--border, #232a38) !important;
+  background-color: var(--panel-2) !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 
 .ag-theme-quartz .ag-header-cell,
 .ag-theme-quartz-dark .ag-header-cell {
-  background-color: var(--panel-2, #10141d) !important;
+  background-color: var(--panel-2) !important;
 }
 
 .ag-theme-quartz .ag-row,
 .ag-theme-quartz-dark .ag-row {
-  background-color: var(--panel, #151a23) !important;
-  color: var(--fg, #d7dce6) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  background-color: var(--panel) !important;
+  color: var(--fg) !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 
 .ag-theme-quartz .ag-row-odd,
 .ag-theme-quartz-dark .ag-row-odd {
-  background-color: rgba(0, 0, 0, 0.16) !important;
+  background-color: var(--panel-2) !important;
 }
 
 .ag-theme-quartz .ag-row:hover,
 .ag-theme-quartz-dark .ag-row:hover,
 .ag-theme-quartz .ag-row-hover,
 .ag-theme-quartz-dark .ag-row-hover {
-  background-color: rgba(41, 98, 255, 0.08) !important;
+  background-color: var(--accent-soft) !important;
 }
 
 .ag-theme-quartz .ag-row-selected,
@@ -857,15 +889,15 @@ a[href*="tradingview.com"],
 
 .ag-theme-quartz .ag-cell,
 .ag-theme-quartz-dark .ag-cell {
-  color: var(--fg, #d7dce6) !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.02) !important;
+  color: var(--fg) !important;
+  border-right: 1px solid var(--border) !important;
 }
 
 .ag-theme-quartz .ag-paging-panel,
 .ag-theme-quartz-dark .ag-paging-panel {
-  background-color: var(--panel-2, #10141d) !important;
-  border-top: 1px solid var(--border, #232a38) !important;
-  color: var(--muted, #8a93a6) !important;
+  background-color: var(--panel-2) !important;
+  border-top: 1px solid var(--border) !important;
+  color: var(--muted) !important;
 }
 
 .ag-theme-quartz .ag-header-cell-label,
@@ -874,28 +906,28 @@ a[href*="tradingview.com"],
   text-transform: uppercase !important;
   letter-spacing: 0.04em !important;
   font-size: 11px !important;
-  color: #f1f5f9 !important;
+  color: var(--fg) !important;
   white-space: nowrap !important;
 }
 
 .ag-theme-quartz .ag-header-icon,
 .ag-theme-quartz-dark .ag-header-icon {
-  color: var(--muted, #8a93a6) !important;
+  color: var(--muted) !important;
 }
 
 .ag-theme-quartz .ag-header-icon:hover,
 .ag-theme-quartz-dark .ag-header-icon:hover {
-  color: var(--fg, #d7dce6) !important;
+  color: var(--fg) !important;
 }
 
 .ag-theme-quartz .ag-paging-button,
 .ag-theme-quartz-dark .ag-paging-button {
-  color: var(--fg, #d7dce6) !important;
+  color: var(--fg) !important;
 }
 
 .ag-theme-quartz .ag-paging-button:hover,
 .ag-theme-quartz-dark .ag-paging-button:hover {
-  color: var(--accent, #2962ff) !important;
+  color: var(--accent) !important;
 }
 
 .ag-theme-quartz input,
@@ -908,7 +940,7 @@ a[href*="tradingview.com"],
   font-size: 11px !important;
   border-radius: 4px !important;
   border: 1px solid var(--border) !important;
-  background: rgba(0, 0, 0, 0.4) !important;
+  background: var(--bg) !important;
   color: var(--fg) !important;
 }
 
@@ -934,11 +966,11 @@ a[href*="tradingview.com"],
 .ag-theme-quartz-dark .ag-menu,
 .ag-theme-quartz .ag-popup,
 .ag-theme-quartz-dark .ag-popup {
-  background-color: var(--panel, #151a23) !important;
-  border: 1px solid var(--border, #232a38) !important;
-  color: var(--fg, #d7dce6) !important;
+  background-color: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--fg) !important;
   border-radius: 8px !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25) !important;
 }
 
 .ag-theme-quartz .ag-filter-wrapper,

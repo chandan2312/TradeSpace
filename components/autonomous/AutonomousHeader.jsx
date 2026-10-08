@@ -153,8 +153,8 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "4px 10px",
+            gap: 5,
+            padding: "4px 8px",
             borderRadius: 8,
             fontSize: 11,
             fontWeight: 600,
@@ -172,8 +172,9 @@ export default function AutonomousHeader({
                 : "var(--orange)",
             border: "1px solid var(--border)",
           }}
+          title={`Execution Mode: ${execMode}`}
         >
-          <Layers size={13} /> MODE: {execMode}
+          <Layers size={13} /> {execMode}
         </div>
 
         {/* MT5 Broker Execution Status (1-Click Toggle) */}
@@ -184,8 +185,8 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "4px 10px",
+            gap: 5,
+            padding: "4px 8px",
             borderRadius: 8,
             fontSize: 11,
             fontWeight: 700,
@@ -198,7 +199,7 @@ export default function AutonomousHeader({
           }}
           title={
             config?.liveTrading
-              ? `MT5 LIVE ENABLED: Connected to ${brokerAccount?.server || "MT5"} (#${brokerAccount?.login || ""}) - Click to switch to Paper Sim`
+              ? `MT5 LIVE ENABLED: Connected to ${brokerAccount?.server || "MT5"} (#${brokerAccount?.login || ""}) · Balance: $${Number(brokerAccount?.equity || brokerAccount?.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - Click to switch to Paper Sim`
               : "PAPER SIM ACTIVE: Click to toggle LIVE MT5 broker execution"
           }
         >
@@ -211,12 +212,7 @@ export default function AutonomousHeader({
               boxShadow: config?.liveTrading ? "0 0 8px #10b981" : "none",
             }}
           />
-          {config?.liveTrading ? "MT5 LIVE: ON" : "MT5 LIVE: OFF (PAPER)"}
-          {brokerAccount && (
-            <span style={{ fontSize: 10, opacity: 0.85, fontFamily: "monospace" }}>
-              · ${Number(brokerAccount.equity || brokerAccount.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          )}
+          {config?.liveTrading ? "MT5: ON" : "MT5: PAPER"}
         </button>
 
         {/* Horizon Mode */}
@@ -225,8 +221,8 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "4px 10px",
+            gap: 5,
+            padding: "4px 8px",
             borderRadius: 8,
             fontSize: 11,
             fontWeight: 600,
@@ -234,8 +230,9 @@ export default function AutonomousHeader({
             border: "1px solid var(--border)",
             color: "var(--fg)",
           }}
+          title={`Horizon Mode: ${horizonMode}`}
         >
-          <Compass size={13} style={{ color: "var(--accent)" }} /> HORIZON: {horizonMode}
+          <Compass size={13} style={{ color: "var(--accent)" }} /> {horizonMode}
         </div>
 
         {/* Active Time Slot & Killzone */}
@@ -245,8 +242,8 @@ export default function AutonomousHeader({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
-              padding: "4px 10px",
+              gap: 5,
+              padding: "4px 8px",
               borderRadius: 8,
               fontSize: 11,
               fontWeight: 600,
@@ -292,8 +289,8 @@ export default function AutonomousHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "4px 10px",
+            gap: 5,
+            padding: "4px 8px",
             borderRadius: 8,
             fontSize: 11,
             color: "var(--muted)",
@@ -302,11 +299,11 @@ export default function AutonomousHeader({
             fontFamily: "monospace",
           }}
         >
-          <Clock size={13} /> {eetTime} (Broker) · <span style={{ color: "var(--accent)", fontWeight: 600 }}>{activeSession}</span>
+          <Clock size={13} /> {eetTime} · <span style={{ color: "var(--accent)", fontWeight: 600 }}>{activeSession}</span>
         </div>
       </div>
 
-      {/* Row 3: Control Buttons */}
+      {/* Control Buttons */}
       <div className="autonomous-header-actions">
         {/* Scan Now */}
         <button
@@ -316,19 +313,19 @@ export default function AutonomousHeader({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 6,
-            padding: "6px 12px",
+            width: 32,
+            height: 32,
+            padding: 0,
             borderRadius: 8,
             background: "rgba(255, 255, 255, 0.05)",
             border: "1px solid var(--border)",
             color: "var(--fg)",
-            fontSize: 12,
-            fontWeight: 600,
             cursor: isScanning ? "wait" : "pointer",
           }}
+          title={isScanning ? "Scanning universe..." : "Scan Universe"}
+          aria-label="Scan Universe"
         >
-          <RefreshCw size={13} className={isScanning ? "animate-spin" : ""} />
-          <span>{isScanning ? "Scanning..." : "Scan Universe"}</span>
+          <RefreshCw size={14} className={isScanning ? "animate-spin" : ""} />
         </button>
 
         {/* Settings */}
@@ -339,19 +336,19 @@ export default function AutonomousHeader({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 6,
-            padding: "6px 12px",
+            width: 32,
+            height: 32,
+            padding: 0,
             borderRadius: 8,
             background: "rgba(255, 255, 255, 0.05)",
             border: "1px solid var(--border)",
             color: "var(--fg)",
-            fontSize: 12,
-            fontWeight: 600,
             cursor: "pointer",
           }}
-          title="Autonomous Risk & Horizon Configuration"
+          title="Autonomous Settings & Session Windows"
+          aria-label="Settings"
         >
-          <Sliders size={13} /> <span>Settings</span>
+          <Sliders size={14} />
         </button>
 
         {/* Master Power Toggle */}
@@ -362,19 +359,19 @@ export default function AutonomousHeader({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 6,
-            padding: "6px 14px",
+            width: 34,
+            height: 32,
+            padding: 0,
             borderRadius: 8,
-            fontSize: 12,
-            fontWeight: 700,
             cursor: "pointer",
             background: isRunning ? "rgba(239, 68, 68, 0.15)" : "rgba(34, 197, 94, 0.15)",
             color: isRunning ? "var(--red)" : "var(--green)",
             border: `1px solid ${isRunning ? "rgba(239, 68, 68, 0.4)" : "rgba(34, 197, 94, 0.4)"}`,
           }}
+          title={!configAvailable ? "System Unavailable" : isRunning ? "Halt Autonomous Trading" : "Engage Autonomous Trading"}
+          aria-label={isRunning ? "Halt Trading" : "Engage Trading"}
         >
           {isRunning ? <Pause size={14} /> : <Play size={14} />}
-          <span>{!configAvailable ? "UNAVAILABLE" : isRunning ? "HALT" : "ENGAGE"}</span>
         </button>
       </div>
     </header>

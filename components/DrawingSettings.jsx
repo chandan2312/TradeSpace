@@ -214,7 +214,7 @@ export default function DrawingSettings({ api }) {
       {/* ── Navigation Tabs ── */}
       <div style={{
         display: "flex", gap: 4, padding: "6px 12px", borderBottom: "1px solid var(--border)",
-        background: "rgba(0,0,0,0.15)",
+        background: "var(--panel-2)",
       }}>
         {["Style", ...(isPosition || isLine || isText ? ["Inputs"] : []), "Visibility"].map((tab) => (
           <button
@@ -333,7 +333,7 @@ export default function DrawingSettings({ api }) {
                           updated[idx] = { ...lvl, coeff: parseFloat(e.target.value) || 0 };
                           setStyle({ levels: updated });
                         }}
-                        style={{ fontSize: 10, padding: "2px 3px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 3, color: "var(--text)", width: "100%" }}
+                        style={{ fontSize: 10, padding: "2px 3px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 3, color: "var(--text)", width: "100%" }}
                       />
                       {/* Color picker */}
                       <ColorPicker
@@ -685,7 +685,7 @@ export default function DrawingSettings({ api }) {
                               ratio: newRR,
                             });
                           }}
-                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--green)", borderRadius: 4, color: "var(--green)", fontWeight: 700 }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--green)", borderRadius: 4, color: "var(--green)", fontWeight: 700 }}
                         />
                       </Row>
 
@@ -706,7 +706,7 @@ export default function DrawingSettings({ api }) {
                               ratio: calculatedRR,
                             });
                           }}
-                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                         />
                       </Row>
 
@@ -725,7 +725,7 @@ export default function DrawingSettings({ api }) {
                               ratio: newRR,
                             });
                           }}
-                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                         />
                       </Row>
 
@@ -746,7 +746,7 @@ export default function DrawingSettings({ api }) {
                               stop: newStop,
                             });
                           }}
-                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                          style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                         />
                       </Row>
                     </div>
@@ -758,7 +758,7 @@ export default function DrawingSettings({ api }) {
                     type="number"
                     value={style.accountSize ?? 100000}
                     onChange={(e) => setStyle({ accountSize: Math.max(0, Number(e.target.value) || 0) })}
-                    style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                    style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                   />
                 </Row>
 
@@ -769,7 +769,7 @@ export default function DrawingSettings({ api }) {
                       step={0.1}
                       value={style.riskPercent ?? 1}
                       onChange={(e) => setStyle({ riskPercent: Math.max(0, Number(e.target.value) || 0) })}
-                      style={{ width: 70, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                      style={{ width: 70, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                     />
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>%</span>
                   </div>
@@ -781,7 +781,7 @@ export default function DrawingSettings({ api }) {
                     step={0.1}
                     value={style.lotSize ?? 1}
                     onChange={(e) => setStyle({ lotSize: Math.max(0.01, Number(e.target.value) || 1) })}
-                    style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                    style={{ width: 120, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                   />
                 </Row>
               </>
@@ -799,7 +799,7 @@ export default function DrawingSettings({ api }) {
                       setStyle({ text: e.target.value });
                     }}
                     placeholder="Enter annotation..."
-                    style={{ width: "100%", fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                    style={{ width: "100%", fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                   />
                 </Row>
 
@@ -810,7 +810,7 @@ export default function DrawingSettings({ api }) {
                     max={72}
                     value={style.fontSize || 14}
                     onChange={(e) => setStyle({ fontSize: Number(e.target.value) || 14 })}
-                    style={{ width: 70, fontSize: 12, padding: "4px 8px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
+                    style={{ width: 70, fontSize: 12, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)" }}
                   />
                 </Row>
               </>
@@ -857,7 +857,7 @@ export default function DrawingSettings({ api }) {
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "10px 16px", borderTop: "1px solid var(--border)",
-        background: "rgba(0,0,0,0.2)", position: "relative",
+        background: "var(--panel-2)", position: "relative",
       }}>
         {/* Template Button & Dropdown */}
         <div style={{ position: "relative" }}>
@@ -959,7 +959,7 @@ export default function DrawingSettings({ api }) {
               onChange={(e) => setNewTemplateName(e.target.value)}
               autoFocus
               style={{
-                width: "100%", padding: "6px 8px", fontSize: 12, background: "rgba(0,0,0,0.3)",
+                width: "100%", padding: "6px 8px", fontSize: 12, background: "var(--bg)",
                 border: "1px solid var(--border)", borderRadius: 4, color: "var(--text)", marginBottom: 12,
               }}
             />

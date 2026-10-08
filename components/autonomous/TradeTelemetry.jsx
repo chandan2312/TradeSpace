@@ -128,10 +128,14 @@ export function tradeRiskTelemetry(trade, ticks = {}) {
 }
 
 export function TelemetryValue({ label, value, color = "var(--fg)" }) {
+  const displayVal =
+    value && typeof value === "object"
+      ? value.name || value.label || value.title || value.target || JSON.stringify(value)
+      : (value ?? "Unavailable");
   return (
     <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
       <div style={{ color: "var(--muted)", fontSize: 10, marginBottom: 3 }}>{label}</div>
-      <div style={{ color, fontFamily: "monospace", fontSize: 11 }}>{value ?? "Unavailable"}</div>
+      <div style={{ color, fontFamily: "monospace", fontSize: 11 }}>{displayVal}</div>
     </div>
   );
 }

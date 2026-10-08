@@ -303,8 +303,8 @@ function BrainCard({ brain }) {
       {dt && (
         <div style={{
           display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px",
-          background: "rgba(0,0,0,0.2)", borderRadius: 4, padding: "4px 6px", margin: "4px 0 6px",
-          fontSize: 8.5, border: "1px solid rgba(255,255,255,0.04)"
+          background: "var(--panel-2)", borderRadius: 4, padding: "4px 6px", margin: "4px 0 6px",
+          fontSize: 8.5, border: "1px solid var(--border)"
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span className="muted">🧭 Macro Compass:</span>

@@ -16,6 +16,9 @@ import {
   Sun,
   TrendingUp,
   Zap,
+  CandlestickChart,
+  ChevronRight,
+  Target,
 } from "lucide-react";
 import { finiteNumber, formatPrice, markPriceFor } from "./TradeTelemetry";
 
@@ -486,7 +489,7 @@ export default function PairRadar({
                   gap: 4,
                   padding: "5px 8px",
                   color: active ? activeColor : "var(--muted)",
-                  background: active ? activeBg : "rgba(255, 255, 255, 0.02)",
+                  background: active ? activeBg : "var(--panel-2)",
                   borderColor: active ? activeBorder : "var(--border)",
                 }}
               >
@@ -496,7 +499,7 @@ export default function PairRadar({
                     fontSize: 9,
                     fontFamily: "monospace",
                     opacity: active ? 1 : 0.6,
-                    background: "rgba(0, 0, 0, 0.25)",
+                    background: "var(--panel)",
                     padding: "1px 4px",
                     borderRadius: 3,
                   }}
@@ -559,7 +562,7 @@ export default function PairRadar({
                       ? "rgba(251, 191, 36, 0.05)"
                       : isPrime
                       ? "rgba(56, 189, 248, 0.06)"
-                      : "rgba(255, 255, 255, 0.02)",
+                      : "var(--panel-2)",
                     borderColor: active
                       ? isTop
                         ? "#fbbf24"
@@ -699,7 +702,7 @@ export default function PairRadar({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))",
             gap: 12,
           }}
         >
@@ -724,15 +727,43 @@ export default function PairRadar({
               : "var(--muted)";
 
             const level = pair.stagedLevel;
-            const rawRR = level?.rr ?? level?.targetRR;
-            const displayRR =
-              Number.isFinite(Number(rawRR)) && Number(rawRR) > 0
-                ? Number(rawRR)
+            const candidate =
+              Array.isArray(pair.candidates) && pair.candidates.length > 0
+                ? pair.candidates[0]
+                : Array.isArray(pair.entryModel?.allCandidates) && pair.entryModel.allCandidates.length > 0
+                ? pair.entryModel.allCandidates[0]
                 : null;
+
+            const entry = finiteNumber(level?.entry ?? candidate?.entry ?? candidate?.price);
+            const sl = finiteNumber(level?.sl ?? candidate?.sl);
+            const tp = finiteNumber(level?.tp ?? candidate?.tp ?? candidate?.targetPrice ?? level?.targets?.[0]?.price);
+            const rawRR = level?.rr ?? level?.targetRR ?? candidate?.rr;
+            const displayRR = finiteNumber(rawRR);
+
             const conviction = finiteNumber(pair.brain?.conviction);
             const isWhitelisted = whitelistSet.has(pair.symbol);
             const currentMark = markPriceFor(pair, ticks);
-            const rangeZone = pair.dealingRange?.zone || pair.range?.zone || "MID";
+
+            const range = pair.dealingRange || pair.range || {};
+            const rangeZone = range.h4Zone || range.zone || "EQUILIBRIUM";
+            const coveragePct = finiteNumber(range.h4CoveragePct ?? range.coveragePct ?? range.coverage);
+            const dolObj = pair.brain?.htfLiquidity?.drawOnLiquidity || pair.brain?.targetDOL;
+            const dolTarget =
+              (typeof dolObj === "string" ? dolObj : null) ||
+              dolObj?.name ||
+              dolObj?.target ||
+              dolObj?.label ||
+              (dolObj?.type ? `${dolObj.type} ${dolObj.targetSide || ""}`.trim() : null) ||
+              (Array.isArray(pair.targets) && pair.targets[0]
+                ? typeof pair.targets[0] === "string"
+                  ? pair.targets[0]
+                  : pair.targets[0]?.label || pair.targets[0]?.name || pair.targets[0]?.source
+                : null) ||
+              null;
+            const modelName =
+              (typeof pair.entryModel?.name === "string" && pair.entryModel.name) ||
+              (typeof level?.modelName === "string" && level.modelName) ||
+              (isWatching ? "Scanning Retracement (FVG / OTE)" : "Structure Shift");
 
             // Opportunity score calculation & rank styling
             const effectiveScore =
@@ -766,7 +797,7 @@ export default function PairRadar({
                 ? "rgba(203, 213, 225, 0.12)"
                 : rankNum === 3
                 ? "rgba(249, 115, 22, 0.12)"
-                : "rgba(255, 255, 255, 0.04)";
+                : "var(--panel)";
 
             return (
               <article
@@ -774,15 +805,15 @@ export default function PairRadar({
                 onClick={() => onInspectPair?.(pair)}
                 style={{
                   background: prime
-                    ? "rgba(34, 197, 94, 0.03)"
+                    ? "rgba(34, 197, 94, 0.04)"
                     : isWatching
-                    ? "rgba(249, 115, 22, 0.02)"
-                    : "rgba(255, 255, 255, 0.02)",
+                    ? "rgba(249, 115, 22, 0.03)"
+                    : "var(--panel-2)",
                   border: `1px solid ${
                     prime
-                      ? "rgba(34, 197, 94, 0.4)"
+                      ? "rgba(34, 197, 94, 0.45)"
                       : isWatching
-                      ? "rgba(249, 115, 22, 0.3)"
+                      ? "rgba(249, 115, 22, 0.35)"
                       : isScanning
                       ? "rgba(56, 189, 248, 0.25)"
                       : isBlocked
@@ -793,35 +824,36 @@ export default function PairRadar({
                   padding: "12px 14px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  gap: 9,
                   cursor: "pointer",
                   transition: "all 0.15s ease",
-                  boxShadow: prime ? "0 4px 12px rgba(34, 197, 94, 0.1)" : "none",
+                  boxShadow: prime ? "0 4px 14px rgba(34, 197, 94, 0.12)" : "none",
                   position: "relative",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.borderColor = "var(--purple, #a855f7)";
                   e.currentTarget.style.transform = "translateY(-1px)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = prime
-                    ? "rgba(34, 197, 94, 0.4)"
+                    ? "rgba(34, 197, 94, 0.45)"
                     : isBlocked
                     ? "rgba(239, 68, 68, 0.2)"
                     : "var(--border)";
                   e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
-                {/* Top Row: Rank Badge, Star, Symbol, Direction, Horizon & Watchlist tag */}
+                {/* 1. Header: Rank, Star, Symbol, Direction, Horizon & Watchlist */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 6,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     {/* Rank Pill */}
                     <span
                       style={{
@@ -869,14 +901,14 @@ export default function PairRadar({
                       style={{
                         fontSize: 10,
                         fontWeight: 800,
-                        padding: "1px 5px",
+                        padding: "1px 6px",
                         borderRadius: 3,
                         background:
                           pair.dir === 1
                             ? "rgba(34, 197, 94, 0.15)"
                             : pair.dir === -1
                             ? "rgba(239, 68, 68, 0.15)"
-                            : "rgba(255, 255, 255, 0.05)",
+                            : "var(--panel)",
                         color:
                           pair.dir === 1
                             ? "var(--green)"
@@ -928,179 +960,265 @@ export default function PairRadar({
                           : "4H-15M")}
                     </span>
 
-                    {/* Watchlist tag */}
+                    {/* Status Pill */}
                     <span
                       style={{
                         fontSize: 9,
                         fontWeight: 700,
-                        padding: "2px 5px",
-                        borderRadius: 3,
-                        background: pair.isInMainWatchlist
-                          ? "rgba(34, 197, 94, 0.12)"
-                          : "rgba(255, 255, 255, 0.05)",
-                        color: pair.isInMainWatchlist ? "var(--green)" : "var(--muted)",
-                      }}
-                    >
-                      {pair.isInMainWatchlist ? "WATCHLIST" : "CONTEXT"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Score & Conviction Row */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 6,
-                    padding: "4px 8px",
-                    background: "rgba(255, 255, 255, 0.02)",
-                    borderRadius: 6,
-                    border: "1px solid rgba(255, 255, 255, 0.04)",
-                  }}
-                >
-                  {/* Brain Conviction */}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        fontFamily: "monospace",
-                        color:
-                          conviction >= 75
-                            ? "var(--green)"
-                            : conviction >= 50
-                            ? "var(--accent)"
-                            : "var(--muted)",
-                      }}
-                    >
-                      {conviction !== null ? `${conviction}%` : "—"}
-                    </span>
-                    <span style={{ fontSize: 10, color: "var(--muted)" }}>Conviction</span>
-                  </div>
-
-                  {/* Opportunity Score Pill */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <span style={{ fontSize: 10, color: "var(--muted)" }}>Opportunity</span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        fontFamily: "monospace",
-                        color: scoreColor,
-                        background: `${scoreColor}18`,
-                        border: `1px solid ${scoreColor}40`,
                         padding: "1px 6px",
-                        borderRadius: 4,
+                        borderRadius: 3,
+                        background: prime
+                          ? "rgba(34, 197, 94, 0.18)"
+                          : isWatching
+                          ? "rgba(249, 115, 22, 0.15)"
+                          : isBlocked
+                          ? "rgba(239, 68, 68, 0.12)"
+                          : "var(--panel)",
+                        color: statusColor,
+                        border: `1px solid ${statusColor}40`,
                       }}
                     >
-                      {effectiveScore}/100
+                      {status.replace(/_/g, " ")}
                     </span>
                   </div>
                 </div>
 
-                {/* Status Pill & Dealing Zone Row */}
+                {/* 2. Opportunity & Conviction Visual Dual Meter Strip */}
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 6,
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    padding: "6px 8px",
+                    background: "var(--panel)",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      background: prime
-                        ? "rgba(34, 197, 94, 0.2)"
-                        : isWatching
-                        ? "rgba(249, 115, 22, 0.15)"
-                        : isScanning
-                        ? "rgba(56, 189, 248, 0.12)"
-                        : isBlocked
-                        ? "rgba(239, 68, 68, 0.15)"
-                        : "rgba(255, 255, 255, 0.06)",
-                      color: statusColor,
-                      border: `1px solid ${statusColor}`,
-                    }}
-                  >
-                    {status.replaceAll("_", " ")}
-                  </span>
-
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--muted)",
-                    }}
-                  >
-                    Zone:{" "}
-                    <strong
+                  {/* Opportunity Score Meter */}
+                  <div>
+                    <div
                       style={{
-                        color:
-                          rangeZone.includes("DISCOUNT")
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 9.5,
+                        color: "var(--muted)",
+                        marginBottom: 3,
+                      }}
+                    >
+                      <span>Opportunity</span>
+                      <strong style={{ fontFamily: "monospace", color: scoreColor }}>
+                        {effectiveScore}/100
+                      </strong>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: 4,
+                        borderRadius: 2,
+                        background: "var(--panel-2)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(100, Math.max(0, effectiveScore))}%`,
+                          height: "100%",
+                          background: scoreColor,
+                          borderRadius: 2,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Brain Conviction Meter */}
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 9.5,
+                        color: "var(--muted)",
+                        marginBottom: 3,
+                      }}
+                    >
+                      <span>Conviction</span>
+                      <strong
+                        style={{
+                          fontFamily: "monospace",
+                          color: (conviction ?? 0) >= 75 ? "var(--green)" : "var(--accent)",
+                        }}
+                      >
+                        {conviction !== null ? `${conviction}%` : "—"}
+                      </strong>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: 4,
+                        borderRadius: 2,
+                        background: "var(--panel-2)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(100, Math.max(0, conviction ?? 0))}%`,
+                          height: "100%",
+                          background: (conviction ?? 0) >= 75 ? "var(--green)" : "var(--accent)",
+                          borderRadius: 2,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Setup Price Geometry Grid (The Core Trade Idea Data) */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, 1fr)",
+                    gap: 6,
+                    padding: "6px 8px",
+                    background: "var(--panel)",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    fontFamily: "monospace",
+                    fontSize: 10,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Mark</div>
+                    <div style={{ fontWeight: 700, color: "var(--fg)" }}>{formatPrice(currentMark)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Entry</div>
+                    <div style={{ fontWeight: 700, color: "var(--accent)" }}>{entry !== null ? formatPrice(entry) : "—"}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>SL</div>
+                    <div style={{ fontWeight: 700, color: "#ea580c" }}>{sl !== null ? formatPrice(sl) : "—"}</div>
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <span style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>TP / RR</span>
+                      {displayRR !== null && (
+                        <span style={{ fontSize: 9, fontWeight: 800, color: "var(--purple, #c084fc)" }}>
+                          {displayRR.toFixed(1)}R
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontWeight: 700, color: "#a855f7" }}>{tp !== null ? formatPrice(tp) : "—"}</div>
+                  </div>
+                </div>
+
+                {/* 4. HTF Dealing Range & DOL Landmark */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 9.5 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)" }}>
+                    <span>
+                      Zone:{" "}
+                      <strong
+                        style={{
+                          color: rangeZone.includes("DISCOUNT")
                             ? "var(--green)"
                             : rangeZone.includes("PREMIUM")
                             ? "var(--red)"
                             : "var(--fg)",
+                        }}
+                      >
+                        {rangeZone.replace(/_/g, " ")}
+                      </strong>
+                      {coveragePct !== null && (
+                        <span style={{ opacity: 0.7 }}> ({Math.round(coveragePct)}% EQ)</span>
+                      )}
+                    </span>
+                    {typeof dolTarget === "string" && Boolean(dolTarget) && (
+                      <span
+                        style={{
+                          color: "var(--accent)",
+                          maxWidth: "52%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        🎯 {dolTarget}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Mini range progress line */}
+                  {coveragePct !== null && (
+                    <div
+                      style={{
+                        position: "relative",
+                        width: "100%",
+                        height: 3,
+                        background: "var(--panel)",
+                        borderRadius: 2,
+                        overflow: "hidden",
                       }}
                     >
-                      {rangeZone.replace(/_/g, " ")}
-                    </strong>
-                  </span>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: 0,
+                          bottom: 0,
+                          width: 1,
+                          background: "var(--border)",
+                        }}
+                      />
+                      <div
+                        style={{
+                          width: `${Math.min(100, Math.max(0, coveragePct))}%`,
+                          height: "100%",
+                          background: rangeZone.includes("DISCOUNT") ? "var(--green)" : "var(--red)",
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* Mark Price & Staged Execution Chip */}
+                {/* 5. Footer & CTA Prompt */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
+                    gap: 6,
                     fontSize: 10,
                     color: "var(--muted)",
-                    paddingTop: 4,
-                    borderTop: "1px solid rgba(255, 255, 255, 0.04)",
+                    borderTop: "1px solid var(--border)",
+                    paddingTop: 6,
                   }}
                 >
-                  <span style={{ fontFamily: "monospace" }}>
-                    Mark: {formatPrice(currentMark)}
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flex: 1,
+                      color: isBlocked ? "var(--red)" : "var(--muted)",
+                    }}
+                  >
+                    {typeof pair.statusReason === "string" ? pair.statusReason : typeof modelName === "string" ? modelName : "Analyzing setup"}
                   </span>
 
-                  {level?.entry && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      <span style={{ color: "var(--accent)" }}>
-                        Entry: {formatPrice(level.entry)}
-                      </span>
-                      <span style={{ color: "var(--green)", fontWeight: 700 }}>
-                        {displayRR !== null ? `${displayRR.toFixed(1)}R` : "—"}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Click to Inspect Prompt */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    gap: 4,
-                    fontSize: 10,
-                    color: "var(--accent)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <Eye size={11} />
-                  <span>Inspect Brain Details</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      color: "var(--purple, #c084fc)",
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <CandlestickChart size={12} />
+                    <span>Chart & Brain</span>
+                    <ChevronRight size={11} />
+                  </div>
                 </div>
               </article>
             );

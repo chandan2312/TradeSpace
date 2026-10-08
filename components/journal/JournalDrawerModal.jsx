@@ -211,7 +211,7 @@ export default function JournalDrawerModal({
           style={{
             display: "flex",
             borderBottom: "1px solid var(--border)",
-            background: "rgba(0, 0, 0, 0.2)",
+            background: "var(--panel-2)",
             padding: "0 16px",
           }}
         >
@@ -263,7 +263,7 @@ export default function JournalDrawerModal({
                   gap: 8,
                 }}
               >
-                <div style={{ background: "rgba(0, 0, 0, 0.3)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ background: "var(--panel-2)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>ACTUAL RETURN (AR)</div>
                   <div style={{ fontSize: 17, fontWeight: 800, color: (trade.actualR ?? trade.realizedR) > 0 ? "var(--green)" : (trade.actualR ?? trade.realizedR) < 0 ? "var(--red)" : "var(--fg)", fontFamily: "monospace" }}>
                     {(trade.actualR ?? trade.realizedR) > 0 ? `+${(trade.actualR ?? trade.realizedR).toFixed(2)}` : (trade.actualR ?? trade.realizedR).toFixed(2)} AR
@@ -273,7 +273,7 @@ export default function JournalDrawerModal({
                   </div>
                 </div>
 
-                <div style={{ background: "rgba(0, 0, 0, 0.3)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ background: "var(--panel-2)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>IDEAL R (IR)</div>
                   {trade.idealR != null && Number(trade.idealR) > 0.2 ? (
                     <>
@@ -296,7 +296,7 @@ export default function JournalDrawerModal({
                   )}
                 </div>
 
-                <div style={{ background: "rgba(0, 0, 0, 0.3)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ background: "var(--panel-2)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>MAX EQUITY (MFE)</div>
                   <div style={{ fontSize: 17, fontWeight: 800, color: "var(--green)", fontFamily: "monospace" }}>
                     +{trade.peakR.toFixed(2)} R
@@ -306,7 +306,7 @@ export default function JournalDrawerModal({
                   </div>
                 </div>
 
-                <div style={{ background: "rgba(0, 0, 0, 0.3)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ background: "var(--panel-2)", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>MAX DRAWDOWN (MAE)</div>
                   <div style={{ fontSize: 17, fontWeight: 800, color: trade.maxDrawdownR < 0 ? "var(--red)" : "var(--muted)", fontFamily: "monospace" }}>
                     {trade.maxDrawdownR.toFixed(2)} R
@@ -320,7 +320,7 @@ export default function JournalDrawerModal({
               {/* Execution Level Chips */}
               <div
                 style={{
-                  background: "rgba(0, 0, 0, 0.25)",
+                  background: "var(--panel-2)",
                   border: "1px solid var(--border)",
                   borderRadius: 8,
                   padding: 12,
@@ -372,7 +372,7 @@ export default function JournalDrawerModal({
               {/* CFD SPREAD & DUAL-R FRICTION TELEMETRY */}
               <div
                 style={{
-                  background: "rgba(0, 0, 0, 0.25)",
+                  background: "var(--panel-2)",
                   border: "1px solid var(--border)",
                   borderRadius: 8,
                   padding: 12,
@@ -412,7 +412,7 @@ export default function JournalDrawerModal({
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255, 255, 255, 0.05)", fontFamily: "monospace", fontSize: 11 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", fontFamily: "monospace", fontSize: 11 }}>
                   <div>
                     <span style={{ fontSize: 9, color: "var(--muted)", display: "block" }}>MARKET SPREAD</span>
                     <span>{trade.spreadPrice ?? 0} pts</span>
@@ -529,7 +529,7 @@ export default function JournalDrawerModal({
               {/* Time Telemetry */}
               <div
                 style={{
-                  background: "rgba(0, 0, 0, 0.2)",
+                  background: "var(--panel-2)",
                   border: "1px solid var(--border)",
                   borderRadius: 8,
                   padding: 12,
@@ -562,7 +562,7 @@ export default function JournalDrawerModal({
           {/* TAB 2: BIAS & CONTEXT */}
           {activeTab === "context" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
+              <div style={{ background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: "var(--fg)" }}>INSTITUTIONAL STRATEGY PROFILE</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11 }}>
                   <div>
@@ -585,7 +585,7 @@ export default function JournalDrawerModal({
               </div>
 
               {/* Master Market Bias Snapshot */}
-              <div style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
+              <div style={{ background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: "var(--fg)" }}>MASTER MARKET BIAS SNAPSHOT</div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>Brain Numeric Conviction:</span>
@@ -594,13 +594,13 @@ export default function JournalDrawerModal({
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Macro Narrative:</div>
-                <div style={{ fontSize: 11, color: "var(--fg)", background: "rgba(255, 255, 255, 0.03)", padding: 8, borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                <div style={{ fontSize: 11, color: "var(--fg)", background: "var(--panel)", padding: 8, borderRadius: 6, border: "1px solid var(--border)" }}>
                   {trade.biasMacro}
                 </div>
               </div>
 
               {/* Broker Order Telemetry Strip */}
-              <div style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
+              <div style={{ background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: "var(--fg)" }}>BROKER ORDER TELEMETRY</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, fontFamily: "monospace" }}>
                   <div>
@@ -626,7 +626,7 @@ export default function JournalDrawerModal({
               {/* Image Preview / Screenshot */}
               <div
                 style={{
-                  background: "rgba(0, 0, 0, 0.4)",
+                  background: "var(--bg)",
                   border: "1px solid var(--border)",
                   borderRadius: 8,
                   overflow: "hidden",
@@ -661,7 +661,7 @@ export default function JournalDrawerModal({
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
                   style={{
-                    background: "rgba(0, 0, 0, 0.3)",
+                    background: "var(--panel-2)",
                     border: "1px solid var(--border)",
                     borderRadius: 6,
                     padding: "8px 10px",
@@ -684,7 +684,7 @@ export default function JournalDrawerModal({
                         background: "transparent",
                         border: "none",
                         cursor: "pointer",
-                        color: star <= rating ? "#f59e0b" : "rgba(255, 255, 255, 0.2)",
+                        color: star <= rating ? "#f59e0b" : "var(--muted)",
                         padding: 2,
                       }}
                     >
@@ -725,7 +725,7 @@ export default function JournalDrawerModal({
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={handleAddTag}
                   style={{
-                    background: "rgba(0, 0, 0, 0.3)",
+                    background: "var(--panel-2)",
                     border: "1px solid var(--border)",
                     borderRadius: 6,
                     padding: "6px 10px",
@@ -744,7 +744,7 @@ export default function JournalDrawerModal({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   style={{
-                    background: "rgba(0, 0, 0, 0.3)",
+                    background: "var(--panel-2)",
                     border: "1px solid var(--border)",
                     borderRadius: 6,
                     padding: "8px 10px",
@@ -804,7 +804,7 @@ export default function JournalDrawerModal({
                       key={idx}
                       style={{
                         padding: "8px 12px",
-                        background: "rgba(0, 0, 0, 0.25)",
+                        background: "var(--panel-2)",
                         border: "1px solid var(--border)",
                         borderRadius: 6,
                         fontSize: 11,

@@ -89,7 +89,7 @@ export default function AuditLog({ logs = [] }) {
         {/* Action Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {/* Quick Filter Buttons */}
-          <div style={{ display: "flex", gap: 3, background: "rgba(255,255,255,0.04)", padding: 2, borderRadius: 6, border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", gap: 3, background: "var(--panel-2)", padding: 2, borderRadius: 6, border: "1px solid var(--border)" }}>
             {[
               { id: "all", label: "All" },
               { id: "filled", label: "Filled" },
@@ -126,7 +126,7 @@ export default function AuditLog({ logs = [] }) {
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
               style={{
-                background: "rgba(0, 0, 0, 0.3)",
+                background: "var(--panel-2)",
                 border: "1px solid var(--border)",
                 borderRadius: 6,
                 padding: "4px 24px 4px 26px",
@@ -161,7 +161,7 @@ export default function AuditLog({ logs = [] }) {
               borderRadius: 6,
               fontSize: 11,
               fontWeight: 600,
-              background: "rgba(255,255,255,0.05)",
+              background: "var(--panel-2)",
               border: "1px solid var(--border)",
               color: copied ? "var(--green)" : "var(--muted)",
               cursor: "pointer",
@@ -179,7 +179,7 @@ export default function AuditLog({ logs = [] }) {
           flex: 1,
           minHeight: 0,
           overflowY: "auto",
-          background: "rgba(0, 0, 0, 0.45)",
+          background: "var(--bg)",
           border: "1px solid var(--border)",
           borderRadius: 8,
           padding: "12px 16px",
@@ -220,7 +220,7 @@ export default function AuditLog({ logs = [] }) {
                   minWidth: 0,
                   overflowWrap: "anywhere",
                   padding: "3px 0",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.03)",
+                  borderBottom: "1px solid var(--border)",
                 }}
               >
                 <span style={{ color: "var(--muted)", flexShrink: 0 }}>[{timeStr}]</span>

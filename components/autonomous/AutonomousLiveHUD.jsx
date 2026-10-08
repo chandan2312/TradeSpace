@@ -496,7 +496,7 @@ export default function AutonomousLiveHUD({
             style={{
               display: "flex",
               borderBottom: "1px solid var(--border)",
-              background: "rgba(0, 0, 0, 0.2)",
+              background: "var(--panel-2)",
             }}
           >
             <button
@@ -1042,7 +1042,7 @@ export default function AutonomousLiveHUD({
                             justifyContent: "space-between",
                             fontSize: 10,
                             fontFamily: "monospace",
-                            background: "rgba(0, 0, 0, 0.25)",
+                            background: "var(--panel-2)",
                             padding: "6px 8px",
                             borderRadius: 6,
                           }}
@@ -1257,7 +1257,7 @@ export default function AutonomousLiveHUD({
                             justifyContent: "space-between",
                             fontSize: 10,
                             fontFamily: "monospace",
-                            background: "rgba(0, 0, 0, 0.2)",
+                            background: "var(--panel-2)",
                             padding: "6px 8px",
                             borderRadius: 6,
                           }}
@@ -1284,7 +1284,7 @@ export default function AutonomousLiveHUD({
             style={{
               padding: "8px 14px",
               borderTop: "1px solid var(--border)",
-              background: "rgba(0, 0, 0, 0.25)",
+              background: "var(--panel-2)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",

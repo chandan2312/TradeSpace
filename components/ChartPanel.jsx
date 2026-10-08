@@ -10,7 +10,7 @@ import DrawingToolbar from "./DrawingToolbar.jsx";
 import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
 import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
-import { tradeToPositionDrawing, tradeToPositionDrawings, tradeToStagedPositionDrawings } from "../lib/autonomous/tradeDrawing.js";
+import { tradeToPositionDrawing, tradeToPositionDrawings, tradeToStagedPositionDrawings, pairToRadarTradeIdeaDrawings } from "../lib/autonomous/tradeDrawing.js";
 
 const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 
@@ -215,6 +215,7 @@ class AlertsPrimitive {
 export default function ChartPanel({
   symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
   autonomousTrades = [],
+  radarPairs = [],
   syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
   isActive = true, onOpenSettings, biasData,
   storageKey,
@@ -705,10 +706,14 @@ export default function ChartPanel({
 
     const isEnabled = indicators?.autoTrades !== false;
     const isStagedEnabled = indicators?.stagedTrades !== false;
+    const isRadarEnabled = indicators?.radarTrades !== false;
     const currentList = mgr.list || [];
     const userDrawings = currentList.filter((d) => !String(d.id).startsWith("auto_"));
 
-    if ((!isEnabled && !isStagedEnabled) || !autonomousTrades || autonomousTrades.length === 0) {
+    const hasAutoTrades = autonomousTrades && autonomousTrades.length > 0;
+    const hasRadarPairs = radarPairs && radarPairs.length > 0;
+
+    if ((!isEnabled && !isStagedEnabled && !isRadarEnabled) || (!hasAutoTrades && !hasRadarPairs)) {
       if (currentList.some((d) => String(d.id).startsWith("auto_"))) {
         mgr.list = userDrawings;
         if (Array.isArray(mgr.selected)) {
@@ -727,6 +732,7 @@ export default function ChartPanel({
     // 2. Keep only trades closed within the last 24 hours (today's session), at most 2 most recent closed per symbol
     // 3. Drop all stale historical trades older than 24 hours to prevent chart clutter
     // 4. Staged setups rendered to the right of current candle with 4-5 candle gap
+    // 5. Radar ideas rendered with violet/burnt orange RR tool
     const nowMs = Date.now();
     const activeList = [];
     const closedList = [];
@@ -765,12 +771,19 @@ export default function ChartPanel({
           .filter((d) => d && !isDismissed(d.id))
       : [];
 
-    mgr.list = [...userDrawings, ...autoDrawings, ...stagedDrawings];
+    const radarDrawings = isRadarEnabled
+      ? (radarPairs || [])
+          .flatMap((p, idx) => pairToRadarTradeIdeaDrawings(p, barsRef.current, tfSec, idx))
+          .filter((d) => d && !isDismissed(d.id))
+      : [];
+
+    mgr.list = [...userDrawings, ...autoDrawings, ...stagedDrawings, ...radarDrawings];
     if (Array.isArray(mgr.selected)) {
-      mgr.select(mgr.selected.filter((id) => !String(id).startsWith("auto_") || [...autoDrawings, ...stagedDrawings].some((d) => d.id === id)));
+      const allAutoDrawings = [...autoDrawings, ...stagedDrawings, ...radarDrawings];
+      mgr.select(mgr.selected.filter((id) => !String(id).startsWith("auto_") || allAutoDrawings.some((d) => d.id === id)));
     }
     mgr.redraw();
-  }, [autonomousTrades, indicators?.autoTrades, indicators?.stagedTrades, chartReady, symbol, tf, dataVersion]);
+  }, [autonomousTrades, radarPairs, indicators?.autoTrades, indicators?.stagedTrades, indicators?.radarTrades, chartReady, symbol, tf, dataVersion]);
 
   // ---------- pointer tracking for "+ price" button and drag handle ----------
   // A wrapper mousemove (NOT subscribeCrosshairMove) so the button stays alive
@@ -1378,7 +1391,7 @@ export default function ChartPanel({
             {dragHandle.status === "triggered" && (
               <button
                 onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onRearmAlert(dragHandle.id); }}
-                style={{ background: "rgba(0,0,0,0.1)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+                style={{ background: "var(--panel-2)", border: "none", borderLeft: "1px solid var(--border)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
                 title="Renew (re-arm) alert"
               >
                 ↻
@@ -1386,7 +1399,7 @@ export default function ChartPanel({
             )}
             <button
               onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onDeleteAlert(dragHandle.id); }}
-              style={{ background: "rgba(0,0,0,0.15)", border: "none", borderLeft: "1px solid rgba(0,0,0,0.1)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+              style={{ background: "var(--panel-2)", border: "none", borderLeft: "1px solid var(--border)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
               title="Delete alert"
             >
               ✕

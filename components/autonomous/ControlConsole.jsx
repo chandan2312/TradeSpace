@@ -15,20 +15,20 @@ export const DEFAULT_SLOT_TIMINGS = {
   pre_ny_prep: { start: "15:00", end: "16:25" },
   ny_open: { start: "16:25", end: "20:30" },
   ny_silver_bullet: { start: "17:00", end: "18:00" },
-  london_close: { start: "18:00", end: "20:00" },
+  london_close: { start: "18:00", end: "20:30" },
   ny_pm: { start: "21:00", end: "23:00" },
 };
 
-const CONFIGURABLE_SLOTS = [
-  { id: "asian_range", name: "Asian Range", defaultRange: "02:00 - 06:00 EET", short: "Asia 02-06", phase: "ACCUMULATION" },
-  { id: "pre_london_prep", name: "Pre-London", defaultRange: "08:00 - 10:00 EET", short: "Pre-LDN 08-10", phase: "PREP" },
-  { id: "london_open", name: "London Open (LOKZ)", defaultRange: "10:00 - 13:00 EET", short: "LOKZ 10-13", phase: "KILLZONE" },
-  { id: "london_lunch", name: "London Lunch Lull", defaultRange: "13:00 - 15:00 EET", short: "Lunch 13-15", phase: "LULL" },
-  { id: "pre_ny_prep", name: "Pre-New York", defaultRange: "15:00 - 16:25 EET", short: "Pre-NY 15-16:25", phase: "PREP" },
-  { id: "ny_open", name: "NY Open / Session (NYKZ)", defaultRange: "16:25 - 20:30 EET", short: "NYKZ 16:25-20:30", phase: "KILLZONE" },
-  { id: "ny_silver_bullet", name: "NY Silver Bullet", defaultRange: "17:00 - 18:00 EET", short: "NYSB 17-18", phase: "SILVER_BULLET" },
-  { id: "london_close", name: "London Close / NY Mid", defaultRange: "18:00 - 20:00 EET", short: "LCKZ 18-20", phase: "KILLZONE" },
-  { id: "ny_pm", name: "NY PM Close (NYPM)", defaultRange: "21:00 - 23:00 EET", short: "NYPM 21-23", phase: "KILLZONE" },
+export const CONFIGURABLE_SLOTS = [
+  { id: "asian_range", name: "Asian Range Accumulation", defaultRange: "02:00 - 06:00 EET", short: "Asian Range", badge: "ASIA", phase: "ACCUMULATION" },
+  { id: "pre_london_prep", name: "Pre-London Session Setup", defaultRange: "08:00 - 10:00 EET", short: "Pre-London", badge: "PRE-LDN", phase: "PREP" },
+  { id: "london_open", name: "London Open Killzone (LOKZ)", defaultRange: "10:00 - 13:00 EET", short: "London Open (LOKZ)", badge: "LOKZ", phase: "KILLZONE" },
+  { id: "london_lunch", name: "London Lunch Lull", defaultRange: "13:00 - 15:00 EET", short: "London Lunch", badge: "LUNCH", phase: "CONSOLIDATION" },
+  { id: "pre_ny_prep", name: "Pre-New York Session Setup", defaultRange: "15:00 - 16:25 EET", short: "Pre-New York", badge: "PRE-NY", phase: "PREP" },
+  { id: "ny_open", name: "New York Session / AM Killzone (NYKZ)", defaultRange: "16:25 - 20:30 EET", short: "New York AM (NYKZ)", badge: "NYKZ", phase: "KILLZONE" },
+  { id: "ny_silver_bullet", name: "New York Silver Bullet Window (NYSB)", defaultRange: "17:00 - 18:00 EET", short: "Silver Bullet (NYSB)", badge: "NYSB", phase: "SILVER_BULLET" },
+  { id: "london_close", name: "London Close Killzone (LCKZ)", defaultRange: "18:00 - 20:30 EET", short: "London Close (LCKZ)", badge: "LCKZ", phase: "KILLZONE" },
+  { id: "ny_pm", name: "New York PM Killzone (NYPM)", defaultRange: "21:00 - 23:00 EET", short: "New York PM (NYPM)", badge: "NYPM", phase: "KILLZONE" },
 ];
 
 function NumberField({ label, name, form, onChange, min, max, step = "any" }) {
@@ -96,10 +96,16 @@ export default function ControlConsole({
       newyork: { start: "16:25", end: "20:30" },
       ...(config.sessionTimings || {}),
     },
-    slotCustomTimings: {
-      ...DEFAULT_SLOT_TIMINGS,
-      ...(config.slotCustomTimings || {}),
-    },
+    slotCustomTimings: (() => {
+      const merged = {
+        ...DEFAULT_SLOT_TIMINGS,
+        ...(config.slotCustomTimings || {}),
+      };
+      if (merged.london_lunch?.start === "15:00" && merged.london_lunch?.end === "16:25") {
+        merged.london_lunch = { start: "13:00", end: "15:00" };
+      }
+      return merged;
+    })(),
   }));
 
   const [symbolSearch, setSymbolSearch] = useState("");
@@ -248,9 +254,9 @@ export default function ControlConsole({
     if (presetType === "default") {
       next = getSymbolDefaultSlots(sym);
     } else if (presetType === "ny") {
-      next = ["ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
+      next = ["pre_ny_prep", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
     } else if (presetType === "london") {
-      next = ["pre_london_prep", "london_open", "london_close"];
+      next = ["pre_london_prep", "london_open", "london_lunch", "london_close"];
     } else if (presetType === "all") {
       next = CONFIGURABLE_SLOTS.map((s) => s.id);
     }
@@ -284,24 +290,30 @@ export default function ControlConsole({
   };
 
   const models = Object.values(allEntryModels || {});
-  const baseSlots = Array.isArray(allTimeSlots) && allTimeSlots.length > 0
-    ? allTimeSlots
-    : [
-        ...CONFIGURABLE_SLOTS.map((s) => ({
-          ...s,
-          eetRange: s.defaultRange,
-          shortBadge: s.short,
-        })),
-        { id: "dead_zone", name: "Daily Settlement Dead Zone", eetRange: "23:00 - 01:00 EET", shortBadge: "Dead Zone", phase: "SETTLEMENT", isDeadZone: true },
-      ];
-
-  const slots = baseSlots.map((slot) => {
-    const custom = form.slotCustomTimings?.[slot.id];
-    return {
-      ...slot,
-      effectiveRange: custom ? `${custom.start} - ${custom.end} EET` : (slot.eetRange || slot.defaultRange || "Hours unavailable"),
-    };
-  });
+  const slots = useMemo(() => {
+    const serverMap = {};
+    if (Array.isArray(allTimeSlots)) {
+      for (const s of allTimeSlots) {
+        if (s?.id) serverMap[s.id] = s;
+      }
+    }
+    const combined = [
+      ...CONFIGURABLE_SLOTS,
+      { id: "dead_zone", name: "Rollover Dead Zone / Spread Expansion", defaultRange: "00:00 - 02:00 EET", short: "Dead Zone", badge: "DEAD ZONE", phase: "SETTLEMENT", isDeadZone: true },
+    ];
+    return combined.map((slot) => {
+      const serverSlot = serverMap[slot.id] || {};
+      const custom = form.slotCustomTimings?.[slot.id];
+      const start = custom?.start || DEFAULT_SLOT_TIMINGS[slot.id]?.start;
+      const end = custom?.end || DEFAULT_SLOT_TIMINGS[slot.id]?.end;
+      const effectiveRange = (start && end) ? `${start} - ${end} EET` : (serverSlot.eetRange || slot.defaultRange || "Hours unavailable");
+      return {
+        ...serverSlot,
+        ...slot,
+        effectiveRange,
+      };
+    });
+  }, [allTimeSlots, form.slotCustomTimings]);
 
   return (
     <div
@@ -558,7 +570,7 @@ export default function ControlConsole({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
-                  background: "rgba(255, 255, 255, 0.05)",
+                  background: "var(--panel-2)",
                 }}
               >
                 <RotateCcw size={11} /> Reset All Hours to Defaults
@@ -590,7 +602,7 @@ export default function ControlConsole({
                       padding: 10,
                       borderRadius: 8,
                       border: `1px solid ${isEnabled ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
-                      background: isEnabled ? "rgba(56, 189, 248, 0.04)" : "rgba(255, 255, 255, 0.01)",
+                      background: isEnabled ? "rgba(56, 189, 248, 0.08)" : "var(--panel-2)",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
@@ -663,7 +675,7 @@ export default function ControlConsole({
                           alignItems: "center",
                           gap: 10,
                           paddingTop: 4,
-                          borderTop: "1px dashed rgba(255, 255, 255, 0.06)",
+                          borderTop: "1px dashed var(--border)",
                         }}
                       >
                         <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--muted)" }}>
@@ -678,7 +690,7 @@ export default function ControlConsole({
                               padding: "2px 5px",
                               fontSize: 11,
                               color: "var(--fg)",
-                              background: "rgba(0,0,0,0.4)",
+                              background: "var(--bg)",
                             }}
                           />
                         </label>
@@ -695,7 +707,7 @@ export default function ControlConsole({
                               padding: "2px 5px",
                               fontSize: 11,
                               color: "var(--fg)",
-                              background: "rgba(0,0,0,0.4)",
+                              background: "var(--bg)",
                             }}
                           />
                         </label>
@@ -760,7 +772,7 @@ export default function ControlConsole({
                   ...inputStyle,
                   paddingLeft: 28,
                   fontSize: 11,
-                  background: "rgba(255, 255, 255, 0.02)",
+                  background: "var(--bg)",
                 }}
               />
             </div>
@@ -775,7 +787,7 @@ export default function ControlConsole({
                   <div
                     key={sym}
                     style={{
-                      background: "rgba(255, 255, 255, 0.02)",
+                      background: "var(--panel-2)",
                       border: "1px solid var(--border)",
                       borderRadius: 8,
                       padding: 10,
@@ -860,7 +872,7 @@ export default function ControlConsole({
                             padding: "2px 6px",
                             fontSize: 10,
                             cursor: "pointer",
-                            background: "rgba(255, 255, 255, 0.05)",
+                            background: "var(--panel)",
                           }}
                         >
                           All Slots
@@ -907,9 +919,9 @@ export default function ControlConsole({
                               borderRadius: 5,
                               cursor: "pointer",
                               fontSize: 10,
-                              background: isChecked ? "rgba(56, 189, 248, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                              background: isChecked ? "rgba(56, 189, 248, 0.12)" : "var(--panel)",
                               border: `1px solid ${isChecked ? "rgba(56, 189, 248, 0.4)" : "var(--border)"}`,
-                              color: isChecked ? "#fff" : "var(--muted)",
+                              color: isChecked ? "var(--accent)" : "var(--muted)",
                               transition: "all 0.12s ease",
                             }}
                           >
@@ -924,9 +936,11 @@ export default function ControlConsole({
                                 {slot.short}
                               </strong>
                               <span style={{ fontSize: 9, opacity: 0.7 }}>
-                                {form.slotCustomTimings?.[slot.id]
-                                  ? `${form.slotCustomTimings[slot.id].start}-${form.slotCustomTimings[slot.id].end}`
-                                  : (slot.defaultRange || slot.eetRange || "").split(" ")[0]}
+                                {(() => {
+                                  const t = form.slotCustomTimings?.[slot.id] || DEFAULT_SLOT_TIMINGS[slot.id];
+                                  if (t?.start && t?.end) return `${t.start} - ${t.end}`;
+                                  return (slot.defaultRange || slot.eetRange || "").split(" EET")[0];
+                                })()}
                               </span>
                             </div>
                           </label>

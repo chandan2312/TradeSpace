@@ -89,7 +89,7 @@ export default function Dashboard() {
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [symbolFlags, setSymbolFlags] = useState({}); // { symbol: "red" | "blue" | "green" | "yellow" }
-  const [indicators, setIndicators] = useState({ autoTrades: true, stagedTrades: true }); // { patternId: bool } — ƒx pattern toggles
+  const [indicators, setIndicators] = useState({ autoTrades: true, stagedTrades: true, radarTrades: true }); // { patternId: bool } — ƒx pattern toggles
   
   // Loop Mode State
   const [isLooping, setIsLooping] = useState(false);
@@ -100,6 +100,7 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
   const [autonomousTrades, setAutonomousTrades] = useState([]);
+  const [radarPairs, setRadarPairs] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
   const watchlistsRef = useRef(watchlists);
@@ -244,7 +245,7 @@ export default function Dashboard() {
         const ind = localStorage.getItem("ts_indicators");
         if (ind) {
           const parsed = JSON.parse(ind);
-          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, ...parsed }));
+          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, radarTrades: true, ...parsed }));
         }
         const lid = getTabItem("ts_loaded_layout_id");
         if (lid) setLoadedLayoutId(lid);
@@ -276,8 +277,8 @@ export default function Dashboard() {
           localStorage.setItem("ts_symbol_flags", JSON.stringify(d.settings.flags));
         }
         if (d.settings.indicators) {
-          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, ...d.settings.indicators }));
-          localStorage.setItem("ts_indicators", JSON.stringify({ autoTrades: true, stagedTrades: true, ...d.settings.indicators }));
+          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
+          localStorage.setItem("ts_indicators", JSON.stringify({ autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
         }
         if (typeof d.settings.biasEnabled === "boolean") {
           setBiasEnabled(d.settings.biasEnabled);
@@ -754,6 +755,9 @@ export default function Dashboard() {
         }
       }
       setAutonomousTrades(deduped);
+      if (autoRes?.ok && Array.isArray(autoRes.leaderboard?.rankedPairs)) {
+        setRadarPairs(autoRes.leaderboard.rankedPairs);
+      }
     } catch {}
   }, []);
 
@@ -1471,6 +1475,7 @@ export default function Dashboard() {
         onOpenAutoCockpit={() => setAutoCockpitOpen((prev) => !prev)}
         autoCockpitOpen={autoCockpitOpen}
         autonomousTrades={autonomousTrades}
+        radarPairs={radarPairs}
         ticks={ticks}
       />
       <div className="layout-row" style={{position: "relative"}}>
@@ -1622,6 +1627,12 @@ export default function Dashboard() {
                         const paneCanon = canonOf(pane.symbol);
                         const c = (s) => s && canonOf(s) === paneCanon;
                         return c(t.symbol) || c(t.tradeableSymbol) || c(t.canonicalSymbol);
+                      })}
+                      radarPairs={radarPairs.filter(p => {
+                        if (!p || !pane.symbol) return false;
+                        const paneCanon = canonOf(pane.symbol);
+                        const c = (s) => s && canonOf(s) === paneCanon;
+                        return c(p.symbol) || c(p.tradeableSymbol);
                       })}
                       onAddAlert={(price) => { setActivePaneId(pane.id); setAlertDraft({ price }); }}
                       onAddAlertLayer={addAlertLayer}
