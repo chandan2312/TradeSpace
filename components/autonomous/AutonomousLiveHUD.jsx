@@ -974,6 +974,7 @@ export default function AutonomousLiveHUD({
                     <ExecutionDiagnostics
                       trades={auxExecutionTrades}
                       diagnostics={auxDiagnostics}
+                      onRefresh={fetchAuxState}
                     />
                   </div>
                 )}

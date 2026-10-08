@@ -756,6 +756,7 @@ export default function AutonomousDashboard() {
             <ExecutionDiagnostics
               trades={data?.executionTrades || []}
               diagnostics={data?.executionDiagnostics}
+              onRefresh={() => loadState(true)}
             />
 
           </div>

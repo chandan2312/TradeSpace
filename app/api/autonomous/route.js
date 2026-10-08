@@ -18,6 +18,7 @@ import {
   dismissStagedTrade,
   closeActiveTrade,
   modifyTradeTarget,
+  pollBroker,
   startAutonomousLoop,
 } from "../../../lib/autonomous/engine.js";
 import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES } from "../../../lib/autonomous/timeslots.js";
@@ -185,9 +186,14 @@ export async function POST(req) {
       return NextResponse.json(res);
     }
 
-    if (action === "dismiss") {
+    if (action === "sync_broker" || action === "reconcile") {
+      await pollBroker();
+      return NextResponse.json({ ok: true, message: "Broker state reconciled" });
+    }
+
+    if (action === "dismiss" || action === "force_resolve") {
       if (!body.tradeId) return NextResponse.json({ ok: false, error: "Missing tradeId" }, { status: 400 });
-      const res = await dismissStagedTrade(body.tradeId);
+      const res = await dismissStagedTrade(body.tradeId, body.reason || "Manual resolution by trader");
       return NextResponse.json(res);
     }
 

@@ -5,6 +5,7 @@ export default function DecisionReasons({ vetoes, reason, title = "Decision evid
   const isDuplicateReason = Boolean(
     reason && reasons.some((v) => v.reason === reason || (v.reason && String(reason).trim().toLowerCase() === String(v.reason).trim().toLowerCase()))
   );
+  if (!reason && reasons.length === 0) return null;
   return (
     <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.5, overflowWrap: "anywhere" }}>
       <div style={{ color: "var(--muted)", fontWeight: 700 }}>{title}</div>
@@ -14,7 +15,6 @@ export default function DecisionReasons({ vetoes, reason, title = "Decision evid
           <strong>{veto.code || "Code unavailable"}</strong> · {veto.reason || "Reason unavailable"}
         </div>
       ))}
-      {!reason && reasons.length === 0 && <div style={{ color: "var(--muted)" }}>Decision evidence unavailable</div>}
     </div>
   );
 }

@@ -173,26 +173,86 @@ export function TargetLadder({ targets, legacyTarget, partialExits, tp1Done, tp2
 
 export function BrokerTelemetry({ trade }) {
   const paper = trade.isLive === false || trade.brokerStatus?.startsWith("paper") || trade.executionMode === "paper";
-  // The engine updates slPrice / BE only after independent reconciliation. A pending
-  // operation carries the requested stop separately, never overwriting confirmation.
   const hasConfirmedFill = finiteNumber(trade.filledPrice) !== null && !!trade.filledAt;
+  const isFilledPosition = hasConfirmedFill || ["active", "managing", "closing"].includes(trade.status);
   const stopConfirmed = paper || trade.brokerStatus === "sl_confirmed" || trade.isBreakeven === true || trade.isTrailing === true;
-  const confirmedSl = finiteNumber(trade.confirmedSlPrice) ?? (hasConfirmedFill && stopConfirmed ? finiteNumber(trade.slPrice) : null);
+  const confirmedSl = finiteNumber(trade.confirmedSlPrice) ?? (isFilledPosition && stopConfirmed ? finiteNumber(trade.slPrice) : null);
   const operation = trade.operation;
   const requestedSl = finiteNumber(trade.requestedSlPrice ?? operation?.payload?.sl ?? trade.pendingManagement?.slPrice);
-  const requested = trade.requestedState || (operation ? `${operation.kind} · ${operation.state}` : trade.operation === null ? "None pending" : "Unavailable");
-  const confirmedState = trade.confirmedState || (hasConfirmedFill ? `Fill @ ${formatPrice(trade.filledPrice)}` : "Unavailable");
-  const operationError = operation?.response?.error || operation?.response?.message;
+  const requested = trade.requestedState || (operation ? `${operation.kind} · ${operation.state}` : trade.operation === null ? "None pending" : null);
+  const confirmedState = trade.confirmedState || (hasConfirmedFill ? `Fill @ ${formatPrice(trade.filledPrice)}` : isFilledPosition ? "Active" : null);
+
+  let rawError = operation?.response?.error || operation?.response?.message || trade.executionError;
+  if (typeof rawError === "object" && rawError !== null) rawError = rawError.message || String(rawError);
+  let friendlyError = rawError;
+  if (rawError && typeof rawError === "string") {
+    const lower = rawError.toLowerCase();
+    if (lower.includes("timeout") || lower.includes("aborted")) {
+      friendlyError = "Bridge timeout: MT5 response exceeded limit. Engine is auto-reconciling broker state.";
+    } else if (lower.includes("fetch failed")) {
+      friendlyError = "Bridge network dropped. Engine is re-syncing broker ground-truth.";
+    } else if (lower.includes("account_stale")) {
+      friendlyError = "Remote account equity verification delayed. Re-validating broker state.";
+    }
+  }
+
+  const isCancelling = trade.status === "cancelling" || trade.brokerStatus === "reconciliation_required";
+
   return (
     <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.5, overflowWrap: "anywhere" }}>
-      <div style={{ fontWeight: 700 }}>{paper ? "Paper execution" : "Broker execution"} · {trade.brokerStatus || "State unavailable"}</div>
-      <div style={{ color: "var(--muted)" }}>Order ticket: {trade.orderTicket ?? "Unavailable"} · Position ticket: {trade.ticket ?? trade.mt5Ticket ?? "Unavailable"}</div>
-      <div>Confirmed SL: {formatPrice(confirmedSl)} · BE: {typeof trade.isBreakeven === "boolean" && (paper || confirmedSl !== null) ? (trade.isBreakeven ? "Confirmed" : "Not confirmed") : "Unavailable"}</div>
-      <div style={{ color: "var(--muted)" }}>Requested SL: {formatPrice(requestedSl)} · Stored SL: {formatPrice(trade.slPrice)}</div>
-      <div style={{ color: "var(--muted)" }}>Requested: {requested} · Confirmed: {confirmedState}</div>
-      {operation && <div style={{ color: "var(--muted)" }}>Request ID: {operation.requestId || "Unavailable"}{operation.payload?.id ? ` · Target ${operation.payload.id}` : ""}</div>}
-      {operationError && <div style={{ color: "var(--red)" }}>{operationError}</div>}
-      {trade.executionError && <div style={{ color: "var(--red)" }}>{typeof trade.executionError === "string" ? trade.executionError : trade.executionError.message || "Execution error"}</div>}
+      <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span>{paper ? "Paper execution" : "Broker execution"} · {trade.brokerStatus || (isCancelling ? "reconciling" : "State pending")}</span>
+        {isCancelling && (
+          <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(234, 179, 8, 0.15)", color: "var(--orange)", fontWeight: 700 }}>
+            Reconciliation in progress
+          </span>
+        )}
+      </div>
+
+      <div style={{ color: "var(--muted)" }}>
+        {trade.orderTicket ? `Order ticket: ${trade.orderTicket}` : null}
+        {trade.ticket || trade.mt5Ticket ? `${trade.orderTicket ? " · " : ""}Position ticket: ${trade.ticket ?? trade.mt5Ticket}` : null}
+        {!trade.orderTicket && !trade.ticket && !trade.mt5Ticket && "Ticket: Pending broker assignment"}
+      </div>
+
+      {isFilledPosition ? (
+        <>
+          <div>
+            Confirmed SL: {formatPrice(confirmedSl)}
+            {typeof trade.isBreakeven === "boolean" && (
+              <span> · BE: {trade.isBreakeven ? "Confirmed" : "Not confirmed"}</span>
+            )}
+          </div>
+          {requestedSl !== null && (
+            <div style={{ color: "var(--muted)" }}>
+              Requested SL: {formatPrice(requestedSl)} · Stored SL: {formatPrice(trade.slPrice)}
+            </div>
+          )}
+          {confirmedState && (
+            <div style={{ color: "var(--muted)" }}>
+              {requested ? `Requested: ${requested} · ` : ""}Confirmed: {confirmedState}
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ color: "var(--muted)" }}>
+          Planned SL: {formatPrice(trade.slPrice)} · Planned TP: {formatPrice(trade.tpPrice)}
+          {requested && <div>Requested: {requested}</div>}
+        </div>
+      )}
+
+      {operation?.requestId && (
+        <div style={{ color: "var(--muted)", fontSize: 10 }}>
+          Request ID: {String(operation.requestId).slice(0, 16)}...
+          {operation.payload?.id ? ` · Target ${operation.payload.id}` : ""}
+        </div>
+      )}
+
+      {friendlyError && (
+        <div style={{ color: "var(--red)", marginTop: 2, background: "rgba(239, 68, 68, 0.08)", padding: "3px 6px", borderRadius: 4 }}>
+          {friendlyError}
+        </div>
+      )}
     </div>
   );
 }
