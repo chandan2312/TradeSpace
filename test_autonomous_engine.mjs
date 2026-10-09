@@ -7,7 +7,7 @@
 
 import { SCENARIOS, resolveScenarioForPair } from "./lib/autonomous/scenarios.js";
 import { selectOptimalEntryLevel } from "./lib/autonomous/levels.js";
-import { DEFAULT_AUTONOMOUS_CONFIG } from "./lib/autonomous/store.js";
+import { DEFAULT_AUTONOMOUS_CONFIG, validateAutonomousConfig } from "./lib/autonomous/store.js";
 import {
   isSymbolInMainWatchlist,
   getBrokerWatchlistSymbol,
@@ -2822,6 +2822,123 @@ console.log("=======================================================");
   assert(propLadder2.tpPrice === 125, `Capped TP price is 125 (2.5R * 10 = +25): got ${propLadder2.tpPrice}`);
   assert(propLadder2.tf === "M30", `Prop selected TF is 30M: got ${propLadder2.tf}`);
   assert(propLadder2.isCapped === true, "Target > 2.5R is marked as capped");
+}
+
+console.log("\n=======================================================");
+console.log("TEST SUITE 26: Scalping Horizon Toggle & Execution Blocking Engine");
+console.log("=======================================================");
+
+{
+  // 1. Verify default autonomous config has Scalp unticked/disabled
+  assert(DEFAULT_AUTONOMOUS_CONFIG.enableScalpHorizon === false, "DEFAULT: enableScalpHorizon is false (unticked by default)");
+  assert(DEFAULT_AUTONOMOUS_CONFIG.enabledHorizons?.scalp === false, "DEFAULT: enabledHorizons.scalp is false");
+  assert(DEFAULT_AUTONOMOUS_CONFIG.enabledHorizons?.day === true, "DEFAULT: enabledHorizons.day is true (active)");
+  assert(DEFAULT_AUTONOMOUS_CONFIG.enabledHorizons?.swing === true, "DEFAULT: enabledHorizons.swing is true (active)");
+
+  // 2. Configuration Validation: valid and invalid payloads
+  const validPatch = {
+    enableScalpHorizon: true,
+    enabledHorizons: { day: true, swing: true, scalp: true },
+  };
+  assert(validateAutonomousConfig(validPatch).enableScalpHorizon === true, "validateAutonomousConfig accepts valid horizon patch");
+
+  let threwInvalid = false;
+  try {
+    validateAutonomousConfig({ enabledHorizons: { invalid_horizon: true } });
+  } catch (_) {
+    threwInvalid = true;
+  }
+  assert(threwInvalid, "validateAutonomousConfig rejects unknown horizon keys");
+
+  // 3. Adaptive Scenario Resolution with Scalp Disabled vs Enabled
+  // Consolidating range + Killzone session (conditions that would trigger scalp if allowed)
+  const scalpConditions = {
+    symbol: "EURUSD",
+    brain: { conviction: 85, allowedToLong: true, targetDOL: { price: 1.1000 } },
+    ranges: { ranges: { H4: { coveragePct: 85 } } }, // Exhausted HTF range!
+    config: {
+      now: Date.parse("2026-10-09T14:30:00Z"), // Active NY Killzone
+      activeTimeSlot: { isKillzone: true },
+      enableScalpHorizon: false, // UNTICKED / DISABLED
+      enabledHorizons: { day: true, swing: true, scalp: false },
+    },
+  };
+
+  const resAdaptiveDisabled = resolveScenarioForPair(scalpConditions);
+  assert(resAdaptiveDisabled.scenario.id === "day", `Adaptive mode with scalp disabled falls back to DAY: got ${resAdaptiveDisabled.scenario.id}`);
+  assert(resAdaptiveDisabled.mode === "adaptive_day", "Adaptive mode falls back to adaptive_day instead of scalp");
+
+  const resAdaptiveEnabled = resolveScenarioForPair({
+    ...scalpConditions,
+    config: {
+      ...scalpConditions.config,
+      enableScalpHorizon: true, // TICKED / ENABLED
+      enabledHorizons: { day: true, swing: true, scalp: true },
+    },
+  });
+  assert(resAdaptiveEnabled.scenario.id === "scalp", `Adaptive mode with scalp enabled selects SCALP: got ${resAdaptiveEnabled.scenario.id}`);
+  assert(resAdaptiveEnabled.mode === "adaptive_scalp", "Adaptive mode correctly selects adaptive_scalp when toggled on");
+
+  // 4. Forced Scalp Mode disabled vs enabled
+  const resForcedDisabled = resolveScenarioForPair({
+    ...scalpConditions,
+    config: { horizonMode: "scalp", enableScalpHorizon: false, enabledHorizons: { scalp: false } },
+  });
+  assert(resForcedDisabled.disabled === true, "Forced scalp mode is marked disabled when unticked in settings");
+  assert(resForcedDisabled.rationale.includes("disabled in settings"), "Rationale explicitly states scalping horizon is disabled");
+
+  const resForcedEnabled = resolveScenarioForPair({
+    ...scalpConditions,
+    config: { horizonMode: "scalp", enableScalpHorizon: true, enabledHorizons: { scalp: true } },
+  });
+  assert(!resForcedEnabled.disabled, "Forced scalp mode is not disabled when toggled on in settings");
+
+  // 5. Execution Veto Gatekeeper Blocking
+  const candidateScalp = {
+    modelId: "ict_2022",
+    tf: "M5",
+    scenario: { id: "scalp" },
+    horizon: "scalp",
+    entry: 1.0850,
+    sl: 1.0820,
+    tp: 1.0950,
+    evidence: { formationTime: Date.now() - 60000 },
+  };
+
+  const vetoWhenDisabled = evaluateExecutionVetoes({
+    symbol: "EURUSD",
+    dir: 1,
+    entry: 1.0850,
+    sl: 1.0820,
+    brain: { macroDir: 1, allowedToLong: true, targetDOL: { price: 1.0950, targetSide: "BSL" } },
+    config: {
+      now: Date.now(),
+      enableScalpHorizon: false,
+      enabledHorizons: { scalp: false },
+      candidate: candidateScalp,
+      scenario: { id: "scalp" },
+    },
+    candidate: candidateScalp,
+  });
+  assert(vetoWhenDisabled.permitted === false, "Scalp candidate is blocked when scalp horizon is disabled");
+  assert(vetoWhenDisabled.vetoes.some(v => v.code === "HORIZON_DISABLED"), "Veto records HORIZON_DISABLED code");
+
+  const vetoWhenEnabled = evaluateExecutionVetoes({
+    symbol: "EURUSD",
+    dir: 1,
+    entry: 1.0850,
+    sl: 1.0820,
+    brain: { macroDir: 1, allowedToLong: true, targetDOL: { price: 1.0950, targetSide: "BSL" } },
+    config: {
+      now: Date.now(),
+      enableScalpHorizon: true,
+      enabledHorizons: { scalp: true },
+      candidate: candidateScalp,
+      scenario: { id: "scalp" },
+    },
+    candidate: candidateScalp,
+  });
+  assert(!vetoWhenEnabled.vetoes.some(v => v.code === "HORIZON_DISABLED"), "HORIZON_DISABLED veto is NOT present when scalp horizon is enabled");
 }
 
 console.log("\n=======================================================");

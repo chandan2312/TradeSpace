@@ -68,6 +68,14 @@ export default function ControlConsole({
     executionMode: config.executionMode ?? "paper",
     liveTrading: config.liveTrading ?? false,
     horizonMode: config.horizonMode ?? "adaptive",
+    enableScalpHorizon: config.enableScalpHorizon ?? config.enabledHorizons?.scalp ?? false,
+    enabledHorizons: {
+      swing: true,
+      day: true,
+      scalp: false,
+      ...(config.enabledHorizons || {}),
+      ...(config.enableScalpHorizon !== undefined ? { scalp: config.enableScalpHorizon } : {}),
+    },
     minConviction: config.minConviction ?? 60,
     minRunwayPct: config.minRunwayPct ?? 15,
     confluenceThreshold: config.confluenceThreshold ?? 60,
@@ -276,8 +284,14 @@ export default function ControlConsole({
     setSaving(true);
     setError(null);
     try {
+      const isScalp = Boolean(form.enabledHorizons?.scalp);
       await onSaveConfig({
         ...form,
+        enableScalpHorizon: isScalp,
+        enabledHorizons: {
+          ...form.enabledHorizons,
+          scalp: isScalp,
+        },
         allowedTimeSlots: { ...form.allowedTimeSlots, dead_zone: false },
         symbolTimeSlots: { ...form.symbolTimeSlots },
       });
@@ -411,12 +425,120 @@ export default function ControlConsole({
                   value={form.horizonMode}
                   onChange={(event) => change("horizonMode", event.target.value)}
                 >
-                  <option value="adaptive">Adaptive (All 3 Horizons)</option>
+                  <option value="adaptive">Adaptive (Active Horizons)</option>
                   <option value="day">Day Trade (4H-15M)</option>
                   <option value="swing">Swing (1D-1H)</option>
                   <option value="scalp">Scalp (30M-5M)</option>
                 </select>
               </label>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>
+                Active trading horizons &amp; methods
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: 8 }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    border: `1px solid ${form.enabledHorizons?.day !== false ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
+                    borderRadius: 8,
+                    padding: 8,
+                    background: form.enabledHorizons?.day !== false ? "rgba(56, 189, 248, 0.05)" : "var(--panel-2)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.enabledHorizons?.day !== false}
+                    onChange={() => {
+                      const nextVal = !(form.enabledHorizons?.day !== false);
+                      setForm((prev) => ({
+                        ...prev,
+                        enabledHorizons: { ...(prev.enabledHorizons || {}), day: nextVal },
+                      }));
+                    }}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div style={{ fontSize: 11 }}>
+                    <strong style={{ color: form.enabledHorizons?.day !== false ? "var(--fg)" : "var(--muted)" }}>Day Trade (4H-15M)</strong>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>
+                      4H compass · 15M gatekeeper &amp; execution
+                    </div>
+                  </div>
+                </label>
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    border: `1px solid ${form.enabledHorizons?.swing !== false ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
+                    borderRadius: 8,
+                    padding: 8,
+                    background: form.enabledHorizons?.swing !== false ? "rgba(56, 189, 248, 0.05)" : "var(--panel-2)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.enabledHorizons?.swing !== false}
+                    onChange={() => {
+                      const nextVal = !(form.enabledHorizons?.swing !== false);
+                      setForm((prev) => ({
+                        ...prev,
+                        enabledHorizons: { ...(prev.enabledHorizons || {}), swing: nextVal },
+                      }));
+                    }}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div style={{ fontSize: 11 }}>
+                    <strong style={{ color: form.enabledHorizons?.swing !== false ? "var(--fg)" : "var(--muted)" }}>Swing (1D-1H)</strong>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>
+                      1D external DOL · 1H gatekeeper &amp; execution
+                    </div>
+                  </div>
+                </label>
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    border: `1px solid ${Boolean(form.enabledHorizons?.scalp) ? "rgba(56, 189, 248, 0.3)" : "var(--border)"}`,
+                    borderRadius: 8,
+                    padding: 8,
+                    background: Boolean(form.enabledHorizons?.scalp) ? "rgba(56, 189, 248, 0.05)" : "var(--panel-2)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.enabledHorizons?.scalp)}
+                    onChange={() => {
+                      const nextVal = !Boolean(form.enabledHorizons?.scalp);
+                      setForm((prev) => ({
+                        ...prev,
+                        enableScalpHorizon: nextVal,
+                        enabledHorizons: {
+                          ...(prev.enabledHorizons || {}),
+                          scalp: nextVal,
+                        },
+                      }));
+                    }}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div style={{ fontSize: 11 }}>
+                    <strong style={{ color: Boolean(form.enabledHorizons?.scalp) ? "var(--fg)" : "var(--muted)" }}>Intraday Scalp (30M-5M)</strong>
+                    <div style={{ fontSize: 10, color: Boolean(form.enabledHorizons?.scalp) ? "var(--muted)" : "var(--red)", marginTop: 2 }}>
+                      {Boolean(form.enabledHorizons?.scalp)
+                        ? "30M compass · 5M precision trigger inside killzones"
+                        : "Unticked / Disabled (Blocks 30M-5M scalp setups & noise SLs)"}
+                    </div>
+                  </div>
+                </label>
+              </div>
             </div>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 8, paddingTop: 12, fontSize: 12 }}>
               <input
@@ -504,7 +626,10 @@ export default function ControlConsole({
 
           {/* SECTION 4: INSTITUTIONAL ENTRY MODELS */}
           <section style={sectionStyle}>
-            <h3 style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 8px" }}>Institutional entry models</h3>
+            <h3 style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 4px" }}>Institutional entry models</h3>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
+              Models execute across active trading horizons (Swing, Day Trade, and 30M-5M Scalp if enabled).
+            </div>
             {models.length === 0 && <div style={{ fontSize: 11, color: "var(--muted)" }}>Model definitions unavailable</div>}
             {models.map((model) => (
               <label

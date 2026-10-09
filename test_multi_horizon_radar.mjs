@@ -65,6 +65,8 @@ console.log("\n--- 2. Testing Multi-Horizon Generation in scanUniverse ---");
 const mockConfig = {
   mainWatchlistSymbols: ["EURUSD", "GBPUSD"],
   universe: ["EURUSD", "GBPUSD"],
+  enableScalpHorizon: true,
+  enabledHorizons: { day: true, swing: true, scalp: true },
   frames: {
     EURUSD: frames,
     GBPUSD: frames,
@@ -75,10 +77,10 @@ const mockConfig = {
 const scanResult = await scanUniverse(mockConfig, ["EURUSD", "GBPUSD"]);
 assert(Array.isArray(scanResult.rankedPairs), "rankedPairs should be an array");
 
-// For 2 symbols with 3 horizons each, we should have up to 6 cards in rankedPairs
+// For 2 symbols with 3 horizons each (when scalp enabled), we should have up to 6 cards in rankedPairs
 const eurusdCards = scanResult.rankedPairs.filter(p => p.symbol === "EURUSD");
-assert.strictEqual(eurusdCards.length, 3, "EURUSD should generate exactly 3 cards (1 per horizon)");
-pass("Single symbol EURUSD generates 3 cards across official horizons");
+assert.strictEqual(eurusdCards.length, 3, "EURUSD should generate exactly 3 cards (1 per horizon when scalp enabled)");
+pass("Single symbol EURUSD generates 3 cards across official horizons when scalp enabled");
 
 const dayCard = eurusdCards.find(c => c.horizon === "day");
 const swingCard = eurusdCards.find(c => c.horizon === "swing");
@@ -87,7 +89,14 @@ const scalpCard = eurusdCards.find(c => c.horizon === "scalp");
 assert(dayCard, "Day card should exist");
 assert(swingCard, "Swing card should exist");
 assert(scalpCard, "Scalp card should exist");
-pass("All 3 horizons (Day, Swing, Scalp) are present for EURUSD");
+pass("All 3 horizons (Day, Swing, Scalp) are present for EURUSD when enabled");
+
+// Verify that when Scalp is disabled (default), only 2 cards are generated (Day and Swing)
+const scanDisabledScalp = await scanUniverse({ ...mockConfig, enableScalpHorizon: false, enabledHorizons: { day: true, swing: true, scalp: false } }, ["EURUSD"]);
+const cardsWithoutScalp = scanDisabledScalp.rankedPairs.filter(p => p.symbol === "EURUSD");
+assert.strictEqual(cardsWithoutScalp.length, 2, "EURUSD should generate exactly 2 cards when scalp is disabled");
+assert(!cardsWithoutScalp.some(c => c.horizon === "scalp"), "Scalp card must be omitted when scalp horizon is disabled");
+pass("Unticking/disabling scalp horizon strictly blocks scalp card generation");
 
 assert.strictEqual(dayCard.radarKey, "EURUSD:day", "Day card radarKey matches symbol:day");
 assert.strictEqual(swingCard.radarKey, "EURUSD:swing", "Swing card radarKey matches symbol:swing");
@@ -240,10 +249,11 @@ assert(dayRes.stagedLevel, "Day trade staged level should be resolved");
 assert(swingRes.stagedLevel, "Swing trade staged level should be resolved");
 
 const dayRisk = Math.abs(dayRes.stagedLevel.entry - dayRes.stagedLevel.sl);
-const swingRisk = Math.abs(swingRes.stagedLevel.entry - swingRes.stagedLevel.sl);
+const macroCandidate = swingRes.stagedLevel.allCandidates?.find(c => c.tf === "D1") || swingRes.stagedLevel;
+const swingRisk = Math.abs(macroCandidate.entry - macroCandidate.sl);
 
-assert(swingRisk > dayRisk * 2.0, `Swing risk (${swingRisk.toFixed(2)}) should be significantly larger than Day risk (${dayRisk.toFixed(2)})`);
-pass(`Swing risk (${swingRisk.toFixed(2)} pts) scales proportionally above Day risk (${dayRisk.toFixed(2)} pts)`);
+assert(swingRisk > dayRisk * 2.0, `Swing macro risk (${swingRisk.toFixed(2)}) should be significantly larger than Day risk (${dayRisk.toFixed(2)})`);
+pass(`Swing macro risk (${swingRisk.toFixed(2)} pts) scales proportionally above Day risk (${dayRisk.toFixed(2)} pts)`);
 
 const entryDiff = Math.abs(dayRes.stagedLevel.entry - swingRes.stagedLevel.entry);
 assert(entryDiff > 30, `Entry levels should have distinct structural separation (>30 pts, got ${entryDiff.toFixed(2)})`);
@@ -259,8 +269,8 @@ assert.strictEqual(dayRes.stagedLevel.tp, 19380, "Day TP should match structural
 assert(dayRes.stagedLevel.rr > 5.0, `Day runner RR (${dayRes.stagedLevel.rr}R) should not be capped at 5.0R`);
 pass(`Day runner target naturally expands to pure structural DOL (${dayRes.stagedLevel.rr}R > previous 5.0R ceiling)`);
 
-assert.strictEqual(swingRes.stagedLevel.tp, 18900, "Swing TP should match macro D1 dealing range low (18900)");
-pass(`Swing runner target anchors strictly to macro D1 boundary (${swingRes.stagedLevel.tp})`);
+assert.strictEqual(macroCandidate.tp, 18900, "Swing TP should match macro D1 dealing range low (18900)");
+pass(`Swing runner target anchors strictly to macro D1 boundary (${macroCandidate.tp})`);
 
 const dayT1 = dayRes.stagedLevel.targets[0].price;
 const dayT2 = dayRes.stagedLevel.targets[1].price;
