@@ -418,10 +418,61 @@ export default function AutonomousLiveHUD({
               }
         }
       >
-        {/* On mobile: touch drag handle bar */}
+        {/* On mobile: touch drag handle & dedicated top-right corner close button */}
         {isMobile && (
-          <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px", cursor: "grab" }}>
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border-hi)" }} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 14px 4px",
+              flexShrink: 0,
+            }}
+          >
+            {/* Left placeholder to balance the close button and keep handle centered */}
+            <div style={{ width: 28 }} />
+
+            {/* Centered touch drag handle */}
+            <div
+              style={{
+                width: 44,
+                height: 4,
+                borderRadius: 2,
+                background: "var(--border-hi)",
+                cursor: "grab",
+              }}
+            />
+
+            {/* Dedicated Top-Right Close Button on Mobile */}
+            <button
+              onClick={handleDismiss}
+              aria-label="Close Cockpit"
+              title="Close Cockpit"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "rgba(255, 255, 255, 0.08)",
+                border: "1px solid var(--border)",
+                color: "var(--fg)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+                e.currentTarget.style.color = "var(--red)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
+                e.currentTarget.style.color = "var(--fg)";
+              }}
+            >
+              <X size={15} />
+            </button>
           </div>
         )}
 
@@ -589,26 +640,28 @@ export default function AutonomousLiveHUD({
               <span>Config</span>
             </button>
 
-            {/* Expand / Collapse Width */}
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              title={isExpanded ? "Collapse Width" : "Expand Cockpit Width"}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--muted)",
-                cursor: "pointer",
-                padding: 4,
-                display: "flex",
-                alignItems: "center",
-                borderRadius: 4,
-                transition: "color 0.15s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--fg)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
-            >
-              {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
+            {/* Expand / Collapse Width (Desktop only) */}
+            {!isMobile && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? "Collapse Width" : "Expand Cockpit Width"}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                  padding: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  borderRadius: 4,
+                  transition: "color 0.15s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--fg)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+              >
+                {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+            )}
 
             {/* Refresh Trades */}
             {onRefresh && (
