@@ -200,9 +200,17 @@ if [ "$START_MT5" = true ]; then
     done
 
     if [ -n "$PYTHON_CMD" ]; then
+        export PYTHONIOENCODING=utf-8
+        export PYTHONUNBUFFERED=1
         "$PYTHON_CMD" mt5_server.py --host 0.0.0.0 --port 8765 > mt5_server.log 2>&1 &
         MT5_PID=$!
-        echo -e "${GREEN}✔ Local MT5 Bridge started (PID: $MT5_PID, Log: mt5_server.log)${NC}"
+        sleep 1
+        if ! kill -0 "$MT5_PID" 2>/dev/null; then
+            echo -e "${RED}✘ Local MT5 Bridge failed to start! Last lines of mt5_server.log:${NC}"
+            tail -n 15 mt5_server.log
+        else
+            echo -e "${GREEN}✔ Local MT5 Bridge started (PID: $MT5_PID, Log: mt5_server.log)${NC}"
+        fi
     else
         echo -e "${RED}✘ Python 3 not found. Skipping local MT5 server launch.${NC}"
     fi
@@ -228,7 +236,7 @@ if [ "$MODE" = "prod" ]; then
     fi
 
     echo -e "\n${GREEN}🚀 Starting TradeSpace Production Server...${NC}"
-    NODE_ENV=production node --max-old-space-size=1024 server.js > "$LOG_FILE" 2>&1 &
+    NODE_ENV=production node --max-old-space-size=2048 server.js > "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
 else
     # Clean stale production build cache to prevent Webpack runtime chunk collisions (MODULE_NOT_FOUND)
@@ -237,7 +245,7 @@ else
         rm -rf .next
     fi
     echo -e "\n${GREEN}🚀 Starting TradeSpace Development Server (with hot reload)...${NC}"
-    NODE_ENV=development node --max-old-space-size=1024 server.js > "$LOG_FILE" 2>&1 &
+    NODE_ENV=development node --max-old-space-size=2048 server.js > "$LOG_FILE" 2>&1 &
     SERVER_PID=$!
 fi
 

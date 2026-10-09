@@ -51,7 +51,14 @@ import threading
 import math
 import sqlite3
 import hashlib
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    try:
+        from backports.zoneinfo import ZoneInfo
+    except Exception:
+        ZoneInfo = None
+
 from urllib.parse import urlparse, parse_qsl
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -90,7 +97,7 @@ LOCK = threading.RLock()
 # remains unresolved and is never replayed; orders/deals reconcile the outcome.
 def journal_connection():
     path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30.0)
     conn.execute("CREATE TABLE IF NOT EXISTS requests (request_id TEXT PRIMARY KEY, digest TEXT NOT NULL, state TEXT NOT NULL, response TEXT, created REAL NOT NULL)")
     return conn
 
@@ -200,12 +207,15 @@ def ensure_mt5() -> tuple[bool, str]:
     """Ensure connection to the MT5 terminal is active."""
     if mt5 is None:
         return False, "MetaTrader5 package not installed (Windows only)"
-    info = mt5.terminal_info()
-    if info is not None:
+    try:
+        info = mt5.terminal_info()
+        if info is not None:
+            return True, "ok"
+        if not mt5.initialize():
+            return False, f"initialize failed: {mt5.last_error()}"
         return True, "ok"
-    if not mt5.initialize():
-        return False, f"initialize failed: {mt5.last_error()}"
-    return True, "ok"
+    except Exception as exc:
+        return False, f"mt5 exception: {exc}"
 
 
 def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
@@ -986,8 +996,14 @@ def handle_state(payload):
         return {"ok": False, "message": "Order history unavailable"}
     with journal_connection() as conn:
         rows = conn.execute("SELECT request_id,state,response FROM requests WHERE created>=?", ((now - timedelta(days=7)).timestamp(),)).fetchall()
-    requests = [{"request_id": r[0], "state": r[1], "response": json.loads(r[2]) if r[2] else None} for r in rows]
-    day_start = now.astimezone(ZoneInfo(os.getenv("MT5_BROKER_TIMEZONE", "Europe/Athens"))).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    tz_name = os.getenv("MT5_BROKER_TIMEZONE", "Europe/Athens")
+    try:
+        if ZoneInfo:
+            day_start = now.astimezone(ZoneInfo(tz_name)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        else:
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    except Exception:
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     daily = [d for d in history["history"] if float(d.get("time") or 0) >= day_start and d.get("type") in ["BUY", "SELL"]]
     pnl = sum(float(d.get("profit") or 0) + float(d.get("commission") or 0) + float(d.get("swap") or 0) + float(d.get("fee") or 0) for d in daily)
     order_fields = ["ticket", "position_id", "state", "comment", "symbol", "volume_initial", "volume_current"]
@@ -1104,7 +1120,7 @@ class Handler(BaseHTTPRequestHandler):
         if not handler:
             self._send(404, {"ok": False, "status": "not-found", "message": f"unknown route {method} {path}"})
             return
-        if not self._authorized():
+        if path != "/health" and not self._authorized():
             self._send(401, {"ok": False, "status": "unauthorized", "message": "MT5_TOKEN missing or invalid"})
             return
         try:
@@ -1147,13 +1163,13 @@ def main():
             print(f"[mt5] terminal={term.name} build={term.build} connected={term.connected}", flush=True)
 
     print(f"[bridge] listening on http://{args.host}:{args.port}", flush=True)
-    print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN — set MT5_TOKEN env var'}", flush=True)
+    print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN - set MT5_TOKEN env var'}", flush=True)
     print("=" * 60, flush=True)
 
     try:
         ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
     except KeyboardInterrupt:
-        print("\n[bridge] shutting down…", flush=True)
+        print("\n[bridge] shutting down...", flush=True)
     finally:
         if mt5:
             mt5.shutdown()

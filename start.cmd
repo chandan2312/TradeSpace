@@ -26,8 +26,32 @@ for %%A in (%*) do (
 
 if "!LAUNCH_MT5!"=="1" (
     echo [Launcher] Spawning MT5 Bridge Server on port 8765 in background window...
-    start "TradeSpace MT5 Bridge (Port 8765)" cmd /k "python mt5_server.py"
-    timeout /t 2 /nobreak >nul
+    set "PY_CMD="
+    if exist "%~dp0.venv\Scripts\python.exe" (
+        set "PY_CMD=%~dp0.venv\Scripts\python.exe"
+    ) else if exist "%~dp0venv\Scripts\python.exe" (
+        set "PY_CMD=%~dp0venv\Scripts\python.exe"
+    ) else if exist "%~dp0quant_service\.venv\Scripts\python.exe" (
+        set "PY_CMD=%~dp0quant_service\.venv\Scripts\python.exe"
+    ) else (
+        where py >nul 2>&1
+        if not errorlevel 1 (
+            set "PY_CMD=py -3"
+        ) else (
+            where python >nul 2>&1
+            if not errorlevel 1 (
+                set "PY_CMD=python"
+            )
+        )
+    )
+
+    if "!PY_CMD!"=="" (
+        echo [ERROR] Python not found in system PATH!
+        echo Please install Python 3.9+ from python.org and ensure "Add Python to PATH" is checked.
+    ) else (
+        start "TradeSpace MT5 Bridge (Port 8765)" cmd /k "cd /d ""%~dp0"" && chcp 65001 >nul && set PYTHONIOENCODING=utf-8 && :mt5_loop && echo [MT5 Bridge] Starting on http://0.0.0.0:8765 ... && !PY_CMD! mt5_server.py --host 0.0.0.0 --port 8765 && echo [MT5 Bridge] Process ended. Reviving in 3 seconds... && timeout /t 3 >nul && goto mt5_loop"
+        timeout /t 2 /nobreak >nul
+    )
 )
 
 REM 3. Verify production build exists and is up to date (checks BUILD_ID and autonomous route)
