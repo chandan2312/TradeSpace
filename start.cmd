@@ -1,5 +1,4 @@
 @echo off
-setlocal enabledelayedexpansion
 title TradeSpace Web Server (Port 3000)
 
 REM Always ensure execution from the directory containing this script
@@ -9,92 +8,49 @@ echo ============================================================
 echo   TradeSpace Enterprise - Web Server Launcher
 echo ============================================================
 
-REM 1. Verify environment configuration (.env or .env.local)
-if not exist ".env" (
-    if not exist ".env.local" (
-        if not exist ".env.production" (
-            echo [WARNING] No .env file found in %~dp0
-            echo Please ensure .env exists with MONGODB_URI configured.
-            echo If you already set environment variables system-wide, pressing any key will continue.
-            pause
-        )
+REM 1. Check if user requested MT5 bridge via argument
+if "%1"=="--with-mt5" (
+    if exist "%~dp0run_mt5.bat" (
+        echo [Launcher] Launching MT5 Bridge Server in separate window...
+        start "TradeSpace MT5 Bridge" cmd /c "%~dp0run_mt5.bat"
+        timeout /t 2 /nobreak >nul
     )
 )
-
-REM 2. Check arguments for MT5 and Build
-set "LAUNCH_MT5=0"
-set "FORCE_BUILD=0"
-
-for %%A in (%*) do (
-    if "%%A"=="--with-mt5" set "LAUNCH_MT5=1"
-    if "%%A"=="mt5" set "LAUNCH_MT5=1"
-    if "%%A"=="--build" set "FORCE_BUILD=1"
-    if "%%A"=="-b" set "FORCE_BUILD=1"
-)
-
-if "!LAUNCH_MT5!"=="1" (
-    echo [Launcher] Spawning MT5 Bridge Server on port 8765 in separate window...
-    set "PY_CMD="
-    if exist "%~dp0.venv\Scripts\python.exe" (
-        set "PY_CMD=%~dp0.venv\Scripts\python.exe"
-    ) else if exist "%~dp0venv\Scripts\python.exe" (
-        set "PY_CMD=%~dp0venv\Scripts\python.exe"
-    ) else if exist "%~dp0quant_service\.venv\Scripts\python.exe" (
-        set "PY_CMD=%~dp0quant_service\.venv\Scripts\python.exe"
-    ) else (
-        where py >nul 2>&1
-        if not errorlevel 1 (
-            set "PY_CMD=py -3"
-        ) else (
-            where python >nul 2>&1
-            if not errorlevel 1 (
-                set "PY_CMD=python"
-            )
-        )
-    )
-
-    if "!PY_CMD!"=="" (
-        echo [ERROR] Python not found in system PATH!
-        echo Please install Python 3.9+ from python.org and ensure "Add Python to PATH" is checked.
-    ) else (
-        start "TradeSpace MT5 Bridge (Port 8765)" cmd /k "cd /d ""%~dp0"" && chcp 65001 >nul && set PYTHONIOENCODING=utf-8 && :mt5_loop && echo [MT5 Bridge] Starting on http://0.0.0.0:8765 ... && !PY_CMD! mt5_server.py --host 0.0.0.0 --port 8765 && echo [MT5 Bridge] Process ended. Reviving in 3 seconds... && timeout /t 3 >nul && goto mt5_loop"
+if "%1"=="mt5" (
+    if exist "%~dp0run_mt5.bat" (
+        echo [Launcher] Launching MT5 Bridge Server in separate window...
+        start "TradeSpace MT5 Bridge" cmd /c "%~dp0run_mt5.bat"
         timeout /t 2 /nobreak >nul
     )
 )
 
-REM 3. Verify production build exists and is up to date
-set "NEED_BUILD=0"
-if "!FORCE_BUILD!"=="1" set "NEED_BUILD=1"
-if not exist ".next" set "NEED_BUILD=1"
-if not exist ".next\BUILD_ID" set "NEED_BUILD=1"
-if not exist ".next\server\app\page.js" set "NEED_BUILD=1"
-
-if "!NEED_BUILD!"=="1" (
-    echo [Launcher] Compiling fresh Next.js production build (npm run build)...
+REM 2. Verify production build exists
+if not exist ".next\server\app\page.js" (
+    echo [Launcher] No existing build found. Compiling Next.js production build...
     call npm run build
     if errorlevel 1 (
-        echo [ERROR] Build failed! Please review errors above.
+        echo [ERROR] Build failed. Please inspect errors above.
         pause
         exit /b 1
     )
-    echo [Launcher] Production build completed successfully.
 )
 
-REM 4. Launch TradeSpace with Resilient Watchdog Supervisor
-echo [Launcher] Starting TradeSpace Server on port 3000 with Watchdog...
-echo [Launcher] Memory allocation: 2048 MB heap. Auto-revives on unexpected exit.
+REM 3. Launch TradeSpace with 24/7 Watchdog Supervisor
+echo [Launcher] Starting TradeSpace Server on port 3000...
+echo [Launcher] Memory allocation: 2048 MB heap.
+echo [Launcher] Auto-revives if process ever exits.
 echo [Launcher] Server URL: http://localhost:3000
+echo ============================================================
 echo.
 
 :run_server
 node --max-old-space-size=2048 server.js
-set "EXIT_CODE=!errorlevel!"
+set "EXIT_CODE=%errorlevel%"
 
 echo.
 echo ============================================================
-echo [WATCHDOG] TradeSpace process exited (Exit Code: !EXIT_CODE!).
-echo [WATCHDOG] Automatically reviving TradeSpace server in 3 seconds...
-echo [WATCHDOG] Press Ctrl+C in this terminal if you wish to terminate.
+echo [WATCHDOG] TradeSpace process exited with code %EXIT_CODE%.
+echo [WATCHDOG] Reviving server in 3 seconds... Press Ctrl+C to terminate.
 echo ============================================================
 timeout /t 3 /nobreak >nul
 goto run_server
