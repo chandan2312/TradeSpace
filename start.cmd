@@ -1,16 +1,24 @@
 @echo off
 setlocal enabledelayedexpansion
+title TradeSpace Web Server (Port 3000)
+
+REM Always ensure execution from the directory containing this script
+cd /d "%~dp0"
 
 echo ============================================================
-echo   TradeSpace Enterprise - Windows VPS Launcher
+echo   TradeSpace Enterprise - Web Server Launcher
 echo ============================================================
 
-REM 1. Verify .env exists
+REM 1. Verify environment configuration (.env or .env.local)
 if not exist ".env" (
-    echo [ERROR] .env file not found!
-    echo Please make sure .env is created in this directory.
-    pause
-    exit /b 1
+    if not exist ".env.local" (
+        if not exist ".env.production" (
+            echo [WARNING] No .env file found in %~dp0
+            echo Please ensure .env exists with MONGODB_URI configured.
+            echo If you already set environment variables system-wide, pressing any key will continue.
+            pause
+        )
+    )
 )
 
 REM 2. Check arguments for MT5 and Build
@@ -25,7 +33,7 @@ for %%A in (%*) do (
 )
 
 if "!LAUNCH_MT5!"=="1" (
-    echo [Launcher] Spawning MT5 Bridge Server on port 8765 in background window...
+    echo [Launcher] Spawning MT5 Bridge Server on port 8765 in separate window...
     set "PY_CMD="
     if exist "%~dp0.venv\Scripts\python.exe" (
         set "PY_CMD=%~dp0.venv\Scripts\python.exe"
@@ -54,12 +62,12 @@ if "!LAUNCH_MT5!"=="1" (
     )
 )
 
-REM 3. Verify production build exists and is up to date (checks BUILD_ID and autonomous route)
+REM 3. Verify production build exists and is up to date
 set "NEED_BUILD=0"
 if "!FORCE_BUILD!"=="1" set "NEED_BUILD=1"
 if not exist ".next" set "NEED_BUILD=1"
 if not exist ".next\BUILD_ID" set "NEED_BUILD=1"
-if not exist ".next\server\app\autonomous\page.js" set "NEED_BUILD=1"
+if not exist ".next\server\app\page.js" set "NEED_BUILD=1"
 
 if "!NEED_BUILD!"=="1" (
     echo [Launcher] Compiling fresh Next.js production build (npm run build)...
@@ -75,6 +83,8 @@ if "!NEED_BUILD!"=="1" (
 REM 4. Launch TradeSpace with Resilient Watchdog Supervisor
 echo [Launcher] Starting TradeSpace Server on port 3000 with Watchdog...
 echo [Launcher] Memory allocation: 2048 MB heap. Auto-revives on unexpected exit.
+echo [Launcher] Server URL: http://localhost:3000
+echo.
 
 :run_server
 node --max-old-space-size=2048 server.js
