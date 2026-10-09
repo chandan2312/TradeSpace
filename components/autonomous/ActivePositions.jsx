@@ -15,6 +15,7 @@ import {
   IRARBadge,
   tradeRiskTelemetry,
 } from "./TradeTelemetry";
+import ModelBadge from "./ModelBadge";
 
 export default function ActivePositions({
   activeTrades = [],
@@ -227,8 +228,19 @@ export default function ActivePositions({
                     >
                       {horizonLabel}
                     </span>
-                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
-                      {setup.modelId} · {setup.tf}
+                    <ModelBadge item={setup.trades[0] || setup} size="sm" />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: "var(--muted)",
+                        fontFamily: "monospace",
+                        background: "var(--panel-2)",
+                        padding: "1px 5px",
+                        borderRadius: 3,
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      {setup.tf}
                     </span>
                     {setup.trades.length > 1 && (
                       <span
@@ -423,6 +435,7 @@ function DefaultLegCard({ item, setup, ticks, onCloseTrade }) {
           >
             DEFAULT LEG (MG1)
           </span>
+          <ModelBadge item={trade} size="xs" />
           {trade.magicNumber && (
             <span
               style={{
@@ -751,6 +764,7 @@ function PropFirmLegCard({ item, setup, ticks, onCloseTrade }) {
           >
             PROP-FIRM SAFE (MG2)
           </span>
+          <ModelBadge item={trade} size="xs" />
           {trade.magicNumber && (
             <span
               style={{
