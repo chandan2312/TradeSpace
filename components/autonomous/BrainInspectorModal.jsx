@@ -152,143 +152,287 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        {/* Header Bar */}
+        {/* Pinned Sticky Header & Tab Navigation Container */}
         <div
           style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 30,
+            background: "var(--panel)",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
+            flexDirection: "column",
             gap: 10,
+            flexShrink: 0,
+            paddingTop: 2,
+            paddingBottom: 8,
             borderBottom: "1px solid var(--border)",
-            paddingBottom: 12,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                background: "rgba(168, 85, 247, 0.15)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#c084fc",
-              }}
-            >
-              <Brain size={18} />
-            </div>
+          {/* Header Bar */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 10,
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: "rgba(168, 85, 247, 0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#c084fc",
+                  flexShrink: 0,
+                }}
+              >
+                <Brain size={18} />
+              </div>
 
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <h2
-                  id="brain-inspector-title"
-                  style={{ fontSize: 17, fontWeight: 800, margin: 0, color: "var(--fg)" }}
-                >
-                  {pair.tradeableSymbol || pair.symbol}
-                </h2>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <h2
+                    id="brain-inspector-title"
+                    style={{ fontSize: 17, fontWeight: 800, margin: 0, color: "var(--fg)" }}
+                  >
+                    {pair.tradeableSymbol || pair.symbol}
+                  </h2>
 
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                    background:
-                      pair.dir === 1
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background:
+                        pair.dir === 1
+                          ? "rgba(34, 197, 94, 0.18)"
+                          : pair.dir === -1
+                          ? "rgba(239, 68, 68, 0.18)"
+                          : "var(--panel-2)",
+                      color:
+                        pair.dir === 1
+                          ? "var(--green)"
+                          : pair.dir === -1
+                          ? "var(--red)"
+                          : "var(--muted)",
+                    }}
+                  >
+                    {pair.dir === 1 ? "BUY / LONG ▲" : pair.dir === -1 ? "SELL / SHORT ▼" : "NEUTRAL ⬌"}
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      fontFamily: "monospace",
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: "rgba(168, 85, 247, 0.15)",
+                      color: "#c084fc",
+                      border: "1px solid rgba(168, 85, 247, 0.3)",
+                    }}
+                  >
+                    {pair.horizonBadge || pair.scenario?.badge || "4H-15M"} ({horizonKey})
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: isPrime
                         ? "rgba(34, 197, 94, 0.18)"
-                        : pair.dir === -1
-                        ? "rgba(239, 68, 68, 0.18)"
+                        : isWatching
+                        ? "rgba(249, 115, 22, 0.15)"
+                        : isBlocked
+                        ? "rgba(239, 68, 68, 0.15)"
                         : "var(--panel-2)",
-                    color:
-                      pair.dir === 1
+                      color: isPrime
                         ? "var(--green)"
-                        : pair.dir === -1
+                        : isWatching
+                        ? "var(--orange)"
+                        : isBlocked
                         ? "var(--red)"
                         : "var(--muted)",
-                  }}
-                >
-                  {pair.dir === 1 ? "BUY / LONG ▲" : pair.dir === -1 ? "SELL / SHORT ▼" : "NEUTRAL ⬌"}
-                </span>
-
-                <span
-                  style={{
-                    fontSize: 9.5,
-                    fontFamily: "monospace",
-                    fontWeight: 700,
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                    background: "rgba(168, 85, 247, 0.15)",
-                    color: "#c084fc",
-                    border: "1px solid rgba(168, 85, 247, 0.3)",
-                  }}
-                >
-                  {pair.horizonBadge || pair.scenario?.badge || "4H-15M"} ({horizonKey})
-                </span>
-
-                <span
-                  style={{
-                    fontSize: 9.5,
-                    fontWeight: 700,
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                    background: isPrime
-                      ? "rgba(34, 197, 94, 0.18)"
-                      : isWatching
-                      ? "rgba(249, 115, 22, 0.15)"
-                      : isBlocked
-                      ? "rgba(239, 68, 68, 0.15)"
-                      : "var(--panel-2)",
-                    color: isPrime
-                      ? "var(--green)"
-                      : isWatching
-                      ? "var(--orange)"
-                      : isBlocked
-                      ? "var(--red)"
-                      : "var(--muted)",
-                  }}
-                >
-                  {String(pair.status || "RADAR").replace(/_/g, " ")}
-                </span>
+                    }}
+                  >
+                    {String(pair.status || "RADAR").replace(/_/g, " ")}
+                  </span>
+                </div>
               </div>
+            </div>
+
+            {/* Top Right Controls & Dedicated Close Button */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {opportunityScore !== null && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                    fontWeight: 800,
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    background: "rgba(56, 189, 248, 0.12)",
+                    color: "var(--accent)",
+                    border: "1px solid rgba(56, 189, 248, 0.25)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Opp: {opportunityScore}/100
+                </span>
+              )}
+
+              {/* Dedicated Top-Right Close Button */}
+              <button
+                onClick={onClose}
+                aria-label="Close radar inspector"
+                title="Close (Esc)"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  border: "1px solid var(--border)",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  color: "var(--fg)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+                  e.currentTarget.style.color = "var(--red)";
+                  e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
+                  e.currentTarget.style.color = "var(--fg)";
+                  e.currentTarget.style.borderColor = "var(--border)";
+                }}
+              >
+                <X size={16} />
+              </button>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {opportunityScore !== null && (
-              <span
-                style={{
-                  fontSize: 11,
-                  fontFamily: "monospace",
-                  fontWeight: 800,
-                  padding: "3px 8px",
-                  borderRadius: 6,
-                  background: "rgba(56, 189, 248, 0.12)",
-                  color: "var(--accent)",
-                  border: "1px solid rgba(56, 189, 248, 0.25)",
-                }}
-              >
-                Opp: {opportunityScore}/100
-              </span>
-            )}
+          {/* Tab Navigation Controls (Pinned under header row, never collapses or hides) */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              overflowX: "auto",
+              scrollbarWidth: "none",
+              flexShrink: 0,
+              minHeight: 34,
+              paddingTop: 2,
+            }}
+          >
             <button
-              onClick={onClose}
-              aria-label="Close brain inspector"
+              onClick={() => setActiveTab("chart")}
               style={{
-                border: "1px solid var(--border)",
-                background: "var(--panel-2)",
-                color: "var(--muted)",
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                display: "flex",
+                display: "inline-flex",
                 alignItems: "center",
-                justifyContent: "center",
+                gap: 5,
+                padding: "6px 12px",
+                fontSize: 11,
+                fontWeight: 700,
+                borderRadius: 6,
+                border: "1px solid",
+                borderColor: activeTab === "chart" ? "#a855f7" : "transparent",
+                background: activeTab === "chart" ? "rgba(168, 85, 247, 0.15)" : "transparent",
+                color: activeTab === "chart" ? "#c084fc" : "var(--muted)",
                 cursor: "pointer",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
               }}
             >
-              <X size={16} />
+              <CandlestickChart size={13} />
+              <span>Trade Idea Chart</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("structure")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 12px",
+                fontSize: 11,
+                fontWeight: 700,
+                borderRadius: 6,
+                border: "1px solid",
+                borderColor: activeTab === "structure" ? "var(--accent)" : "transparent",
+                background: activeTab === "structure" ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                color: activeTab === "structure" ? "var(--accent)" : "var(--muted)",
+                cursor: "pointer",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Compass size={13} />
+              <span>Macro & Range Structure</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("confluence")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 12px",
+                fontSize: 11,
+                fontWeight: 700,
+                borderRadius: 6,
+                border: "1px solid",
+                borderColor: activeTab === "confluence" ? "var(--green)" : "transparent",
+                background: activeTab === "confluence" ? "rgba(34, 197, 94, 0.15)" : "transparent",
+                color: activeTab === "confluence" ? "var(--green)" : "var(--muted)",
+                cursor: "pointer",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Layers size={13} />
+              <span>Confluences & Candidates</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("all")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 10px",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 6,
+                border: "1px solid",
+                borderColor: activeTab === "all" ? "var(--border)" : "transparent",
+                background: activeTab === "all" ? "var(--panel-2)" : "transparent",
+                color: activeTab === "all" ? "var(--fg)" : "var(--muted)",
+                marginLeft: "auto",
+                cursor: "pointer",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>Overview View</span>
             </button>
           </div>
         </div>
@@ -346,102 +490,6 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
             value={displayRR !== null ? `${displayRR.toFixed(2)}R` : "—"}
             color="var(--green)"
           />
-        </div>
-
-        {/* Tab Navigation Controls */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            borderBottom: "1px solid var(--border)",
-            paddingBottom: 6,
-            overflowX: "auto",
-          }}
-        >
-          <button
-            onClick={() => setActiveTab("chart")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "6px 12px",
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 6,
-              border: "1px solid",
-              borderColor: activeTab === "chart" ? "#a855f7" : "transparent",
-              background: activeTab === "chart" ? "rgba(168, 85, 247, 0.15)" : "transparent",
-              color: activeTab === "chart" ? "#c084fc" : "var(--muted)",
-              cursor: "pointer",
-            }}
-          >
-            <CandlestickChart size={13} />
-            <span>Trade Idea Chart</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("structure")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "6px 12px",
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 6,
-              border: "1px solid",
-              borderColor: activeTab === "structure" ? "var(--accent)" : "transparent",
-              background: activeTab === "structure" ? "rgba(56, 189, 248, 0.15)" : "transparent",
-              color: activeTab === "structure" ? "var(--accent)" : "var(--muted)",
-              cursor: "pointer",
-            }}
-          >
-            <Compass size={13} />
-            <span>Macro & Range Structure</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("confluence")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "6px 12px",
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 6,
-              border: "1px solid",
-              borderColor: activeTab === "confluence" ? "var(--green)" : "transparent",
-              background: activeTab === "confluence" ? "rgba(34, 197, 94, 0.15)" : "transparent",
-              color: activeTab === "confluence" ? "var(--green)" : "var(--muted)",
-              cursor: "pointer",
-            }}
-          >
-            <Layers size={13} />
-            <span>Confluences & Candidates</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("all")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "6px 10px",
-              fontSize: 11,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: "1px solid",
-              borderColor: activeTab === "all" ? "var(--border)" : "transparent",
-              background: activeTab === "all" ? "var(--panel-2)" : "transparent",
-              color: activeTab === "all" ? "var(--fg)" : "var(--muted)",
-              marginLeft: "auto",
-              cursor: "pointer",
-            }}
-          >
-            <span>Overview View</span>
-          </button>
         </div>
 
         {/* Tab 1: Trade Idea Chart */}
