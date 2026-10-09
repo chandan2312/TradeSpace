@@ -1321,7 +1321,6 @@ export default function JournalView() {
           options={[
             { value: "swing", label: "Swing (1D-1H)", short: "Swing" },
             { value: "day", label: "Day Trade (4H-15M)", short: "Day" },
-            { value: "scalp", label: "Scalp (30M-5M)", short: "Scalp" },
           ]}
           selected={selectedHorizons}
           onChange={setSelectedHorizons}
