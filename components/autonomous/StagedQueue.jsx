@@ -28,6 +28,7 @@ import DecisionReasons from "./DecisionReasons";
 import EvidenceDetails from "./EvidenceDetails";
 import StagedIdeaChart from "./StagedIdeaChart";
 import StagedTradeModal from "./StagedTradeModal";
+import ModelBadge from "./ModelBadge";
 import {
   TelemetryValue,
   TargetLadder,
@@ -470,6 +471,7 @@ export default function StagedQueue({
                     >
                       {trade.scenario?.badge || trade.tf || "15M"}
                     </span>
+                    <ModelBadge item={trade} size="sm" />
                     {setup.isDualLeg ? (
                       <span
                         style={{
@@ -581,9 +583,10 @@ export default function StagedQueue({
                       fontSize: 11,
                     }}
                   >
-                    <span style={{ color: "var(--fg)", fontWeight: 700 }}>
-                      {trade.modelId || level.model || "ICT 2022 Setup"}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 600 }}>Model:</span>
+                      <ModelBadge item={trade} size="xs" showName={true} />
+                    </div>
                     <span
                       style={{
                         fontFamily: "monospace",

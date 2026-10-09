@@ -28,6 +28,7 @@ import {
 } from "./TradeTelemetry";
 import { resolveCopierRouting } from "../../lib/autonomous/magicEncoder";
 import { calculateEffectiveGroupRisk } from "../../lib/autonomous/risk";
+import ModelBadge from "./ModelBadge";
 
 const actionStyle = {
   padding: "6px 12px",
@@ -204,10 +205,15 @@ export default function StagedTradeModal({
                 >
                   {armed ? "⚡ READY TO FIRE" : confirming ? "CONFIRMING" : "STAGED"}
                 </span>
+                <ModelBadge item={trade} size="sm" showName={true} />
               </div>
 
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                Model: <strong style={{ color: "var(--accent)" }}>{trade.modelId || level.model || "ICT 2022"}</strong> · Timeframe: {trade.tf || "15M"} · Thesis: {trade.thesisId || brain.thesisId || "Confirmed"}
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <ModelBadge item={trade} size="xs" />
+                <span>·</span>
+                <span>Timeframe: <strong style={{ color: "var(--fg)" }}>{trade.tf || "15M"}</strong></span>
+                <span>·</span>
+                <span>Thesis: <strong style={{ color: "var(--fg)" }}>{trade.thesisId || brain.thesisId || "Confirmed"}</strong></span>
               </div>
             </div>
 

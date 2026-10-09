@@ -43,6 +43,7 @@ import BrainInspectorModal from "./BrainInspectorModal";
 import AuditLog from "./AuditLog";
 import StagedTradeModal from "./StagedTradeModal";
 import LiveTradeModal from "./LiveTradeModal";
+import ModelBadge from "./ModelBadge";
 import ControlConsole from "./ControlConsole";
 import ExecutionDiagnostics from "./ExecutionDiagnostics";
 
@@ -1135,6 +1136,7 @@ export default function AutonomousLiveHUD({
                             >
                               {trade.dir === 1 ? "BUY" : "SELL"}
                             </span>
+                            <ModelBadge item={trade} size="xs" />
                             {trade.lot && (
                               <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "monospace" }}>
                                 {trade.lot}L
@@ -1456,6 +1458,7 @@ export default function AutonomousLiveHUD({
                                 DUAL LEG
                               </span>
                             )}
+                            <ModelBadge item={setup} size="xs" />
                           </div>
 
                           <span
@@ -1470,8 +1473,11 @@ export default function AutonomousLiveHUD({
                           </span>
                         </div>
 
-                        <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", justifyContent: "space-between" }}>
-                          <span>Model: <strong style={{ color: "var(--fg)" }}>{setup.modelId || level.model || "ICT 2022"}</strong></span>
+                        <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span>Model:</span>
+                            <ModelBadge item={setup} size="xs" showName={true} />
+                          </div>
                           {setup.status === "armed" && (
                             <span style={{ color: "var(--green)", fontWeight: 700, fontSize: 10 }}>⚡ ARMED</span>
                           )}

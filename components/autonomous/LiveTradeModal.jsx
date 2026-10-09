@@ -27,6 +27,7 @@ import {
   tradeRiskTelemetry,
   markPriceFor,
 } from "./TradeTelemetry";
+import ModelBadge from "./ModelBadge";
 
 const actionStyle = {
   padding: "6px 12px",
@@ -196,6 +197,7 @@ export default function LiveTradeModal({
                 >
                   {trade.status === "managing" ? "MANAGING" : "ACTIVE"}
                 </span>
+                <ModelBadge item={trade} size="sm" showName={true} />
                 {trade.ticket && (
                   <span
                     style={{
@@ -213,8 +215,12 @@ export default function LiveTradeModal({
                 )}
               </div>
 
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                Model: <strong style={{ color: "var(--accent)" }}>{trade.modelId || "ICT 2022"}</strong> · Timeframe: {trade.tf || "15M"} · Volume: {trade.lotSize || trade.remainingVolume || 0.1} Lots
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <ModelBadge item={trade} size="xs" />
+                <span>·</span>
+                <span>Timeframe: <strong style={{ color: "var(--fg)" }}>{trade.tf || "15M"}</strong></span>
+                <span>·</span>
+                <span>Volume: <strong style={{ color: "var(--fg)" }}>{trade.lotSize || trade.remainingVolume || 0.1} Lots</strong></span>
               </div>
             </div>
 

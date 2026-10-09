@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { finiteNumber, formatPrice, markPriceFor } from "./TradeTelemetry";
 import { resolveRadarTradeIdeaPricing } from "../../lib/autonomous/tradeDrawing";
+import ModelBadge from "./ModelBadge";
 
 const HORIZON_ICONS = {
   all: Layers,
@@ -913,6 +914,7 @@ export default function PairRadar({
                     >
                       {pair.dir === 1 ? "LONG ▲" : pair.dir === -1 ? "SHORT ▼" : "NEUTRAL ⬌"}
                     </span>
+                    <ModelBadge item={pair.stagedLevel || pair.entryModel || level || pair} size="xs" />
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -1187,17 +1189,30 @@ export default function PairRadar({
                     paddingTop: 6,
                   }}
                 >
-                  <span
+                  <div
                     style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minWidth: 0,
                       flex: 1,
-                      color: isBlocked ? "var(--red)" : "var(--muted)",
                     }}
                   >
-                    {typeof pair.statusReason === "string" ? pair.statusReason : typeof modelName === "string" ? modelName : "Analyzing setup"}
-                  </span>
+                    <ModelBadge item={pair.stagedLevel || pair.entryModel || level || pair} size="xs" showName={true} />
+                    {typeof pair.statusReason === "string" && (
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: isBlocked ? "var(--red)" : "var(--muted)",
+                          fontSize: 9.5,
+                        }}
+                      >
+                        · {pair.statusReason}
+                      </span>
+                    )}
+                  </div>
 
                   <div
                     style={{

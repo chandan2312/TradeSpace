@@ -8,6 +8,7 @@ import DecisionReasons from "./DecisionReasons";
 import EvidenceDetails from "./EvidenceDetails";
 import RadarIdeaChart from "./RadarIdeaChart";
 import { TelemetryValue, formatPrice, finiteNumber, markPriceFor } from "./TradeTelemetry";
+import ModelBadge from "./ModelBadge";
 
 export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
   const dialogRef = useRef(null);
@@ -241,6 +242,8 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                   >
                     {pair.horizonBadge || pair.scenario?.badge || "4H-15M"} ({horizonKey})
                   </span>
+
+                  <ModelBadge item={staged || pair.entryModel || pair} size="sm" showName={true} />
 
                   <span
                     style={{
@@ -522,9 +525,12 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                <span style={{ fontWeight: 800, color: "var(--fg)", fontSize: 12 }}>
-                  {modelName} · {pair.activeTimeSlot?.name || "Active Session"}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <ModelBadge item={staged || pair.entryModel || pair} size="sm" showName={true} />
+                  <span style={{ fontWeight: 700, color: "var(--muted)", fontSize: 11 }}>
+                    · {pair.activeTimeSlot?.name || "Active Session"}
+                  </span>
+                </div>
                 <span
                   style={{
                     fontSize: 10,
