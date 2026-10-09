@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "tradespace",
+      name: "tradespace-web",
       script: "server.js",
       instances: 1,
       autorestart: true,
@@ -11,8 +11,19 @@ module.exports = {
         NODE_ENV: "production",
       },
       node_args: "--max-old-space-size=2048",
-      error_file: "./logs/pm2-error.log",
-      out_file: "./logs/pm2-out.log",
+      error_file: "./logs/tradespace-error.log",
+      out_file: "./logs/tradespace-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+    },
+    {
+      name: "mt5-bridge",
+      script: "mt5_server.py",
+      interpreter: "python",
+      args: "--host 0.0.0.0 --port 8765",
+      autorestart: true,
+      watch: false,
+      error_file: "./logs/mt5-error.log",
+      out_file: "./logs/mt5-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
     },
   ],
