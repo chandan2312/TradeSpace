@@ -122,6 +122,22 @@ async function runTests() {
   assert.equal(result3.vetoes.some(v => v.code === "TARGET_ALREADY_HIT"), true, "Must have TARGET_ALREADY_HIT veto");
   console.log("✅ PASS: Target hit before entry correctly yields TARGET_ALREADY_HIT");
 
+  // 4. Prop-Firm Leg Isolation: conservative 1.5R target (1.1030) must NOT trigger TARGET_ALREADY_HIT
+  // when market price is at 1.1040 waiting to retrace, because full thesis target (1.1120) is still unreached!
+  const propLegTrade = {
+    ...trade,
+    legId: "prop_firm",
+    tpPrice: 1.1030, // conservative 1.5R bracket
+    fullTp: 1.1120,  // full macro thesis target
+  };
+  const normalRetraceFrames = {
+    ...mockFrames,
+    M5: [{ time: 1000, open: 1.1035, high: 1.1045, low: 1.1030, close: 1.1040, closeTime: 1300 }]
+  };
+  const result4 = await revalidateTradeIdea(propLegTrade, { ...cfg, frames: { EURUSD: normalRetraceFrames } });
+  assert.equal(result4.vetoes.some(v => v.code === "TARGET_ALREADY_HIT"), false, "Must NOT veto prop leg when fullTp has not been reached");
+  console.log("✅ PASS: Prop-firm leg with conservative TP is immune to false TARGET_ALREADY_HIT while awaiting retracement");
+
   console.log("\n=======================================================");
   console.log("🎯 ALL REVALIDATION TESTS PASSED WITH 100% SUCCESS!");
   console.log("=======================================================");
