@@ -26,12 +26,18 @@ const SYMBOLS = [
   { symbol: "BTCUSD", category: "crypto", basePrice: 65000, pip: 1, spread: 15.0 },
 ];
 
+const eetDateCache = new Map();
 function getEetDate(hour, minute) {
+  const key = `${hour}:${minute}`;
+  if (eetDateCache.has(key)) return new Date(eetDateCache.get(key).getTime());
   const base = new Date("2026-10-06T00:00:00Z");
   for (let offset = 0; offset < 1440; offset++) {
     const d = new Date(base.getTime() + offset * 60000);
     const eet = getEetTime(d);
-    if (eet.h === hour && eet.m === minute) return d;
+    if (eet.h === hour && eet.m === minute) {
+      eetDateCache.set(key, d);
+      return new Date(d.getTime());
+    }
   }
   return null;
 }
@@ -347,7 +353,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 100, low: sym.basePrice - sym.pip * 100 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8 },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
         brain: { conviction: 80, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
       if (res && res.permitted && res.modelId === "ict_2022") {
@@ -375,7 +381,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 80, low: sym.basePrice - sym.pip * 80 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8 },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
         brain: {
           conviction: 85,
           macroDir: dir,
@@ -394,12 +400,12 @@ for (const sym of SYMBOLS) {
   }
 }
 
-// C. Test Breaker Block (At 15:30 EET - NY AM Killzone)
+// C. Test Breaker Block (At 11:30 EET - London Open Killzone)
 for (const sym of SYMBOLS) {
   for (const dir of [1, -1]) {
     for (let iter = 0; iter < 10; iter++) {
       totalScenariosRun++;
-      const dNow = getEetDate(15, 30);
+      const dNow = getEetDate(11, 30);
       const nowSec = Math.floor(dNow.getTime() / 1000);
       const bars = generateBreakerBars({ basePrice: sym.basePrice, pip: sym.pip, dir, nowSec });
       const targetPrice = dir === 1 ? sym.basePrice + sym.pip * 70 : sym.basePrice - sym.pip * 70;
@@ -410,7 +416,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 90, low: sym.basePrice - sym.pip * 90 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8 },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
         brain: { conviction: 85, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
       if (res && res.permitted && res.modelId === "breaker_block") {
@@ -421,12 +427,12 @@ for (const sym of SYMBOLS) {
   }
 }
 
-// D. Test OTE Trend Expansion (At 15:30 EET - NY AM Killzone)
+// D. Test OTE Trend Expansion (At 11:30 EET - London Open Killzone)
 for (const sym of SYMBOLS) {
   for (const dir of [1, -1]) {
     for (let iter = 0; iter < 10; iter++) {
       totalScenariosRun++;
-      const dNow = getEetDate(15, 30);
+      const dNow = getEetDate(11, 30);
       const nowSec = Math.floor(dNow.getTime() / 1000);
       const bars = generateOteBars({ basePrice: sym.basePrice, pip: sym.pip, dir, nowSec });
       const targetPrice = dir === 1 ? sym.basePrice + sym.pip * 90 : sym.basePrice - sym.pip * 90;
@@ -437,7 +443,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 100, low: sym.basePrice - sym.pip * 100 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8 },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
         brain: { conviction: 82, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
       if (res && res.permitted && res.modelId === "ote_continuation") {
@@ -464,7 +470,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 90, low: sym.basePrice - sym.pip * 90 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8 },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
         brain: { conviction: 85, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
       if (res && res.permitted && res.modelId === "silver_bullet") {
