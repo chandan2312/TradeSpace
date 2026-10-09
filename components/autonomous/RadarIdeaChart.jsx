@@ -61,6 +61,9 @@ export default function RadarIdeaChart({
       const activeTf = TF_OPTIONS.find((t) => t.id === selectedTf) || TF_OPTIONS[1];
       const tfSec = activeTf.sec || 900;
       const radarDrawing = buildRadarTradeIdeaDrawing(currentPair, bars || [], tfSec, 0);
+      if (radarDrawing) {
+        radarDrawing.locked = true;
+      }
       drawingManagerRef.current.list = radarDrawing ? [radarDrawing] : [];
       drawingManagerRef.current.redraw();
     },
@@ -181,6 +184,14 @@ export default function RadarIdeaChart({
           bars: () => barsRef.current || [],
           onListChange: () => {},
         });
+
+        // Strictly prevent selection, dragging, or editing of the RR tool
+        drawingManager.on("selection", (ids) => {
+          if (ids && ids.length > 0) {
+            drawingManager.select([]);
+          }
+        });
+
         drawingManagerRef.current = drawingManager;
 
         setChartReady(true);

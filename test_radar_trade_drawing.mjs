@@ -115,5 +115,11 @@ const nullDrawing = buildRadarTradeIdeaDrawing(mockPairScanningNoSetup, mockBars
 assert.strictEqual(nullDrawing, null, "buildRadarTradeIdeaDrawing MUST return null when pair has no structural entry/sl/tp");
 console.log("✅ PASS: Pair without structural setup returns null (no bogus RR tool anchored to currentPrice)");
 
+// 8. Strict Immutability Test: Radar RR tool MUST be strictly locked to prevent editing or moving
+assert.strictEqual(longDrawing.locked, true, "Long radar idea drawing must have locked: true");
+assert.strictEqual(shortDrawing.locked, true, "Short radar idea drawing must have locked: true");
+assert.strictEqual(stagedDrawing.locked, true, "Staged radar idea drawing must have locked: true");
+console.log("✅ PASS: Radar idea RR drawings are strictly locked (locked: true) preventing moving or editing");
+
 console.log("\n🎯 ALL RADAR TRADE IDEA DRAWING TESTS PASSED 100%!\n");
 
