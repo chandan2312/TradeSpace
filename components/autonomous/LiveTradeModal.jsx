@@ -261,6 +261,9 @@ export default function LiveTradeModal({
                 <button
                   key={tab.id}
                   onClick={() => setModalTab(tab.id)}
+                  className="modal-tab-btn"
+                  title={tab.label}
+                  aria-label={tab.label}
                   style={{
                     flexShrink: 0,
                     minHeight: 30,
@@ -282,7 +285,7 @@ export default function LiveTradeModal({
                   }}
                 >
                   <Icon size={13} style={{ color: active ? "var(--accent)" : "currentColor", flexShrink: 0 }} />
-                  <span>{tab.label}</span>
+                  <span className="modal-tab-label">{tab.label}</span>
                 </button>
               );
             })}

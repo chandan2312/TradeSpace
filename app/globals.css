@@ -1058,3 +1058,23 @@ a[href*="tradingview.com"],
   }
 }
 
+/* ==========================================================================
+   Autonomous Modal Horizontal Navigation Tabs (Mobile Screen: Icons Only)
+   Applies across Radar Modal, Staged Trade Modal, and Live Trade Modal
+   ========================================================================== */
+.modal-tab-label {
+  display: inline;
+}
+
+@media (max-width: 768px), ((orientation: landscape) and (max-height: 550px)) {
+  .modal-tab-label {
+    display: none !important;
+  }
+  .modal-tab-btn {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    gap: 0 !important;
+    justify-content: center !important;
+  }
+}
+

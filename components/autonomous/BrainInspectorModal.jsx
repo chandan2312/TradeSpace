@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Brain, CandlestickChart, Compass, Layers, CheckCircle2, AlertTriangle, ShieldAlert } from "lucide-react";
+import { X, Brain, CandlestickChart, Compass, Layers, CheckCircle2, AlertTriangle, ShieldAlert, Eye } from "lucide-react";
 import RangeTelemetry from "./RangeTelemetry";
 import ConfluenceBreakdown from "./ConfluenceBreakdown";
 import DecisionReasons from "./DecisionReasons";
@@ -341,6 +341,9 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
           >
             <button
               onClick={() => setActiveTab("chart")}
+              className="modal-tab-btn"
+              title="Trade Idea Chart"
+              aria-label="Trade Idea Chart"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -359,12 +362,15 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                 transition: "all 0.15s ease",
               }}
             >
-              <CandlestickChart size={13} />
-              <span>Trade Idea Chart</span>
+              <CandlestickChart size={13} style={{ flexShrink: 0 }} />
+              <span className="modal-tab-label">Trade Idea Chart</span>
             </button>
 
             <button
               onClick={() => setActiveTab("structure")}
+              className="modal-tab-btn"
+              title="Macro & Range Structure"
+              aria-label="Macro & Range Structure"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -383,12 +389,15 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                 transition: "all 0.15s ease",
               }}
             >
-              <Compass size={13} />
-              <span>Macro & Range Structure</span>
+              <Compass size={13} style={{ flexShrink: 0 }} />
+              <span className="modal-tab-label">Macro & Range Structure</span>
             </button>
 
             <button
               onClick={() => setActiveTab("confluence")}
+              className="modal-tab-btn"
+              title="Confluences & Candidates"
+              aria-label="Confluences & Candidates"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -407,12 +416,15 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                 transition: "all 0.15s ease",
               }}
             >
-              <Layers size={13} />
-              <span>Confluences & Candidates</span>
+              <Layers size={13} style={{ flexShrink: 0 }} />
+              <span className="modal-tab-label">Confluences & Candidates</span>
             </button>
 
             <button
               onClick={() => setActiveTab("all")}
+              className="modal-tab-btn"
+              title="Overview View"
+              aria-label="Overview View"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -432,7 +444,8 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                 transition: "all 0.15s ease",
               }}
             >
-              <span>Overview View</span>
+              <Eye size={13} style={{ flexShrink: 0 }} />
+              <span className="modal-tab-label">Overview View</span>
             </button>
           </div>
         </div>
