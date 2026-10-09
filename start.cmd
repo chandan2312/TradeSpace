@@ -48,6 +48,19 @@ if "!NEED_BUILD!"=="1" (
     echo [Launcher] Production build completed successfully.
 )
 
-REM 4. Launch TradeSpace
-echo [Launcher] Starting TradeSpace Server on port 3000...
-node --max-old-space-size=1024 server.js
+REM 4. Launch TradeSpace with Resilient Watchdog Supervisor
+echo [Launcher] Starting TradeSpace Server on port 3000 with Watchdog...
+echo [Launcher] Memory allocation: 2048 MB heap. Auto-revives on unexpected exit.
+
+:run_server
+node --max-old-space-size=2048 server.js
+set "EXIT_CODE=!errorlevel!"
+
+echo.
+echo ============================================================
+echo [WATCHDOG] TradeSpace process exited (Exit Code: !EXIT_CODE!).
+echo [WATCHDOG] Automatically reviving TradeSpace server in 3 seconds...
+echo [WATCHDOG] Press Ctrl+C in this terminal if you wish to terminate.
+echo ============================================================
+timeout /t 3 /nobreak >nul
+goto run_server

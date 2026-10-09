@@ -36,6 +36,15 @@ function checkEnv() {
   }
 }
 
+// Global resilience guards: prevent unhandled runtime errors from crashing the production server
+process.on("uncaughtException", (err, origin) => {
+  console.error(`[CRITICAL] Uncaught exception (${origin}):`, err?.stack || err);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[CRITICAL] Unhandled promise rejection:", reason?.stack || reason);
+});
+
 async function main() {
   checkEnv();
   // Warm Mongo (creates indexes, seeds default watchlist) before serving traffic.
@@ -57,9 +66,13 @@ async function main() {
       };
       await handle(req, res, parsedUrl);
     } catch (err) {
-      console.error("[http error]", req.url, err);
-      res.statusCode = 500;
-      res.end("Internal Server Error");
+      console.error("[http error]", req.url, err?.message || err);
+      if (!res.headersSent) {
+        try {
+          res.statusCode = 500;
+          res.end("Internal Server Error");
+        } catch {}
+      }
     }
   };
 
