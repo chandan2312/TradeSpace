@@ -888,8 +888,8 @@ export default function Dashboard() {
   const changeSymbol = (newSym) => {
     if (fullScreenPaneId) {
       setPanes(prev => prev.map(p => p.id === fullScreenPaneId ? { ...p, symbol: newSym } : p));
-    } else if (syncOpts.symbol) {
-      setPanes(prev => prev.map(p => ({ ...p, symbol: newSym })));
+    } else if (syncOpts.symbol || layout === "1") {
+      setPanes(prev => prev.map(p => p.id === activePaneId ? { ...p, symbol: newSym } : p));
     } else {
       const existingPane = panes.find(p => p.symbol === newSym);
       if (existingPane) {

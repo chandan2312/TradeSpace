@@ -245,6 +245,7 @@ export default function ChartPanel({
   const digits = tick?.digits ?? barsDigits ?? 5;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [bridgeOfflineInfo, setBridgeOfflineInfo] = useState(null);
   const [hoverBtn, setHoverBtn] = useState(null); // {y, price}
   const [isHoveringBtn, setIsHoveringBtn] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);   // {x, y, price, nearAlerts:[]}
@@ -630,8 +631,11 @@ export default function ChartPanel({
       if (!data?.ok || !data.bars?.length) {
         if (cached?.bars?.length) {
           applyBars(cached.bars, false, key);
+          setBridgeOfflineInfo({ message: data?.message || "Bridge offline", time: cached.at });
+          setError(null);
+          setLoading(false);
         } else if (!isSilent) {
-          if (retryCountRef.current < 5) {
+          if (retryCountRef.current < 3) {
             retryCountRef.current += 1;
             retryTimerRef.current = setTimeout(() => {
               if (fetchGenerationRef.current === genId) loadBars(key, genId, false);
@@ -664,13 +668,21 @@ export default function ChartPanel({
 
       applyBars(bars, isSilent, key);
       setError(null);
+      if (data?.stale || data?.offline) {
+        setBridgeOfflineInfo({ message: data?.error || "Bridge offline (serving cached bars)", time: cached?.at });
+      } else {
+        setBridgeOfflineInfo(null);
+      }
     } catch (err) {
       if (fetchGenerationRef.current !== genId) return;
       const cached = barsCache.current.get(key);
       if (!isSilent) {
         if (cached?.bars?.length) {
           applyBars(cached.bars, false, key);
-        } else if (retryCountRef.current < 5) {
+          setBridgeOfflineInfo({ message: err.message || "Connection error", time: cached.at });
+          setError(null);
+          setLoading(false);
+        } else if (retryCountRef.current < 3) {
           retryCountRef.current += 1;
           retryTimerRef.current = setTimeout(() => {
             if (fetchGenerationRef.current === genId) loadBars(key, genId, false);
@@ -1501,6 +1513,46 @@ export default function ChartPanel({
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
           <div style={{ fontSize: 15 }}>⚠ {error}</div>
           <div className="muted">Check the symbol exists in the MT5 Market Watch and the bridge is reachable.</div>
+          <button
+            className="ghost"
+            style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 12px", fontSize: 11 }}
+            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false)}
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
+
+      {bridgeOfflineInfo && !loading && (
+        <div
+          style={{
+            position: "absolute",
+            top: 42,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 15,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "4px 12px",
+            background: "rgba(234, 88, 12, 0.18)",
+            border: "1px solid rgba(234, 88, 12, 0.45)",
+            borderRadius: 6,
+            backdropFilter: "blur(6px)",
+            color: "#fb923c",
+            fontSize: 11,
+            fontWeight: 600,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          }}
+        >
+          <span>⚠ MT5 Bridge Offline — Viewing Cached Candles ({bridgeOfflineInfo.time ? new Date(bridgeOfflineInfo.time).toLocaleTimeString() : "Stale"})</span>
+          <button
+            className="ghost"
+            style={{ fontSize: 10, padding: "2px 6px", height: "auto", border: "1px solid rgba(234, 88, 12, 0.5)", borderRadius: 4 }}
+            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false)}
+          >
+            Reconnect
+          </button>
         </div>
       )}
 

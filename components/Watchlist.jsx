@@ -216,24 +216,62 @@ export default function Watchlist({
     setName("");
   };
 
-  const [dailyOpens, setDailyOpens] = useState({});
+  const [dailyOpens, setDailyOpens] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("ts_daily_opens") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const updateDailyOpen = useCallback((sym, openVal) => {
+    setDailyOpens((prev) => {
+      const next = { ...prev, [sym]: openVal };
+      try {
+        const clean = Object.fromEntries(Object.entries(next).filter(([, v]) => typeof v === "number" && v > 0));
+        localStorage.setItem("ts_daily_opens", JSON.stringify(clean));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const syms = list?.symbols || [];
     syms.forEach((sym) => {
-      if (dailyOpens[sym] || dailyOpens[sym] === "loading") return;
+      if (typeof dailyOpens[sym] === "number" || dailyOpens[sym] === "loading") return;
       setDailyOpens((prev) => ({ ...prev, [sym]: "loading" }));
       fetch(`/api/rates?symbol=${sym}&tf=D1&count=1`)
         .then((r) => r.json())
         .then((data) => {
           if (data.ok && data.bars?.length > 0) {
-            setDailyOpens((prev) => ({ ...prev, [sym]: data.bars[0].o }));
+            updateDailyOpen(sym, data.bars[0].o);
           } else {
-            setDailyOpens((prev) => ({ ...prev, [sym]: null }));
+            // Check localStorage bars cache as fallback
+            try {
+              const bc = JSON.parse(localStorage.getItem("ts_bars_cache") || "{}");
+              const d1Bars = bc[`${sym}:D1`]?.bars;
+              if (d1Bars && d1Bars.length > 0 && d1Bars[0].open) {
+                updateDailyOpen(sym, d1Bars[0].open);
+                return;
+              }
+            } catch {}
+            setDailyOpens((prev) => (typeof prev[sym] === "number" ? prev : { ...prev, [sym]: null }));
           }
         })
-        .catch(() => setDailyOpens((prev) => ({ ...prev, [sym]: null })));
+        .catch(() => {
+          try {
+            const bc = JSON.parse(localStorage.getItem("ts_bars_cache") || "{}");
+            const d1Bars = bc[`${sym}:D1`]?.bars;
+            if (d1Bars && d1Bars.length > 0 && d1Bars[0].open) {
+              updateDailyOpen(sym, d1Bars[0].open);
+              return;
+            }
+          } catch {}
+          setDailyOpens((prev) => (typeof prev[sym] === "number" ? prev : { ...prev, [sym]: null }));
+        });
     });
-  }, [list?.symbols]);
+  }, [list?.symbols, updateDailyOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -954,6 +992,18 @@ function WatchRow({
     else if (flag === "yellow") bgColor = "rgba(255, 235, 59, 0.06)";
   }
 
+  let fallbackPrice = null;
+  if (bid == null && typeof window !== "undefined") {
+    try {
+      const bc = JSON.parse(localStorage.getItem("ts_bars_cache") || "{}");
+      const symBars = bc[`${sym}:M5`]?.bars || bc[`${sym}:D1`]?.bars || bc[`${sym}:H1`]?.bars;
+      if (symBars && symBars.length > 0) {
+        fallbackPrice = symBars[symBars.length - 1].close;
+      }
+    } catch {}
+  }
+  const effectivePrice = bid ?? tick?.last ?? fallbackPrice;
+
   return (
     <div
       ref={rowRef}
@@ -1007,11 +1057,14 @@ function WatchRow({
         )}
       </div>
 
-      {bid != null && dailyOpen != null ? (
+      {effectivePrice != null && dailyOpen != null ? (
         <div className="num" style={{ textAlign: "right", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-          <div className={bid > dailyOpen ? "up" : bid < dailyOpen ? "down" : ""}>
-            {bid > dailyOpen ? "+" : ""}{(((bid - dailyOpen) / dailyOpen) * 100).toFixed(2)}%
+          <div className={effectivePrice > dailyOpen ? "up" : effectivePrice < dailyOpen ? "down" : ""}>
+            {effectivePrice > dailyOpen ? "+" : ""}{(((effectivePrice - dailyOpen) / dailyOpen) * 100).toFixed(2)}%
           </div>
+          {bid == null && (
+            <div className="muted" style={{ fontSize: 8, opacity: 0.6 }} title="Cached close (Offline)">cached</div>
+          )}
         </div>
       ) : (
         <div className="muted" style={{ fontSize: 10 }}>—</div>

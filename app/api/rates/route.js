@@ -29,13 +29,21 @@ export async function GET(req) {
   if (cached && Date.now() - cached.at < RATES_TTL_MS) return json(cached.data);
 
   try {
-    const data = await bridge("POST", "/rates", { sym, timeframe: tf, count: n, offset: off }, { timeoutMs: 30_000 });
+    const data = await bridge("POST", "/rates", { sym, timeframe: tf, count: n, offset: off }, { timeoutMs: 6_000 });
     if (data.ok && Array.isArray(data.bars)) {
       data.bars = normalizeCandles(data.bars, tf);
       ratesCache.set(key, { at: Date.now(), data });
+      return json(data);
+    }
+    // Bridge error / offline: serve cached bars if available
+    if (cached?.data?.bars?.length) {
+      return json({ ...cached.data, stale: true, offline: true, error: data.message });
     }
     return json(data);
   } catch (err) {
+    if (cached?.data?.bars?.length) {
+      return json({ ...cached.data, stale: true, offline: true, error: err.message });
+    }
     return json({ ok: false, error: err.message }, 502);
   }
 }
