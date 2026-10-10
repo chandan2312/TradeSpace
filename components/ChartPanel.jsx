@@ -516,42 +516,35 @@ export default function ChartPanel({
     return () => window.removeEventListener("pip-action", handlePipAction);
   }, [isActive]);
 
-  // ---------- load bars on symbol/tf change (cache-first for instant switch) ----------
-  useEffect(() => {
-    let cancelled = false;
+  // ---------- load and synchronize bars with auto-gap healing & retry ----------
+  const syncingRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
+
+  const applyBars = useCallback((bars, isSilent = false) => {
+    if (!seriesRef.current || !Array.isArray(bars) || !bars.length) return;
     const key = `${symbol}:${tf}`;
 
-    const apply = (bars) => {
-      if (cancelled || !seriesRef.current) return;
-
-      try {
-        // Deduplicate and sort bars by time ascending (required by lightweight-charts)
-        const seen = new Set();
-        const cleanBars = [];
-        const sorted = [...bars].sort((a, b) => a.time - b.time);
-        for (const b of sorted) {
-          if (b.time != null && !seen.has(b.time)) {
-            seen.add(b.time);
-            cleanBars.push(b);
-          }
+    try {
+      // Deduplicate and sort bars by time ascending (required by lightweight-charts)
+      const seen = new Set();
+      const cleanBars = [];
+      const sorted = [...bars].sort((a, b) => a.time - b.time);
+      for (const b of sorted) {
+        if (b.time != null && !seen.has(b.time)) {
+          seen.add(b.time);
+          cleanBars.push(b);
         }
-        if (!cleanBars.length) {
-          if (!cached?.bars?.length) {
-            setError(`No valid data for ${symbol}`);
-          }
-          setLoading(false);
-          return;
-        }
+      }
+      if (!cleanBars.length) return;
 
-        seriesRef.current.setData(cleanBars);
-        lastBarRef.current = { key, bar: cleanBars[cleanBars.length - 1] };
-        barsRef.current = cleanBars;
-        setDataVersion((v) => v + 1);
-        drawingManagerRef.current?.redraw();
-        // a manual price-axis drag turns autoscale off for good — a new series
-        // must re-fit both axes or it renders outside the visible range
+      seriesRef.current.setData(cleanBars);
+      lastBarRef.current = { key, bar: cleanBars[cleanBars.length - 1] };
+      barsRef.current = cleanBars;
+      setDataVersion((v) => v + 1);
+      drawingManagerRef.current?.redraw();
+
+      if (!isSilent) {
         chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
-        
         const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
         const visibleBars = isMobile ? 60 : 80;
         const rightOffset = isMobile ? 8 : 12;
@@ -559,95 +552,145 @@ export default function ChartPanel({
         const to = cleanBars.length + rightOffset;
         chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
         setTimeout(() => {
-          if (!cancelled && chartRef.current) {
+          if (chartRef.current) {
             try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
           }
         }, 100);
+      }
 
-        const est = Math.max(
-          ...cleanBars.slice(-50).map((b) => (String(b.close).split(".")[1] || "").length)
-        );
-        setBarsDigits(Math.min(est, 8));
-        setError(null);
-      } catch (err) {
-        console.error("Error applying chart bars:", err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      const est = Math.max(
+        ...cleanBars.slice(-50).map((b) => (String(b.close).split(".")[1] || "").length)
+      );
+      setBarsDigits(Math.min(est, 8));
+      setError(null);
+    } catch (err) {
+      console.error("Error applying chart bars:", err);
+      if (!isSilent) setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [symbol, tf]);
+
+  const syncBars = useCallback(async (isSilent = false) => {
+    if (syncingRef.current) return;
+    const key = `${symbol}:${tf}`;
+    const cached = barsCache.current.get(key);
+
+    if (!isSilent) {
+      if (cached?.bars?.length) {
+        applyBars(cached.bars, false);
+      } else {
+        setLoading(true);
+      }
+    }
+
+    syncingRef.current = true;
+    try {
+      // Wait for seriesRef if chart is mounting
+      for (let i = 0; i < 40 && !seriesRef.current; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      let count = 600;
+      if (["M1", "M5", "M15"].includes(tf)) count = 800;
+      else if (["H1", "H4", "D1"].includes(tf)) count = 600;
+
+      // Robust retry: allows mobile connections and sleeping tabs to wake up smoothly
+      let data = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=${count}`, { cache: "no-store" });
+          if (res.ok) {
+            data = await res.json();
+            if (data?.ok && Array.isArray(data.bars) && data.bars.length > 0) break;
+          }
+        } catch (e) {
+          if (attempt === 2) throw e;
+        }
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+
+      if (!data?.ok || !data.bars?.length) {
+        if (cached?.bars?.length) {
+          applyBars(cached.bars, false);
+        } else if (!isSilent) {
+          setError(data?.message || data?.error || `No data for ${symbol}`);
+        }
+        return;
+      }
+
+      let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+      bars = bars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+      bars = normalizeCandles(bars, tf);
+      barsCache.current.set(key, { at: Date.now(), bars });
+      lastSyncTimeRef.current = Date.now();
+
+      try {
+        const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
+          acc[k] = { at: v.at, bars: v.bars.slice(-800) };
+          return acc;
+        }, {});
+        localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
+      } catch (e) {}
+
+      applyBars(bars, isSilent);
+      setError(null);
+    } catch (err) {
+      if (!isSilent) {
+        if (cached?.bars?.length) {
+          applyBars(cached.bars, false);
+        } else {
+          setError(err.message);
+        }
+      }
+    } finally {
+      syncingRef.current = false;
+      setLoading(false);
+    }
+  }, [symbol, tf, barsCache, applyBars]);
+
+  // Initial and symbol/tf change bar fetch
+  useEffect(() => {
+    syncBars(false);
+  }, [symbol, tf, syncBars]);
+
+  // Automatic gap-healing when switching back to tab or unlocking mobile screen
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        const last = lastBarRef.current?.bar;
+        if (!last) {
+          syncBars(false);
+          return;
+        }
+        const sec = TF_SEC[tf] || 300;
+        const elapsedSec = Math.floor(Date.now() / 1000) - last.time;
+        // If elapsed time exceeded 1.5 bar intervals, intermediate candles formed while away.
+        // Silently re-sync in background to fill missing candles with zero gaps.
+        if (elapsedSec > sec * 1.5) {
+          syncBars(true);
+        }
       }
     };
 
-    const cached = barsCache.current.get(key);
-
-    // Zeroized logic: ALWAYS clear the chart and wait for the fresh API fetch to prevent ANY tick gaps.
-    // We only use the cache as a strict fallback if the API fails.
-    lastBarRef.current = null;
-    barsRef.current = [];
-    setLoading(true);
-    if (seriesRef.current) seriesRef.current.setData([]);
-    if (patternsRef.current) patternsRef.current.setDrawings([]);
-
-    (async () => {
-      // wait for the chart to exist (first mount races the dynamic import)
-      for (let i = 0; i < 100 && !seriesRef.current; i++) await new Promise((r) => setTimeout(r, 50));
-      try {
-        let count = 600;
-        if (["M1", "M5", "M15"].includes(tf)) count = 800;
-        else if (["H1", "H4", "D1"].includes(tf)) count = 600;
-        const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=${count}`, { cache: "no-store" });
-        const data = await res.json();
-        if (cancelled) return;
-        if (!data.ok || !data.bars?.length) {
-          if (cached?.bars?.length) {
-            apply(cached.bars);
-          } else {
-            setError(data.message || data.error || `No data for ${symbol}`);
-            setLoading(false);
-          }
-          return;
-        }
-        let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
-        bars = bars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
-        bars = normalizeCandles(bars, tf);
-        barsCache.current.set(key, { at: Date.now(), bars });
-        try {
-          // Keep only the last 800 bars in local storage to prevent quota exceeded errors
-          const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
-            acc[k] = { at: v.at, bars: v.bars.slice(-800) };
-            return acc;
-          }, {});
-          localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
-        } catch (e) {}
-        apply(bars);
-      } catch (err) {
-        if (!cancelled) {
-          if (cached?.bars?.length) {
-            apply(cached.bars);
-          } else {
-            setError(err.message);
-            setLoading(false);
-          }
-        }
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [symbol, tf, barsCache]);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+    };
+  }, [syncBars, tf]);
 
   // ---------- axis label resolution ----------
-  // The library default (precision 2 / minMove 0.01) can't label a 5-digit FX
-  // range at all — labels vanish and the live price label snaps between two
-  // coarse values. Match the format to the instrument's digits.
   useEffect(() => {
     seriesRef.current?.applyOptions({
       priceFormat: { type: "price", precision: digits, minMove: Math.pow(10, -digits) },
     });
   }, [digits, loading]);
 
-  // ---------- live tick -> update current candle ----------
+  // ---------- live tick -> update current candle with auto gap-healing ----------
   useEffect(() => {
     const entry = lastBarRef.current;
-    // only update the candle if the loaded series matches the current symbol/tf
     if (!tick || !seriesRef.current || !entry || entry.key !== `${symbol}:${tf}`) return;
     const price = tick.bid || tick.ask;
     if (!price) return;
@@ -661,9 +704,18 @@ export default function ChartPanel({
     const isNextConsecutive = (tf === "D1" || tf === "1D")
       ? (gap >= 86400 && gap <= 86400 * 1.5)
       : (Math.abs(gap - sec) <= 2);
-    // To prevent artificial visual gaps caused by polling missing the exact first millisecond tick,
-    // we seamlessly connect the new candle's open to the previous candle's close ONLY if it's the immediate next bar.
-    // If there's a large gap (e.g. stale cache or weekend), we open at the true tick price.
+
+    // If a new candle arrives but intermediate candles are missing (e.g. background tab / mobile lock):
+    // Do NOT push a skipped bar that creates a visual hole/gap on the chart!
+    // Trigger an immediate background re-sync to fetch and stitch the complete sequence cleanly.
+    if (isNewBar && !isNextConsecutive) {
+      const now = Date.now();
+      if (!syncingRef.current && (now - lastSyncTimeRef.current > 3000)) {
+        syncBars(true);
+      }
+      return;
+    }
+
     const nextBar = isNewBar
       ? { 
           time: barTime, 
@@ -675,14 +727,13 @@ export default function ChartPanel({
       : { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
     lastBarRef.current = { key: entry.key, bar: nextBar };
     seriesRef.current.update(nextBar);
-    // keep the detector bar array current; re-detect only on bar close
     if (isNewBar) {
       barsRef.current = [...barsRef.current, nextBar];
       setDataVersion((v) => v + 1);
     } else if (barsRef.current.length) {
       barsRef.current[barsRef.current.length - 1] = nextBar;
     }
-  }, [tick, symbol, tf]);
+  }, [tick, symbol, tf, syncBars]);
 
   // ---------- pattern indicators ----------
   useEffect(() => {
