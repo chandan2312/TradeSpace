@@ -45,6 +45,15 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("[CRITICAL] Unhandled promise rejection:", reason?.stack || reason);
 });
 
+// Proactive memory release for constrained VPS (1GB RAM)
+if (typeof global.gc === "function") {
+  setInterval(() => {
+    try {
+      global.gc();
+    } catch {}
+  }, 60_000);
+}
+
 async function main() {
   checkEnv();
   // Warm Mongo (creates indexes, seeds default watchlist) before serving traffic.

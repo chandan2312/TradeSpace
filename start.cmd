@@ -37,14 +37,14 @@ if not exist ".next\server\app\page.js" (
 
 REM 3. Launch TradeSpace with 24/7 Watchdog Supervisor
 echo [Launcher] Starting TradeSpace Server on port 3000...
-echo [Launcher] Memory allocation: 768 MB heap (calibrated for VPS stability).
+echo [Launcher] Memory allocation: 256 MB lean heap (optimized for 1GB RAM VPS).
 echo [Launcher] Auto-revives if process ever exits.
 echo [Launcher] Server URL: http://localhost:3000
 echo ============================================================
 echo.
 
 :run_server
-node --max-old-space-size=768 server.js
+node --expose-gc --max-old-space-size=256 --optimize_for_size server.js
 set "EXIT_CODE=%errorlevel%"
 
 echo.

@@ -1196,6 +1196,18 @@ def main():
     print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN - set MT5_TOKEN env var'}", flush=True)
     print("=" * 60, flush=True)
 
+    # Proactive memory release for constrained VPS (1GB RAM)
+    def _periodic_gc():
+        import gc
+        while True:
+            time.sleep(60)
+            try:
+                gc.collect()
+            except Exception:
+                pass
+
+    threading.Thread(target=_periodic_gc, daemon=True).start()
+
     try:
         ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
     except KeyboardInterrupt:
