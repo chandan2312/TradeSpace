@@ -2941,6 +2941,134 @@ console.log("=======================================================");
   assert(!vetoWhenEnabled.vetoes.some(v => v.code === "HORIZON_DISABLED"), "HORIZON_DISABLED veto is NOT present when scalp horizon is enabled");
 }
 
+// =======================================================
+// TEST SUITE 27: Dual-Leg Execution & Prop-Firm Safe Arming Engine
+// =======================================================
+{
+  console.log("\n=======================================================");
+  console.log("TEST SUITE 27: Dual-Leg Execution & Prop-Firm Safe Arming Engine");
+  console.log("=======================================================");
+
+  const brain = {
+    macroDir: 1,
+    allowedToLong: true,
+    action: "TRADE_LONG",
+    targetDOL: { price: 83500, targetSide: "BSL" },
+    ranges: { H4: { high: 84000, low: 81000, eq: 82500, coveragePct: 50 } },
+    dealingRange: { high: 84000, low: 81000, eq: 82500, coveragePct: 50 },
+  };
+
+  const frames = {
+    snapshot: { semantics: "UTC_INSTANT", closedOnly: true },
+    D1: [{ open: 82000, high: 83000, low: 81500, close: 82500, time: 1700000000 }],
+    H4: [{ open: 82000, high: 83000, low: 81500, close: 82500, time: 1700000000 }],
+    H1: [{ open: 82000, high: 83000, low: 81500, close: 82500, time: 1700000000 }],
+    M15: [{ open: 82000, high: 83000, low: 81500, close: 82500, time: 1700000000 }],
+    M5: [{ open: 82000, high: 83000, low: 81500, close: 82500, time: 1700000000 }],
+  };
+
+  // Setup: Entry 82500, SL 82000 (risk = 500)
+  // Default Target: 84000 (reward = 1500, RR = 3.0R)
+  // Prop Target: 83410 (reward = 910, RR = 1.82R)
+  const defaultCandidate = {
+    modelId: "ict_2022",
+    tf: "M15",
+    targets: [
+      { id: "tp1", price: 83000, fraction: 0.5 },
+      { id: "tp2", price: 83500, fraction: 0.3 },
+      { id: "runner", price: 84000, fraction: 0.2 },
+    ],
+    managementLogic: "milestone_50",
+    legId: "default",
+    tp: 84000,
+    targetRR: 3.0,
+    confluenceScore: 75,
+  };
+
+  const propCandidate = {
+    modelId: "ict_2022",
+    tf: "M15",
+    targets: [{ id: "tp1", price: 83410, fraction: 1.0 }],
+    managementLogic: "prop_firm_safe",
+    legId: "prop_firm",
+    tp: 83410,
+    targetRR: 1.82,
+    confluenceScore: 75,
+  };
+
+  // Case 1: Global config minRR = 2.2
+  const globalCfg = {
+    minRR: 2.2,
+    propFirmMinRR: 1.5,
+    confluenceThreshold: 60,
+    scenario: { id: "day", requiredTfs: [] },
+  };
+
+  // Default leg evaluation against 2.2R minRR
+  const defEval = evaluateExecutionVetoes({
+    symbol: "BTCUSD",
+    dir: 1,
+    entry: 82500,
+    sl: 82000,
+    brain,
+    frames,
+    config: { ...globalCfg, candidate: defaultCandidate, managementLogic: "milestone_50", legId: "default" },
+    candidate: defaultCandidate,
+  });
+  assert(!defEval.vetoes.some(v => v.code === "MIN_RR"), "Default leg (3.0R) is NOT vetoed by MIN_RR (minRR = 2.2)");
+
+  // Prop leg evaluation against 2.2R global minRR (must use 1.5R propFirmMinRR)
+  const propEval = evaluateExecutionVetoes({
+    symbol: "BTCUSD",
+    dir: 1,
+    entry: 82500,
+    sl: 82000,
+    brain,
+    frames,
+    config: { ...globalCfg, candidate: propCandidate, managementLogic: "prop_firm_safe", legId: "prop_firm" },
+    candidate: propCandidate,
+  });
+  assert(!propEval.vetoes.some(v => v.code === "MIN_RR"), "Prop leg (1.82R) is NOT vetoed by MIN_RR despite global minRR = 2.2");
+
+  // Case 2: Non-prop candidate with 1.82R MUST be vetoed when global minRR = 2.2
+  const nonPropLowRR = {
+    ...propCandidate,
+    managementLogic: "milestone_50",
+    legId: "default",
+  };
+  const nonPropEval = evaluateExecutionVetoes({
+    symbol: "BTCUSD",
+    dir: 1,
+    entry: 82500,
+    sl: 82000,
+    brain,
+    frames,
+    config: { ...globalCfg, candidate: nonPropLowRR, managementLogic: "milestone_50", legId: "default" },
+    candidate: nonPropLowRR,
+  });
+  assert(nonPropEval.vetoes.some(v => v.code === "MIN_RR"), "Non-prop candidate with 1.82R IS vetoed by MIN_RR when minRR = 2.2");
+
+  // Case 3: Prop leg with sub-1.5R (e.g. 1.30R) MUST still be vetoed by 1.5R prop-firm limit
+  const propSub15Candidate = {
+    ...propCandidate,
+    tp: 83150, // 650 reward / 500 risk = 1.30R
+    targetRR: 1.30,
+    targets: [{ id: "tp1", price: 83150, fraction: 1.0 }],
+  };
+  const propSub15Eval = evaluateExecutionVetoes({
+    symbol: "BTCUSD",
+    dir: 1,
+    entry: 82500,
+    sl: 82000,
+    brain,
+    frames,
+    config: { ...globalCfg, candidate: propSub15Candidate, managementLogic: "prop_firm_safe", legId: "prop_firm" },
+    candidate: propSub15Candidate,
+  });
+  assert(propSub15Eval.vetoes.some(v => v.code === "MIN_RR"), "Prop leg below 1.5R (1.30R) IS vetoed by MIN_RR");
+}
+
+
 console.log("\n=======================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
 console.log("=======================================================");

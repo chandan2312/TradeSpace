@@ -81,6 +81,7 @@ export default function ControlConsole({
     confluenceThreshold: config.confluenceThreshold ?? 60,
     maxConcurrentTrades: config.maxConcurrentTrades ?? 10,
     minRR: config.minRR ?? 1.8,
+    propFirmMinRR: config.propFirmMinRR ?? 1.5,
     riskPerTradePct: config.riskPerTradePct ?? 1,
     enforceDollarRiskCaps: config.enforceDollarRiskCaps ?? false,
     measureRiskInR: config.measureRiskInR ?? true,
@@ -563,6 +564,7 @@ export default function ControlConsole({
               <NumberField label="Min conviction (%)" name="minConviction" form={form} onChange={change} min={30} max={95} step="any" />
               <NumberField label="Min range runway (%)" name="minRunwayPct" form={form} onChange={change} min={0} max={100} step="any" />
               <NumberField label="Min risk:reward (R)" name="minRR" form={form} onChange={change} min={0.1} max={50} step="any" />
+              <NumberField label="Min prop-firm target (R)" name="propFirmMinRR" form={form} onChange={change} min={0.1} max={50} step="any" />
               <NumberField label="Min confluence (of 100)" name="confluenceThreshold" form={form} onChange={change} min={0} max={100} step="any" />
             </div>
             <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>
