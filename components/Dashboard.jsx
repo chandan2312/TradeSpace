@@ -797,6 +797,9 @@ export default function Dashboard() {
       sock.onopen = () => {
         setConnected(true);
         sock.send(JSON.stringify({ type: "subscribe", symbols: symbolsRef.current }));
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("ts_ws_reconnected"));
+        }
         clearInterval(pingTimer);
         pingTimer = setInterval(() => {
           if (sock.readyState === WebSocket.OPEN) {

@@ -519,6 +519,9 @@ export default function ChartPanel({
   // ---------- load and synchronize bars with auto-gap healing & retry ----------
   const syncingRef = useRef(false);
   const lastSyncTimeRef = useRef(0);
+  const lastClientActiveRef = useRef(Date.now());
+  const retryTimerRef = useRef(null);
+  const retryCountRef = useRef(0);
 
   const applyBars = useCallback((bars, isSilent = false) => {
     if (!seriesRef.current || !Array.isArray(bars) || !bars.length) return;
@@ -542,6 +545,12 @@ export default function ChartPanel({
       barsRef.current = cleanBars;
       setDataVersion((v) => v + 1);
       drawingManagerRef.current?.redraw();
+      lastClientActiveRef.current = Date.now();
+      retryCountRef.current = 0;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
 
       if (!isSilent) {
         chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
@@ -614,7 +623,13 @@ export default function ChartPanel({
         if (cached?.bars?.length) {
           applyBars(cached.bars, false);
         } else if (!isSilent) {
-          setError(data?.message || data?.error || `No data for ${symbol}`);
+          if (retryCountRef.current < 5) {
+            retryCountRef.current += 1;
+            clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = setTimeout(() => syncBars(false), 2500);
+          } else {
+            setError(data?.message || data?.error || `No data for ${symbol}`);
+          }
         }
         return;
       }
@@ -624,6 +639,12 @@ export default function ChartPanel({
       bars = normalizeCandles(bars, tf);
       barsCache.current.set(key, { at: Date.now(), bars });
       lastSyncTimeRef.current = Date.now();
+      lastClientActiveRef.current = Date.now();
+      retryCountRef.current = 0;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
 
       try {
         const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
@@ -639,8 +660,12 @@ export default function ChartPanel({
       if (!isSilent) {
         if (cached?.bars?.length) {
           applyBars(cached.bars, false);
+        } else if (retryCountRef.current < 5) {
+          retryCountRef.current += 1;
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = setTimeout(() => syncBars(false), 2500);
         } else {
-          setError(err.message);
+          setError(err.message || "Failed to load candles. Retrying...");
         }
       }
     } finally {
@@ -652,22 +677,18 @@ export default function ChartPanel({
   // Initial and symbol/tf change bar fetch
   useEffect(() => {
     syncBars(false);
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
   }, [symbol, tf, syncBars]);
 
-  // Automatic gap-healing when switching back to tab or unlocking mobile screen
+  // Automatic gap-healing when switching back to tab, focusing window, or unlocking screen
   useEffect(() => {
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
-        const last = lastBarRef.current?.bar;
-        if (!last) {
-          syncBars(false);
-          return;
-        }
-        const sec = TF_SEC[tf] || 300;
-        const elapsedSec = Math.floor(Date.now() / 1000) - last.time;
-        // If elapsed time exceeded 1.5 bar intervals, intermediate candles formed while away.
-        // Silently re-sync in background to fill missing candles with zero gaps.
-        if (elapsedSec > sec * 1.5) {
+        const elapsedClientSec = (Date.now() - lastClientActiveRef.current) / 1000;
+        // If tab was inactive, sleeping, or away for >= 10s: silent gap-healing re-sync!
+        if (elapsedClientSec >= 10) {
           syncBars(true);
         }
       }
@@ -679,7 +700,33 @@ export default function ChartPanel({
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
       window.removeEventListener("focus", handleVisibilityOrFocus);
     };
-  }, [syncBars, tf]);
+  }, [syncBars]);
+
+  // Continuous background candle alignment loop:
+  // While the user leaves the tab open for a while and does other work,
+  // silently reconcile bars every 30s so candle gaps can NEVER form or stay on screen!
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      if (!syncingRef.current && (now - lastSyncTimeRef.current >= 30_000)) {
+        syncBars(true);
+      }
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [syncBars]);
+
+  // Reconnection listener: when WebSocket reconnects or network comes online
+  useEffect(() => {
+    const onReconnect = () => {
+      syncBars(true);
+    };
+    window.addEventListener("ts_ws_reconnected", onReconnect);
+    window.addEventListener("online", onReconnect);
+    return () => {
+      window.removeEventListener("ts_ws_reconnected", onReconnect);
+      window.removeEventListener("online", onReconnect);
+    };
+  }, [syncBars]);
 
   // ---------- axis label resolution ----------
   useEffect(() => {
@@ -692,11 +739,12 @@ export default function ChartPanel({
   useEffect(() => {
     const entry = lastBarRef.current;
     if (!tick || !seriesRef.current || !entry || entry.key !== `${symbol}:${tf}`) return;
+    lastClientActiveRef.current = Date.now();
     const price = tick.bid || tick.ask;
     if (!price) return;
     const sec = TF_SEC[tf] || 300;
-    const rawTime = tick.time != null ? tick.time : Date.now();
-    const tickSec = rawTime > 1e11 ? Math.floor(rawTime / 1000) : rawTime;
+    const rawTime = tick.time != null && tick.time > 0 ? tick.time : null;
+    const tickSec = rawTime ? (rawTime > 1e11 ? Math.floor(rawTime / 1000) : rawTime) : entry.bar.time;
     const barTime = Math.floor(tickSec / sec) * sec;
     const last = entry.bar;
     const isNewBar = barTime > last.time;
@@ -710,7 +758,7 @@ export default function ChartPanel({
     // Trigger an immediate background re-sync to fetch and stitch the complete sequence cleanly.
     if (isNewBar && !isNextConsecutive) {
       const now = Date.now();
-      if (!syncingRef.current && (now - lastSyncTimeRef.current > 3000)) {
+      if (!syncingRef.current && (now - lastSyncTimeRef.current > 2000)) {
         syncBars(true);
       }
       return;
