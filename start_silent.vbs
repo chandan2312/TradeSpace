@@ -25,7 +25,7 @@ Else
     WScript.Sleep 2000
     
     ' Start TradeSpace Web in completely hidden background mode (0 = hidden)
-    WshShell.Run "cmd /c cd /d """ & strPath & """ && node --max-old-space-size=2048 server.js > logs\tradespace-out.log 2> logs\tradespace-error.log", 0, False
+    WshShell.Run "cmd /c cd /d """ & strPath & """ && node --max-old-space-size=768 server.js > logs\tradespace-out.log 2> logs\tradespace-error.log", 0, False
 End If
 
 MsgBox "TradeSpace & MT5 Bridge are now running in the background!" & vbCrLf & vbCrLf & _

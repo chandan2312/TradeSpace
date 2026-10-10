@@ -6,11 +6,11 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: "1800M",
+      max_memory_restart: "650M",
       env: {
         NODE_ENV: "production",
       },
-      node_args: "--max-old-space-size=2048",
+      node_args: "--max-old-space-size=768",
       error_file: "./logs/tradespace-error.log",
       out_file: "./logs/tradespace-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",

@@ -218,12 +218,16 @@ def ensure_mt5() -> tuple[bool, str]:
         return False, f"mt5 exception: {exc}"
 
 
+_RESOLVED_CACHE: dict[str, str | None] = {}
+
+
 def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
     """
     Resolve requested symbol to the broker's exact Market Watch symbol name.
-    1. Check payload broker_mapping
-    2. Check candidate aliases
-    3. Check fuzzy prefix/suffix against broker Market Watch
+    1. Check memory cache
+    2. Check payload broker_mapping
+    3. Check candidate aliases
+    4. Check fuzzy prefix/suffix against broker Market Watch
     """
     if not app_symbol:
         return None
@@ -233,18 +237,24 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
     app_clean = app_symbol.strip()
     app_upper = app_clean.upper()
 
+    # Fast cache hit (if no custom request-specific broker_mapping override)
+    if not (payload and "broker_mapping" in payload) and app_upper in _RESOLVED_CACHE:
+        return _RESOLVED_CACHE[app_upper]
+
     # 1. Explicit broker mapping from request payload
     if payload and "broker_mapping" in payload:
         mapping = payload["broker_mapping"]
         if app_upper in mapping:
             explicit_sym = mapping[app_upper]
             if mt5.symbol_select(explicit_sym, True):
+                _RESOLVED_CACHE[app_upper] = explicit_sym
                 return explicit_sym
 
     # 2. Candidate list from SYMBOL_ALIASES
     candidates = list(SYMBOL_ALIASES.get(app_upper, (app_clean, app_upper)))
     for name in dict.fromkeys(candidates):
         if mt5.symbol_select(name, True):
+            _RESOLVED_CACHE[app_upper] = name
             return name
 
     # 3. Market Watch fuzzy discovery
@@ -255,6 +265,7 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
     for name in dict.fromkeys(candidates):
         hit = lowered.get(name.lower())
         if hit and mt5.symbol_select(hit, True):
+            _RESOLVED_CACHE[app_upper] = hit
             return hit
 
     # Prefix match (e.g. EURUSD matching EURUSD.i, EURUSD.raw, EURUSDm)
@@ -263,14 +274,17 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
         base = s_name.split(".")[0].split("_")[0].split("-")[0].rstrip("m").upper()
         if base == app_upper:
             if mt5.symbol_select(s_name, True):
+                _RESOLVED_CACHE[app_upper] = s_name
                 return s_name
 
     # Substring match fallback
     for s in available:
         if app_upper in s.name.upper():
             if mt5.symbol_select(s.name, True):
+                _RESOLVED_CACHE[app_upper] = s.name
                 return s.name
 
+    _RESOLVED_CACHE[app_upper] = None
     return None
 
 
@@ -996,6 +1010,15 @@ def handle_state(payload):
         return {"ok": False, "message": "Order history unavailable"}
     with journal_connection() as conn:
         rows = conn.execute("SELECT request_id,state,response FROM requests WHERE created>=?", ((now - timedelta(days=7)).timestamp(),)).fetchall()
+    requests_list = []
+    for r in rows:
+        resp = None
+        if r[2]:
+            try:
+                resp = json.loads(r[2])
+            except Exception:
+                resp = str(r[2])
+        requests_list.append({"request_id": r[0], "state": r[1], "response": resp})
     tz_name = os.getenv("MT5_BROKER_TIMEZONE", "Europe/Athens")
     try:
         if ZoneInfo:
@@ -1007,7 +1030,7 @@ def handle_state(payload):
     daily = [d for d in history["history"] if float(d.get("time") or 0) >= day_start and d.get("type") in ["BUY", "SELL"]]
     pnl = sum(float(d.get("profit") or 0) + float(d.get("commission") or 0) + float(d.get("swap") or 0) + float(d.get("fee") or 0) for d in daily)
     order_fields = ["ticket", "position_id", "state", "comment", "symbol", "volume_initial", "volume_current"]
-    return {"ok": True, "positions": positions["positions"], "orders": orders["orders"], "history": history["history"], "account": account["account"], "requests": requests, "order_history": [{k: getattr(o, k, None) for k in order_fields} for o in raw_orders], "dailyPnl": pnl, "dayStartEquity": account["account"]["balance"] - pnl, "brokerDayStart": day_start, "at": now.timestamp()}
+    return {"ok": True, "positions": positions["positions"], "orders": orders["orders"], "history": history["history"], "account": account["account"], "requests": requests_list, "order_history": [{k: getattr(o, k, None) for k in order_fields} for o in raw_orders], "dailyPnl": pnl, "dayStartEquity": account["account"]["balance"] - pnl, "brokerDayStart": day_start, "at": now.timestamp()}
 
 
 def handle_account(_payload):
@@ -1131,7 +1154,14 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send(500, {"ok": False, "status": "bridge-exception", "message": str(exc)})
 
+    def address_string(self):
+        """Return the client IP directly without blocking reverse DNS lookups (socket.getfqdn)."""
+        return str(self.client_address[0])
+
     def log_message(self, fmt, *args):
+        # Suppress logging for high-frequency poll requests to prevent console buffer memory thrashing
+        if hasattr(self, "path") and (self.path.startswith("/ticks") or self.path == "/health" or self.path == "/tick"):
+            return
         print(f"[mt5-bridge] {self.address_string()} {fmt % args}", flush=True)
 
 
