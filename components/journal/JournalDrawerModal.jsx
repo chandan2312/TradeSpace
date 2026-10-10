@@ -79,6 +79,14 @@ export default function JournalDrawerModal({
   const isLoss = trade.outcome === "LOSS";
   const isBe = trade.outcome === "BREAKEVEN";
 
+  const isPropTrade = Boolean(
+    trade.isPropFirm ||
+    trade.managementLogic === "prop_firm_safe" ||
+    trade.managementModel === "prop_firm_safe" ||
+    trade.legId === "prop" ||
+    trade.legLabel === "TradeProp"
+  );
+
   const outcomeColor = isWin ? "var(--green)" : isLoss ? "var(--red)" : "var(--muted)";
   const outcomeBg = isWin
     ? "rgba(38, 166, 154, 0.15)"
@@ -158,13 +166,14 @@ export default function JournalDrawerModal({
               style={{
                 fontSize: 10,
                 fontWeight: 700,
-                padding: "2px 6px",
+                padding: "2px 8px",
                 borderRadius: 4,
-                background: trade.isPropFirm ? "rgba(171, 71, 188, 0.2)" : "rgba(41, 98, 255, 0.2)",
-                color: trade.isPropFirm ? "var(--purple, #ab47bc)" : "var(--accent)",
+                background: isPropTrade ? "rgba(171, 71, 188, 0.2)" : "rgba(41, 98, 255, 0.2)",
+                color: isPropTrade ? "var(--purple, #ab47bc)" : "var(--accent)",
+                border: `1px solid ${isPropTrade ? "rgba(171, 71, 188, 0.4)" : "rgba(41, 98, 255, 0.4)"}`,
               }}
             >
-              {trade.isPropFirm ? "PROP-FIRM SAFE" : "DEFAULT (50%)"}
+              {isPropTrade ? "🛡️ TRADEPROP (Safe)" : "🏛️ TRADEDEFAULT (Milestone)"}
             </span>
           </div>
 

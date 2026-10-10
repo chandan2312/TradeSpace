@@ -70,6 +70,16 @@ export default function LiveTradeModal({
   const tpVal = Number(trade.tpPrice ?? 0);
   const dist = Math.abs(entryVal - slVal);
 
+  const isProp =
+    trade.isPropFirm === true ||
+    trade.managementModel === "prop_firm_safe" ||
+    trade.legId === "prop" ||
+    trade.legLabel === "TradeProp" ||
+    (Number(trade.magicNumber ?? trade.magic ?? 0) > 0 &&
+      Math.floor((Number(trade.magicNumber ?? trade.magic ?? 0) % 1000) / 100) === 2) ||
+    String(trade.brokerComment || trade.comment || "").toUpperCase().includes("PROP") ||
+    String(trade.brokerComment || trade.comment || "").toUpperCase().includes(":MG2:");
+
   const defaultTp = Number(trade.fullTp ?? trade.defaultLeg?.tpPrice ?? trade.tpPrice ?? 0);
   const propTp = Number(trade.propTp ?? trade.propLeg?.tpPrice ?? trade.propTarget?.tpPrice ?? 0);
   const halfPrice = Number(trade.halfPrice ?? trade.halfTarget?.price ?? 0);
@@ -171,6 +181,20 @@ export default function LiveTradeModal({
                   }}
                 >
                   {!isShort ? "BUY ACTIVE ▲" : "SELL ACTIVE ▼"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    background: isProp ? "rgba(168, 85, 247, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                    color: isProp ? "#c084fc" : "#38bdf8",
+                    border: `1px solid ${isProp ? "rgba(168, 85, 247, 0.4)" : "rgba(56, 189, 248, 0.4)"}`,
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  {isProp ? "🛡️ TRADEPROP (Safe)" : "🏛️ TRADEDEFAULT (Milestone)"}
                 </span>
                 <span
                   style={{
@@ -406,13 +430,14 @@ export default function LiveTradeModal({
                 gap: 8,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--accent)" }}>
-                Autonomous Trade State Machine
+              <div style={{ fontSize: 12, fontWeight: 800, color: isProp ? "#c084fc" : "var(--accent)" }}>
+                {isProp ? "🛡️ TradeProp State Machine (Safe Prop-Firm)" : "🏛️ TradeDefault State Machine (50% Milestone + Runner)"}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, fontFamily: "monospace" }}>
+                <div>Strategy: <strong style={{ color: isProp ? "#c084fc" : "#38bdf8" }}>{isProp ? "PROP_FIRM_SAFE" : "DEFAULT_MILESTONE"}</strong></div>
                 <div>Status: <strong style={{ color: "var(--fg)" }}>{trade.status}</strong></div>
                 <div>Breakeven: <strong style={{ color: trade.isBreakeven ? "var(--green)" : "var(--muted)" }}>{trade.isBreakeven ? "ACTIVE" : "NO"}</strong></div>
-                <div>50% Booked: <strong style={{ color: trade.halfTargetBooked ? "var(--green)" : "var(--muted)" }}>{trade.halfTargetBooked ? "YES (40%)" : "NO"}</strong></div>
+                <div>50% Booked: <strong style={{ color: trade.halfTargetBooked ? "var(--green)" : "var(--muted)" }}>{isProp ? "N/A (Full Size)" : trade.halfTargetBooked ? "YES (40%)" : "NO"}</strong></div>
                 <div>Trailing Stop: <strong style={{ color: trade.isTrailing ? "var(--purple, #c084fc)" : "var(--muted)" }}>{trade.isTrailing ? "ENGAGED" : "NO"}</strong></div>
               </div>
             </div>
@@ -448,6 +473,9 @@ export default function LiveTradeModal({
             >
               {JSON.stringify({
                 _id: trade._id,
+                strategy: isProp ? "TradeProp (prop_firm_safe)" : "TradeDefault (milestone_50)",
+                isPropFirm: isProp,
+                legId: trade.legId || (isProp ? "prop" : "default"),
                 symbol: trade.symbol,
                 dir: trade.dir,
                 ticket: trade.ticket,

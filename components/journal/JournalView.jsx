@@ -381,12 +381,26 @@ export default function JournalView() {
     return Array.from(new Set(trades.map((t) => t.session).filter(Boolean))).sort();
   }, [trades]);
 
-  // Sheet counts (only count non-cancelled trades in tab badges)
+  // Sheet counts (only count non-cancelled, non-staged trades in tab badges)
   const sheetCounts = useMemo(() => {
-    const validTrades = trades.filter((t) => t.outcome !== "CANCELLED");
+    const validTrades = trades.filter(
+      (t) => t.outcome !== "CANCELLED" && t.outcome !== "STAGED" && t.status !== "staged"
+    );
     const all = validTrades.length;
-    const def = validTrades.filter((t) => t.managementLogic === "milestone_50" && !t.isPropFirm).length;
-    const prop = validTrades.filter((t) => t.managementLogic === "prop_firm_safe" || t.isPropFirm).length;
+    const def = validTrades.filter(
+      (t) =>
+        !t.isPropFirm &&
+        t.managementLogic !== "prop_firm_safe" &&
+        t.managementModel !== "prop_firm_safe" &&
+        t.legId !== "prop"
+    ).length;
+    const prop = validTrades.filter(
+      (t) =>
+        Boolean(t.isPropFirm) ||
+        t.managementLogic === "prop_firm_safe" ||
+        t.managementModel === "prop_firm_safe" ||
+        t.legId === "prop"
+    ).length;
     return { all, def, prop };
   }, [trades]);
 
@@ -397,15 +411,20 @@ export default function JournalView() {
       if (t.outcome === "STAGED" || t.outcome === "CANCELLED" || t.status === "staged") return false;
 
       // 1. Sheet selection filter
+      const isProp =
+        Boolean(t.isPropFirm) ||
+        t.managementLogic === "prop_firm_safe" ||
+        t.managementModel === "prop_firm_safe" ||
+        t.legId === "prop" ||
+        t.legLabel === "TradeProp";
+
       if (activeSheet !== "ALL") {
-        const isProp = t.managementLogic === "prop_firm_safe" || Boolean(t.isPropFirm);
         if (activeSheet === "prop_firm_safe" && !isProp) return false;
         if (activeSheet === "milestone_50" && isProp) return false;
       }
 
       // 2. Risk Model multi-select filter
       if (selectedModels.length > 0) {
-        const isProp = t.managementLogic === "prop_firm_safe" || Boolean(t.isPropFirm);
         const modelKey = isProp ? "prop_firm_safe" : "milestone_50";
         if (!selectedModels.includes(modelKey)) return false;
       }
@@ -557,7 +576,12 @@ export default function JournalView() {
         width: 195,
         filter: "agTextColumnFilter",
         cellRenderer: (params) => {
-          const isProp = params.data?.isPropFirm;
+          const isProp =
+            Boolean(params.data?.isPropFirm) ||
+            params.data?.managementLogic === "prop_firm_safe" ||
+            params.data?.managementModel === "prop_firm_safe" ||
+            params.data?.legId === "prop" ||
+            params.data?.legLabel === "TradeProp";
           return (
             <span
               style={{
@@ -569,7 +593,7 @@ export default function JournalView() {
                 color: isProp ? "var(--purple, #ab47bc)" : "var(--accent)",
               }}
             >
-              {isProp ? "PROP-FIRM SAFE" : "DEFAULT (50%)"}
+              {isProp ? "🛡️ TRADEPROP (Safe)" : "🏛️ TRADEDEFAULT (Milestone)"}
             </span>
           );
         },
@@ -1083,8 +1107,8 @@ export default function JournalView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "7px 12px",
+            gap: 7,
+            padding: "7px 14px",
             borderRadius: 7,
             border: activeSheet === "ALL" ? "1px solid rgba(41, 98, 255, 0.4)" : "1px solid transparent",
             background: activeSheet === "ALL" ? "rgba(41, 98, 255, 0.15)" : "transparent",
@@ -1097,7 +1121,8 @@ export default function JournalView() {
           title="All Trades Sheet"
           aria-label="All Trades Sheet"
         >
-          <FileSpreadsheet size={13} />
+          <FileSpreadsheet size={14} />
+          <span>All Trades</span>
           <span
             style={{
               fontSize: 10,
@@ -1117,8 +1142,8 @@ export default function JournalView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "7px 12px",
+            gap: 7,
+            padding: "7px 14px",
             borderRadius: 7,
             border: activeSheet === "milestone_50" ? "1px solid rgba(41, 98, 255, 0.4)" : "1px solid transparent",
             background: activeSheet === "milestone_50" ? "rgba(41, 98, 255, 0.15)" : "transparent",
@@ -1128,10 +1153,11 @@ export default function JournalView() {
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
-          title="Default Model Sheet (50% Milestone + Runner)"
-          aria-label="Default Model Sheet (50% Milestone + Runner)"
+          title="TradeDefault Sheet (50% Milestone + Runner)"
+          aria-label="TradeDefault Sheet (50% Milestone + Runner)"
         >
-          <Zap size={13} />
+          <Zap size={14} />
+          <span>TradeDefault (Milestone)</span>
           <span
             style={{
               fontSize: 10,
@@ -1151,8 +1177,8 @@ export default function JournalView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
-            padding: "7px 12px",
+            gap: 7,
+            padding: "7px 14px",
             borderRadius: 7,
             border: activeSheet === "prop_firm_safe" ? "1px solid rgba(171, 71, 188, 0.4)" : "1px solid transparent",
             background: activeSheet === "prop_firm_safe" ? "rgba(171, 71, 188, 0.15)" : "transparent",
@@ -1162,10 +1188,11 @@ export default function JournalView() {
             cursor: "pointer",
             transition: "all 0.15s ease",
           }}
-          title="Prop-Firm Safe Sheet (1.5R–2.5R Target)"
-          aria-label="Prop-Firm Safe Sheet (1.5R–2.5R Target)"
+          title="TradeProp Safe Sheet (1.5R–2.5R Target)"
+          aria-label="TradeProp Safe Sheet (1.5R–2.5R Target)"
         >
-          <Shield size={13} />
+          <Shield size={14} />
+          <span>TradeProp (Prop-Firm)</span>
           <span
             style={{
               fontSize: 10,

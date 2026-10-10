@@ -16,7 +16,18 @@ import {
 } from "lucide-react";
 import { formatPrice, formatR, formatUsd, formatIR, formatAR, finiteNumber } from "./TradeTelemetry";
 
+function isPropTrade(t) {
+  if (t?.isPropFirm === true) return true;
+  if (t?.managementModel === "prop_firm_safe" || t?.managementLogic === "prop_firm_safe") return true;
+  if (t?.legId === "prop" || t?.legLabel === "TradeProp") return true;
+  const magic = Number(t?.magicNumber ?? t?.magic ?? 0);
+  if (magic > 0 && Math.floor((magic % 1000) / 100) === 2) return true;
+  const c = String(t?.brokerComment || t?.comment || "").toUpperCase();
+  return c.includes("PROP") || c.includes(":MG2:");
+}
+
 export default function ClosedHistory({ closedTrades = [] }) {
+  const [strategyFilter, setStrategyFilter] = useState("all"); // "all" | "default" | "prop"
   const [filter, setFilter] = useState("all"); // "all" | "tp" | "be" | "sl"
 
   const actualClosedTrades = useMemo(() => {
@@ -25,32 +36,45 @@ export default function ClosedHistory({ closedTrades = [] }) {
     );
   }, [closedTrades]);
 
+  const countsByStrategy = useMemo(() => {
+    const all = actualClosedTrades.length;
+    const prop = actualClosedTrades.filter(isPropTrade).length;
+    const def = all - prop;
+    return { all, def, prop };
+  }, [actualClosedTrades]);
+
+  const strategyFilteredTrades = useMemo(() => {
+    if (strategyFilter === "prop") return actualClosedTrades.filter(isPropTrade);
+    if (strategyFilter === "default") return actualClosedTrades.filter((t) => !isPropTrade(t));
+    return actualClosedTrades;
+  }, [actualClosedTrades, strategyFilter]);
+
   const filteredTrades = useMemo(() => {
-    if (filter === "all") return actualClosedTrades;
-    if (filter === "tp") return actualClosedTrades.filter((t) => t.status === "closed_tp");
+    if (filter === "all") return strategyFilteredTrades;
+    if (filter === "tp") return strategyFilteredTrades.filter((t) => t.status === "closed_tp");
     if (filter === "be") {
-      return actualClosedTrades.filter(
+      return strategyFilteredTrades.filter(
         (t) => t.status === "closed_be" || t.closeReason === "breakeven"
       );
     }
     if (filter === "sl") {
-      return actualClosedTrades.filter(
+      return strategyFilteredTrades.filter(
         (t) =>
           t.status === "closed_sl" ||
           (t.status === "closed" && t.closeReason !== "breakeven" && t.closeReason !== "take_profit")
       );
     }
-    return actualClosedTrades;
-  }, [actualClosedTrades, filter]);
+    return strategyFilteredTrades;
+  }, [strategyFilteredTrades, filter]);
 
-  // Aggregate stats across closed trades
+  // Aggregate stats across currently selected strategy
   const stats = useMemo(() => {
     let wins = 0;
     let bes = 0;
     let losses = 0;
     let netR = 0;
 
-    for (const t of actualClosedTrades) {
+    for (const t of strategyFilteredTrades) {
       if (t.status === "closed_tp") {
         wins++;
         netR += finiteNumber(t.realizedR ?? t.pnlR ?? 2);
@@ -63,12 +87,12 @@ export default function ClosedHistory({ closedTrades = [] }) {
       }
     }
 
-    const total = actualClosedTrades.length;
+    const total = strategyFilteredTrades.length;
     const decisive = wins + losses;
     const winRate = decisive > 0 ? ((wins / decisive) * 100).toFixed(1) : "0.0";
 
     return { total, wins, bes, losses, netR, winRate };
-  }, [actualClosedTrades]);
+  }, [strategyFilteredTrades]);
 
   return (
     <div
@@ -141,104 +165,188 @@ export default function ClosedHistory({ closedTrades = [] }) {
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        <button
-          onClick={() => setFilter("all")}
-          title="All Closed Trades"
-          aria-label="All Closed Trades"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            borderRadius: 6,
-            border: "1px solid",
-            borderColor: filter === "all" ? "var(--accent)" : "var(--border)",
-            background: filter === "all" ? "var(--accent)" : "var(--panel-2)",
-            color: filter === "all" ? "#fff" : "var(--muted)",
-            cursor: "pointer",
-          }}
-        >
-          <Layers size={13} />
-          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
-            {closedTrades.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setFilter("tp")}
-          title="Take Profit"
-          aria-label="Take Profit"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            borderRadius: 6,
-            border: "1px solid",
-            borderColor: filter === "tp" ? "var(--green)" : "var(--border)",
-            background: filter === "tp" ? "rgba(34, 197, 94, 0.2)" : "var(--panel-2)",
-            color: filter === "tp" ? "var(--green)" : "var(--muted)",
-            cursor: "pointer",
-          }}
-        >
-          <Target size={13} />
-          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
-            {stats.wins}
-          </span>
-        </button>
-        <button
-          onClick={() => setFilter("be")}
-          title="Breakeven"
-          aria-label="Breakeven"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            borderRadius: 6,
-            border: "1px solid",
-            borderColor: filter === "be" ? "var(--accent)" : "var(--border)",
-            background: filter === "be" ? "rgba(56, 189, 248, 0.2)" : "var(--panel-2)",
-            color: filter === "be" ? "var(--accent)" : "var(--muted)",
-            cursor: "pointer",
-          }}
-        >
-          <Shield size={13} />
-          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
-            {stats.bes}
-          </span>
-        </button>
-        <button
-          onClick={() => setFilter("sl")}
-          title="Stop Loss"
-          aria-label="Stop Loss"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            borderRadius: 6,
-            border: "1px solid",
-            borderColor: filter === "sl" ? "var(--red)" : "var(--border)",
-            background: filter === "sl" ? "rgba(239, 68, 68, 0.2)" : "var(--panel-2)",
-            color: filter === "sl" ? "var(--red)" : "var(--muted)",
-            cursor: "pointer",
-          }}
-        >
-          <XCircle size={13} />
-          <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
-            {stats.losses}
-          </span>
-        </button>
+      {/* Filter Tabs: Strategy Models + Outcome States */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 10,
+          padding: "6px 10px",
+          background: "var(--panel-2)",
+          borderRadius: 8,
+          border: "1px solid var(--border)",
+        }}
+      >
+        {/* Strategy Model Segment */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", marginRight: 2 }}>MODEL:</span>
+          <button
+            onClick={() => setStrategyFilter("all")}
+            title="All Models"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 9px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: strategyFilter === "all" ? "var(--accent)" : "transparent",
+              background: strategyFilter === "all" ? "rgba(56, 189, 248, 0.15)" : "transparent",
+              color: strategyFilter === "all" ? "var(--accent)" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            All Models
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>({countsByStrategy.all})</span>
+          </button>
+          <button
+            onClick={() => setStrategyFilter("default")}
+            title="TradeDefault (50% Milestone)"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 9px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: strategyFilter === "default" ? "rgba(56, 189, 248, 0.5)" : "transparent",
+              background: strategyFilter === "default" ? "rgba(56, 189, 248, 0.15)" : "transparent",
+              color: strategyFilter === "default" ? "#38bdf8" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            🏛️ TradeDefault
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>({countsByStrategy.def})</span>
+          </button>
+          <button
+            onClick={() => setStrategyFilter("prop")}
+            title="TradeProp (Prop-Firm Safe)"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 9px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: strategyFilter === "prop" ? "rgba(168, 85, 247, 0.5)" : "transparent",
+              background: strategyFilter === "prop" ? "rgba(168, 85, 247, 0.15)" : "transparent",
+              color: strategyFilter === "prop" ? "#c084fc" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            🛡️ TradeProp
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>({countsByStrategy.prop})</span>
+          </button>
+        </div>
+
+        {/* Outcome Filter Segment */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", marginRight: 2 }}>OUTCOME:</span>
+          <button
+            onClick={() => setFilter("all")}
+            title="All Outcomes"
+            aria-label="All Outcomes"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: filter === "all" ? "var(--accent)" : "var(--border)",
+              background: filter === "all" ? "var(--accent)" : "rgba(255, 255, 255, 0.04)",
+              color: filter === "all" ? "#fff" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            <Layers size={12} />
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+              {strategyFilteredTrades.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setFilter("tp")}
+            title="Take Profit"
+            aria-label="Take Profit"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: filter === "tp" ? "var(--green)" : "var(--border)",
+              background: filter === "tp" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.04)",
+              color: filter === "tp" ? "var(--green)" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            <Target size={12} />
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+              {stats.wins}
+            </span>
+          </button>
+          <button
+            onClick={() => setFilter("be")}
+            title="Breakeven"
+            aria-label="Breakeven"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: filter === "be" ? "var(--accent)" : "var(--border)",
+              background: filter === "be" ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.04)",
+              color: filter === "be" ? "var(--accent)" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            <Shield size={12} />
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+              {stats.bes}
+            </span>
+          </button>
+          <button
+            onClick={() => setFilter("sl")}
+            title="Stop Loss"
+            aria-label="Stop Loss"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "1px solid",
+              borderColor: filter === "sl" ? "var(--red)" : "var(--border)",
+              background: filter === "sl" ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.04)",
+              color: filter === "sl" ? "var(--red)" : "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            <XCircle size={12} />
+            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>
+              {stats.losses}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Trade List Table / Cards */}
@@ -396,6 +504,23 @@ export default function ClosedHistory({ closedTrades = [] }) {
                       </div>
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>
                         {t.tf || t.scenario?.tf || "15M"} · {t.scenario?.setupTier || "A+"}
+                      </div>
+                      <div style={{ marginTop: 4 }}>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            background: isPropTrade(t) ? "rgba(168, 85, 247, 0.18)" : "rgba(56, 189, 248, 0.18)",
+                            color: isPropTrade(t) ? "#c084fc" : "#38bdf8",
+                            border: `1px solid ${isPropTrade(t) ? "rgba(168, 85, 247, 0.35)" : "rgba(56, 189, 248, 0.35)"}`,
+                            letterSpacing: "0.02em",
+                            display: "inline-block",
+                          }}
+                        >
+                          {isPropTrade(t) ? "🛡️ TRADEPROP" : "🏛️ TRADEDEFAULT"}
+                        </span>
                       </div>
                     </td>
 

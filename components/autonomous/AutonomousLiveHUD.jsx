@@ -61,6 +61,7 @@ export default function AutonomousLiveHUD({
   const isOpen = isControlled ? isOpenProp : internalOpen;
 
   const [tab, setTab] = useState("active"); // "active" | "staged" | "journal" | "radar" | "logs"
+  const [hudModelFilter, setHudModelFilter] = useState("all"); // "all" | "default" | "prop_firm"
   const [isExpanded, setIsExpanded] = useState(false);
   const [loadingAction, setLoadingAction] = useState(null);
   const [actionMsg, setActionMsg] = useState(null);
@@ -202,6 +203,20 @@ export default function AutonomousLiveHUD({
       ["active", "managing", "closing", "open", "filling", "armed_fill"].includes(t.status)
     );
   }, [trades]);
+
+  const defaultActiveTrades = useMemo(
+    () => activeTrades.filter((t) => !(t.isPropFirm || t.managementLogic === "prop_firm_safe" || t.legId === "prop_firm")),
+    [activeTrades]
+  );
+  const propActiveTrades = useMemo(
+    () => activeTrades.filter((t) => Boolean(t.isPropFirm || t.managementLogic === "prop_firm_safe" || t.legId === "prop_firm")),
+    [activeTrades]
+  );
+  const displayedActiveTrades = useMemo(() => {
+    if (hudModelFilter === "default") return defaultActiveTrades;
+    if (hudModelFilter === "prop_firm") return propActiveTrades;
+    return activeTrades;
+  }, [activeTrades, defaultActiveTrades, propActiveTrades, hudModelFilter]);
 
   const stagedTrades = useMemo(() => {
     return (trades || []).filter((t) => ["staged", "confirming", "armed"].includes(t.status));
@@ -1032,7 +1047,76 @@ export default function AutonomousLiveHUD({
                     />
                   </div>
                 )}
-                {activeTrades.length === 0 ? (
+
+                {/* Strategy Filter Bar */}
+                {activeTrades.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 6,
+                      marginBottom: 10,
+                      background: "rgba(255, 255, 255, 0.03)",
+                      padding: "4px 8px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
+                      Filter Model:
+                    </span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button
+                        onClick={() => setHudModelFilter("all")}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: "none",
+                          cursor: "pointer",
+                          background: hudModelFilter === "all" ? "var(--accent)" : "transparent",
+                          color: hudModelFilter === "all" ? "#fff" : "var(--muted)",
+                        }}
+                      >
+                        All ({activeTrades.length})
+                      </button>
+                      <button
+                        onClick={() => setHudModelFilter("default")}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: "none",
+                          cursor: "pointer",
+                          background: hudModelFilter === "default" ? "rgba(56, 189, 248, 0.2)" : "transparent",
+                          color: hudModelFilter === "default" ? "var(--accent)" : "var(--muted)",
+                        }}
+                      >
+                        Default ({defaultActiveTrades.length})
+                      </button>
+                      <button
+                        onClick={() => setHudModelFilter("prop_firm")}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: "none",
+                          cursor: "pointer",
+                          background: hudModelFilter === "prop_firm" ? "rgba(168, 85, 247, 0.2)" : "transparent",
+                          color: hudModelFilter === "prop_firm" ? "var(--purple, #c084fc)" : "var(--muted)",
+                        }}
+                      >
+                        Prop-Firm ({propActiveTrades.length})
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {displayedActiveTrades.length === 0 ? (
                   <div
                     style={{
                       textAlign: "center",
@@ -1046,13 +1130,13 @@ export default function AutonomousLiveHUD({
                     }}
                   >
                     <Activity size={24} style={{ opacity: 0.4 }} />
-                    <div>No open positions currently running.</div>
+                    <div>{activeTrades.length === 0 ? "No open positions currently running." : "No matching positions for this filter."}</div>
                     <div style={{ fontSize: 11, opacity: 0.7 }}>
                       Scanner is actively monitoring qualified SMC setups.
                     </div>
                   </div>
                 ) : (
-                  activeTrades.map((trade) => {
+                  displayedActiveTrades.map((trade) => {
                     const telemetry = tradeRiskTelemetry(trade, ticks);
                     const targets = Array.isArray(trade.targets) ? trade.targets : [];
                     const fill = telemetry.fill ?? trade.entryPrice;
@@ -1137,6 +1221,35 @@ export default function AutonomousLiveHUD({
                               {trade.dir === 1 ? "BUY" : "SELL"}
                             </span>
                             <ModelBadge item={trade} size="xs" />
+                            {Boolean(trade.isPropFirm || trade.managementLogic === "prop_firm_safe" || trade.legId === "prop_firm") ? (
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  background: "rgba(168, 85, 247, 0.18)",
+                                  color: "var(--purple, #c084fc)",
+                                  border: "1px solid rgba(168, 85, 247, 0.35)",
+                                }}
+                              >
+                                🛡️ PROP
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  background: "rgba(56, 189, 248, 0.18)",
+                                  color: "var(--accent)",
+                                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                                }}
+                              >
+                                🏛️ DEFAULT
+                              </span>
+                            )}
                             {trade.lot && (
                               <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "monospace" }}>
                                 {trade.lot}L
