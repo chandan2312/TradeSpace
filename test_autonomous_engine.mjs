@@ -398,12 +398,13 @@ console.log("TEST SUITE 6: The 5 Core Institutional Entry Models");
 console.log("=======================================================");
 
 // 1. Verify Entry Model Definitions
-assert(Object.keys(ENTRY_MODEL_DEFINITIONS).length === 5, "5 institutional entry models defined");
+assert(Object.keys(ENTRY_MODEL_DEFINITIONS).length === 6, "6 institutional entry models defined");
 assert(ENTRY_MODEL_DEFINITIONS.ICT_2022.id === "ict_2022", "Model 1: ICT 2022 Mentorship defined");
 assert(ENTRY_MODEL_DEFINITIONS.TURTLE_SOUP.id === "turtle_soup", "Model 2: Turtle Soup Liquidity Raid defined");
 assert(ENTRY_MODEL_DEFINITIONS.BREAKER_BLOCK.id === "breaker_block", "Model 3: Breaker Block & Mitigation defined");
 assert(ENTRY_MODEL_DEFINITIONS.OTE_CONTINUATION.id === "ote_continuation", "Model 4: OTE Trend Expansion defined");
 assert(ENTRY_MODEL_DEFINITIONS.SILVER_BULLET.id === "silver_bullet", "Model 5: ICT Silver Bullet defined");
+assert(ENTRY_MODEL_DEFINITIONS.DISPLACEMENT_BREAKOUT.id === "displacement_breakout", "Model 6: Displacement Momentum Breakout defined");
 
 // 2. Evaluate All Entry Models on Impulse & Liquidity Bars
 const modelsEval = evaluateAllEntryModels({
