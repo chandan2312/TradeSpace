@@ -13,7 +13,15 @@ import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
 import { tradeToPositionDrawing, tradeToPositionDrawings, tradeToStagedPositionDrawings, pairToRadarTradeIdeaDrawings } from "../lib/autonomous/tradeDrawing.js";
 import { normalizeCandles } from "../lib/candleNormalization.js";
 
-const TF_SEC = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
+const TF_SEC = {
+  M1: 60, "1M": 60,
+  M5: 300, "5M": 300,
+  M15: 900, "15M": 900,
+  M30: 1800, "30M": 1800,
+  H1: 3600, "1H": 3600,
+  H4: 14400, "4H": 14400,
+  D1: 86400, "1D": 86400,
+};
 
 class AlertsPrimitive {
   constructor() {
@@ -517,15 +525,17 @@ export default function ChartPanel({
   }, [isActive]);
 
   // ---------- load and synchronize bars with auto-gap healing & retry ----------
-  const syncingRef = useRef(false);
+  const fetchGenerationRef = useRef(0);
+  const activeFetchKeyRef = useRef(`${symbol}:${tf}`);
   const lastSyncTimeRef = useRef(0);
   const lastClientActiveRef = useRef(Date.now());
   const retryTimerRef = useRef(null);
   const retryCountRef = useRef(0);
 
-  const applyBars = useCallback((bars, isSilent = false) => {
+  const applyBars = useCallback((bars, isSilent = false, expectedKey = null) => {
     if (!seriesRef.current || !Array.isArray(bars) || !bars.length) return;
-    const key = `${symbol}:${tf}`;
+    const currentKey = `${symbol}:${tf}`;
+    if (expectedKey && expectedKey !== currentKey) return; // Strict cross-symbol/tf isolation
 
     try {
       // Deduplicate and sort bars by time ascending (required by lightweight-charts)
@@ -541,10 +551,9 @@ export default function ChartPanel({
       if (!cleanBars.length) return;
 
       seriesRef.current.setData(cleanBars);
-      lastBarRef.current = { key, bar: cleanBars[cleanBars.length - 1] };
+      lastBarRef.current = { key: currentKey, bar: cleanBars[cleanBars.length - 1] };
       barsRef.current = cleanBars;
       setDataVersion((v) => v + 1);
-      drawingManagerRef.current?.redraw();
       lastClientActiveRef.current = Date.now();
       retryCountRef.current = 0;
       if (retryTimerRef.current) {
@@ -567,6 +576,11 @@ export default function ChartPanel({
         }, 100);
       }
 
+      // Ensure drawings are redrawn after the time scale has applied the new range
+      requestAnimationFrame(() => {
+        drawingManagerRef.current?.redraw();
+      });
+
       const est = Math.max(
         ...cleanBars.slice(-50).map((b) => (String(b.close).split(".")[1] || "").length)
       );
@@ -580,35 +594,26 @@ export default function ChartPanel({
     }
   }, [symbol, tf]);
 
-  const syncBars = useCallback(async (isSilent = false) => {
-    if (syncingRef.current) return;
-    const key = `${symbol}:${tf}`;
-    const cached = barsCache.current.get(key);
-
-    if (!isSilent) {
-      if (cached?.bars?.length) {
-        applyBars(cached.bars, false);
-      } else {
-        setLoading(true);
-      }
-    }
-
-    syncingRef.current = true;
+  const loadBars = useCallback(async (key, genId, isSilent = false) => {
+    const [sym, curTf] = key.split(":");
     try {
       // Wait for seriesRef if chart is mounting
       for (let i = 0; i < 40 && !seriesRef.current; i++) {
         await new Promise((r) => setTimeout(r, 50));
+        if (fetchGenerationRef.current !== genId) return;
       }
+      if (fetchGenerationRef.current !== genId) return;
 
       let count = 600;
-      if (["M1", "M5", "M15"].includes(tf)) count = 800;
-      else if (["H1", "H4", "D1"].includes(tf)) count = 600;
+      if (["M1", "M5", "M15"].includes(curTf)) count = 800;
+      else if (["H1", "H4", "D1"].includes(curTf)) count = 600;
 
       // Robust retry: allows mobile connections and sleeping tabs to wake up smoothly
       let data = null;
       for (let attempt = 0; attempt < 3; attempt++) {
+        if (fetchGenerationRef.current !== genId) return;
         try {
-          const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=${count}`, { cache: "no-store" });
+          const res = await fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=${curTf}&count=${count}`, { cache: "no-store" });
           if (res.ok) {
             data = await res.json();
             if (data?.ok && Array.isArray(data.bars) && data.bars.length > 0) break;
@@ -616,19 +621,24 @@ export default function ChartPanel({
         } catch (e) {
           if (attempt === 2) throw e;
         }
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
       }
 
+      if (fetchGenerationRef.current !== genId) return;
+
+      const cached = barsCache.current.get(key);
       if (!data?.ok || !data.bars?.length) {
         if (cached?.bars?.length) {
-          applyBars(cached.bars, false);
+          applyBars(cached.bars, false, key);
         } else if (!isSilent) {
           if (retryCountRef.current < 5) {
             retryCountRef.current += 1;
-            clearTimeout(retryTimerRef.current);
-            retryTimerRef.current = setTimeout(() => syncBars(false), 2500);
+            retryTimerRef.current = setTimeout(() => {
+              if (fetchGenerationRef.current === genId) loadBars(key, genId, false);
+            }, 2000);
           } else {
-            setError(data?.message || data?.error || `No data for ${symbol}`);
+            setError(data?.message || data?.error || `No data for ${sym}`);
+            setLoading(false);
           }
         }
         return;
@@ -636,15 +646,13 @@ export default function ChartPanel({
 
       let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
       bars = bars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
-      bars = normalizeCandles(bars, tf);
+      bars = normalizeCandles(bars, curTf);
+      if (fetchGenerationRef.current !== genId) return;
+
       barsCache.current.set(key, { at: Date.now(), bars });
       lastSyncTimeRef.current = Date.now();
       lastClientActiveRef.current = Date.now();
       retryCountRef.current = 0;
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
 
       try {
         const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
@@ -654,33 +662,74 @@ export default function ChartPanel({
         localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
       } catch (e) {}
 
-      applyBars(bars, isSilent);
+      applyBars(bars, isSilent, key);
       setError(null);
     } catch (err) {
+      if (fetchGenerationRef.current !== genId) return;
+      const cached = barsCache.current.get(key);
       if (!isSilent) {
         if (cached?.bars?.length) {
-          applyBars(cached.bars, false);
+          applyBars(cached.bars, false, key);
         } else if (retryCountRef.current < 5) {
           retryCountRef.current += 1;
-          clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = setTimeout(() => syncBars(false), 2500);
+          retryTimerRef.current = setTimeout(() => {
+            if (fetchGenerationRef.current === genId) loadBars(key, genId, false);
+          }, 2000);
         } else {
-          setError(err.message || "Failed to load candles. Retrying...");
+          setError(err.message || "Failed to load candles.");
+          setLoading(false);
         }
       }
-    } finally {
-      syncingRef.current = false;
-      setLoading(false);
     }
-  }, [symbol, tf, barsCache, applyBars]);
+  }, [barsCache, applyBars]);
 
-  // Initial and symbol/tf change bar fetch
+  // Initial and symbol/tf change bar fetch with instantaneous visual isolation
   useEffect(() => {
-    syncBars(false);
+    fetchGenerationRef.current += 1;
+    const currentGen = fetchGenerationRef.current;
+    const key = `${symbol}:${tf}`;
+    activeFetchKeyRef.current = key;
+
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+
+    const cached = barsCache.current.get(key);
+    if (cached?.bars?.length) {
+      applyBars(cached.bars, false, key);
+    } else {
+      // ZERO cross-symbol/tf candle bleed: Wipe immediately and show clean loading spinner
+      lastBarRef.current = null;
+      barsRef.current = [];
+      setLoading(true);
+      setError(null);
+      if (seriesRef.current) seriesRef.current.setData([]);
+      if (patternsRef.current) patternsRef.current.setDrawings([]);
+      if (drawingManagerRef.current) {
+        drawingManagerRef.current.list = (drawingManagerRef.current.list || []).filter(
+          (d) => !String(d.id).startsWith("auto_")
+        );
+        drawingManagerRef.current.redraw();
+      }
+    }
+
+    loadBars(key, currentGen, false);
+
     return () => {
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      fetchGenerationRef.current += 1;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
     };
-  }, [symbol, tf, syncBars]);
+  }, [symbol, tf, barsCache, applyBars, loadBars]);
+
+  const reconcileBackgroundGaps = useCallback(() => {
+    const key = `${symbol}:${tf}`;
+    if (activeFetchKeyRef.current !== key) return;
+    loadBars(key, fetchGenerationRef.current, true);
+  }, [symbol, tf, loadBars]);
 
   // Automatic gap-healing when switching back to tab, focusing window, or unlocking screen
   useEffect(() => {
@@ -689,7 +738,7 @@ export default function ChartPanel({
         const elapsedClientSec = (Date.now() - lastClientActiveRef.current) / 1000;
         // If tab was inactive, sleeping, or away for >= 10s: silent gap-healing re-sync!
         if (elapsedClientSec >= 10) {
-          syncBars(true);
+          reconcileBackgroundGaps();
         }
       }
     };
@@ -700,7 +749,7 @@ export default function ChartPanel({
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
       window.removeEventListener("focus", handleVisibilityOrFocus);
     };
-  }, [syncBars]);
+  }, [reconcileBackgroundGaps]);
 
   // Continuous background candle alignment loop:
   // While the user leaves the tab open for a while and does other work,
@@ -708,17 +757,17 @@ export default function ChartPanel({
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
-      if (!syncingRef.current && (now - lastSyncTimeRef.current >= 30_000)) {
-        syncBars(true);
+      if (document.visibilityState === "visible" && (now - lastSyncTimeRef.current >= 30_000)) {
+        reconcileBackgroundGaps();
       }
     }, 10_000);
     return () => clearInterval(timer);
-  }, [syncBars]);
+  }, [reconcileBackgroundGaps]);
 
   // Reconnection listener: when WebSocket reconnects or network comes online
   useEffect(() => {
     const onReconnect = () => {
-      syncBars(true);
+      reconcileBackgroundGaps();
     };
     window.addEventListener("ts_ws_reconnected", onReconnect);
     window.addEventListener("online", onReconnect);
@@ -726,7 +775,7 @@ export default function ChartPanel({
       window.removeEventListener("ts_ws_reconnected", onReconnect);
       window.removeEventListener("online", onReconnect);
     };
-  }, [syncBars]);
+  }, [reconcileBackgroundGaps]);
 
   // ---------- axis label resolution ----------
   useEffect(() => {
@@ -758,8 +807,8 @@ export default function ChartPanel({
     // Trigger an immediate background re-sync to fetch and stitch the complete sequence cleanly.
     if (isNewBar && !isNextConsecutive) {
       const now = Date.now();
-      if (!syncingRef.current && (now - lastSyncTimeRef.current > 2000)) {
-        syncBars(true);
+      if (now - lastSyncTimeRef.current > 2000) {
+        reconcileBackgroundGaps();
       }
       return;
     }
@@ -781,7 +830,7 @@ export default function ChartPanel({
     } else if (barsRef.current.length) {
       barsRef.current[barsRef.current.length - 1] = nextBar;
     }
-  }, [tick, symbol, tf, syncBars]);
+  }, [tick, symbol, tf, reconcileBackgroundGaps]);
 
   // ---------- pattern indicators ----------
   useEffect(() => {
@@ -815,8 +864,18 @@ export default function ChartPanel({
     const currentList = mgr.list || [];
     const userDrawings = currentList.filter((d) => !String(d.id).startsWith("auto_"));
 
-    const hasAutoTrades = autonomousTrades && autonomousTrades.length > 0;
-    const hasRadarPairs = radarPairs && radarPairs.length > 0;
+    const sNorm = String(symbol || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const isSymbolMatch = (item) => {
+      if (!item || !sNorm) return false;
+      const tNorm = String(item.symbol || item.canonicalSymbol || item.tradeableSymbol || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      return tNorm === sNorm;
+    };
+
+    const symAutoTrades = (autonomousTrades || []).filter(isSymbolMatch);
+    const symRadarPairs = (radarPairs || []).filter(isSymbolMatch);
+
+    const hasAutoTrades = symAutoTrades.length > 0;
+    const hasRadarPairs = symRadarPairs.length > 0;
 
     if ((!isEnabled && !isStagedEnabled && !isRadarEnabled) || (!hasAutoTrades && !hasRadarPairs)) {
       if (currentList.some((d) => String(d.id).startsWith("auto_"))) {
@@ -841,7 +900,7 @@ export default function ChartPanel({
     const closedList = [];
     const stagedList = [];
 
-    for (const t of (autonomousTrades || [])) {
+    for (const t of symAutoTrades) {
       if (!t) continue;
       const isOpenTrade = ["active", "managing", "open"].includes(String(t.status || "").toLowerCase());
       const isClosedTrade =
@@ -876,7 +935,7 @@ export default function ChartPanel({
       : [];
 
     const radarDrawings = isRadarEnabled
-      ? (radarPairs || [])
+      ? symRadarPairs
           .flatMap((p, idx) => pairToRadarTradeIdeaDrawings(p, barsRef.current, tfSec, idx))
           .filter((d) => d && !isDismissed(d.id))
       : [];
