@@ -286,6 +286,8 @@ export default function ControlConsole({
       next = ["pre_london_prep", "london_open", "london_lunch", "london_close"];
     } else if (presetType === "all") {
       next = CONFIGURABLE_SLOTS.map((s) => s.id);
+    } else if (presetType === "none") {
+      next = [];
     }
 
     setForm((prev) => ({
@@ -970,8 +972,8 @@ export default function ControlConsole({
                         >
                           {meta.category || "General"}
                         </span>
-                        <span style={{ fontSize: 10, color: "var(--muted)" }}>
-                          ({activeSlots.length} active slot{activeSlots.length === 1 ? "" : "s"})
+                        <span style={{ fontSize: 10, color: activeSlots.length === 0 ? "var(--red)" : "var(--muted)", fontWeight: activeSlots.length === 0 ? 600 : 400 }}>
+                          {activeSlots.length === 0 ? "🔴 Trading Blocked (0 active slots)" : `(${activeSlots.length} active slot${activeSlots.length === 1 ? "" : "s"})`}
                         </span>
                       </div>
 
@@ -1025,6 +1027,23 @@ export default function ControlConsole({
                           }}
                         >
                           All Slots
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyPresetForSymbol(sym, "none")}
+                          title="Untick all sessions to disable trading for this symbol completely"
+                          style={{
+                            ...inputStyle,
+                            width: "auto",
+                            padding: "2px 6px",
+                            fontSize: 10,
+                            cursor: "pointer",
+                            background: "rgba(239, 68, 68, 0.1)",
+                            borderColor: "rgba(239, 68, 68, 0.3)",
+                            color: "var(--red)",
+                          }}
+                        >
+                          Disable (None)
                         </button>
                         <button
                           type="button"

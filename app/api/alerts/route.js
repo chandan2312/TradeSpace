@@ -3,6 +3,7 @@ import { broadcast } from "@/lib/realtime";
 import { json } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
 import { getSymbolAliases } from "@/lib/watchlistAliases";
+import { invalidateAlertsCache } from "@/lib/alert-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +34,12 @@ export async function POST(req) {
 
   const { alertsCol } = await getCols();
   const canonicalSym = toCanonicalSymbol(symbol);
+  const currentPrice = Number(body.currentPrice || body.initialPrice) || (globalThis._tsLastPrice?.get(canonicalSym) ?? globalThis._tsLastPrice?.get(symbol) ?? null);
   const alert = {
     symbol: canonicalSym,
     price: Number(body.price),
     condition: body.condition,
+    initialPrice: Number.isFinite(Number(currentPrice)) ? Number(currentPrice) : null,
     rating: body.rating || null,
     note: String(note).slice(0, 200),
     chainId: body.chainId || null,
@@ -48,6 +51,7 @@ export async function POST(req) {
 
   const { insertedId } = await alertsCol.insertOne(alert);
   alert._id = insertedId;
+  invalidateAlertsCache();
   broadcast({ type: "alerts_changed" });
   return json({ ok: true, alert });
 }
@@ -68,6 +72,7 @@ export async function DELETE(req) {
     query.$or = [{ rating: null }, { rating: { $exists: false } }];
   }
   await alertsCol.deleteMany(query);
+  invalidateAlertsCache();
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
 }
