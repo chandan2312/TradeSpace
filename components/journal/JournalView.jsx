@@ -105,6 +105,15 @@ function MultiSelectFilter({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
+  // Combine provided options with any selected items (e.g. from restored localStorage)
+  const effectiveOptions = useMemo(() => {
+    const known = new Set(options.map((o) => o.value));
+    const extras = selected
+      .filter((s) => !known.has(s))
+      .map((s) => ({ value: s, label: s }));
+    return [...options, ...extras];
+  }, [options, selected]);
+
   const isSelected = (val) => selected.includes(val);
 
   const toggle = (val) => {
@@ -115,14 +124,14 @@ function MultiSelectFilter({
     }
   };
 
-  const selectAll = () => onChange(options.map((o) => o.value));
+  const selectAll = () => onChange(effectiveOptions.map((o) => o.value));
   const clearAll = () => onChange([]);
 
   let triggerLabel = placeholder;
-  const isFiltered = selected.length > 0 && selected.length < options.length;
+  const isFiltered = selected.length > 0 && (effectiveOptions.length === 0 || selected.length < effectiveOptions.length);
   if (isFiltered) {
     if (selected.length === 1) {
-      const match = options.find((o) => o.value === selected[0]);
+      const match = effectiveOptions.find((o) => o.value === selected[0]);
       triggerLabel = match?.short || match?.label || selected[0];
     } else {
       triggerLabel = `${label} (${selected.length})`;
@@ -203,7 +212,7 @@ function MultiSelectFilter({
           </div>
 
           <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-            {options.map((opt) => {
+            {effectiveOptions.map((opt) => {
               const active = isSelected(opt.value);
               return (
                 <label
@@ -303,6 +312,141 @@ export default function JournalView() {
 
   const [isMobile, setIsMobile] = useState(false);
   const LS_COL_STATE_KEY = "ts_journal_grid_columns";
+  const LS_FILTER_STATE_KEY = "ts_journal_filters_state";
+  const DEFAULT_OUTCOMES = useMemo(() => ["WIN", "LOSS", "BREAKEVEN", "OPEN"], []);
+  const [filtersRestored, setFiltersRestored] = useState(false);
+
+  // Restore filter and selection states from localStorage on client mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_FILTER_STATE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && typeof saved === "object") {
+          if (["ALL", "milestone_50", "prop_firm_safe"].includes(saved.activeSheet)) {
+            setActiveSheet(saved.activeSheet);
+          }
+          if (["spreadsheet", "table"].includes(saved.viewMode)) {
+            setViewMode(saved.viewMode);
+          }
+          if (Array.isArray(saved.selectedOutcomes)) {
+            setSelectedOutcomes(saved.selectedOutcomes);
+          }
+          if (Array.isArray(saved.selectedModels)) {
+            setSelectedModels(saved.selectedModels);
+          }
+          if (Array.isArray(saved.selectedHorizons)) {
+            // Strictly exclude any legacy 'scalp' selection
+            setSelectedHorizons(saved.selectedHorizons.filter((h) => h !== "scalp"));
+          }
+          if (Array.isArray(saved.selectedSymbols)) {
+            setSelectedSymbols(saved.selectedSymbols);
+          }
+          if (Array.isArray(saved.selectedSessions)) {
+            setSelectedSessions(saved.selectedSessions);
+          }
+          if (typeof saved.startDate === "string") {
+            setStartDate(saved.startDate);
+          }
+          if (typeof saved.endDate === "string") {
+            setEndDate(saved.endDate);
+          }
+          if (typeof saved.quickSearch === "string") {
+            setQuickSearch(saved.quickSearch);
+          }
+          if (typeof saved.autoRefresh === "boolean") {
+            setAutoRefresh(saved.autoRefresh);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[JournalView] Failed to restore filter state:", err);
+    } finally {
+      setFiltersRestored(true);
+    }
+  }, []);
+
+  // Persist filter and selection states to localStorage whenever changed
+  useEffect(() => {
+    if (!filtersRestored) return;
+    try {
+      const stateToSave = {
+        activeSheet,
+        viewMode,
+        selectedOutcomes,
+        selectedModels,
+        selectedHorizons,
+        selectedSymbols,
+        selectedSessions,
+        startDate,
+        endDate,
+        quickSearch,
+        autoRefresh,
+      };
+      localStorage.setItem(LS_FILTER_STATE_KEY, JSON.stringify(stateToSave));
+    } catch (err) {
+      console.warn("[JournalView] Failed to save filter state:", err);
+    }
+  }, [
+    filtersRestored,
+    activeSheet,
+    viewMode,
+    selectedOutcomes,
+    selectedModels,
+    selectedHorizons,
+    selectedSymbols,
+    selectedSessions,
+    startDate,
+    endDate,
+    quickSearch,
+    autoRefresh,
+  ]);
+
+  const resetFilters = useCallback(
+    (opts = {}) => {
+      setSelectedOutcomes(DEFAULT_OUTCOMES);
+      setSelectedModels([]);
+      setSelectedHorizons([]);
+      setSelectedSymbols([]);
+      setSelectedSessions([]);
+      setStartDate("");
+      setEndDate("");
+      setQuickSearch("");
+      if (opts.resetSheet) {
+        setActiveSheet("ALL");
+      }
+      if (gridRef.current?.api) {
+        gridRef.current.api.setGridOption("quickFilterText", "");
+      }
+    },
+    [DEFAULT_OUTCOMES]
+  );
+
+  const hasActiveFilters = useMemo(() => {
+    const isDefaultOutcomes =
+      selectedOutcomes.length === DEFAULT_OUTCOMES.length &&
+      selectedOutcomes.every((o) => DEFAULT_OUTCOMES.includes(o));
+    return Boolean(
+      startDate ||
+      endDate ||
+      selectedModels.length > 0 ||
+      selectedHorizons.length > 0 ||
+      selectedSymbols.length > 0 ||
+      selectedSessions.length > 0 ||
+      !isDefaultOutcomes ||
+      (quickSearch && quickSearch.trim())
+    );
+  }, [
+    startDate,
+    endDate,
+    selectedModels,
+    selectedHorizons,
+    selectedSymbols,
+    selectedSessions,
+    selectedOutcomes,
+    DEFAULT_OUTCOMES,
+    quickSearch,
+  ]);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -396,6 +540,12 @@ export default function JournalView() {
       gridRef.current.api.setGridOption("quickFilterText", val);
     }
   };
+
+  useEffect(() => {
+    if (gridRef.current?.api) {
+      gridRef.current.api.setGridOption("quickFilterText", quickSearch || "");
+    }
+  }, [quickSearch]);
 
   // Export to CSV
   const onExportCsv = () => {
@@ -1462,7 +1612,7 @@ export default function JournalView() {
         />
 
         {/* 4. Multi-Select Symbol Filter */}
-        {uniqueSymbols.length > 0 && (
+        {(uniqueSymbols.length > 0 || selectedSymbols.length > 0) && (
           <MultiSelectFilter
             label="Symbol"
             icon={Target}
@@ -1474,7 +1624,7 @@ export default function JournalView() {
         )}
 
         {/* 5. Multi-Select Session Filter */}
-        {uniqueSessions.length > 0 && (
+        {(uniqueSessions.length > 0 || selectedSessions.length > 0) && (
           <MultiSelectFilter
             label="Session"
             icon={Clock}
@@ -1515,25 +1665,9 @@ export default function JournalView() {
               fontSize: 11,
             }}
           />
-          {(startDate ||
-            endDate ||
-            selectedModels.length > 0 ||
-            selectedHorizons.length > 0 ||
-            selectedSymbols.length > 0 ||
-            selectedSessions.length > 0 ||
-            selectedOutcomes.length !== 4 ||
-            quickSearch) && (
+          {hasActiveFilters && (
             <button
-              onClick={() => {
-                setSelectedOutcomes(["WIN", "LOSS", "BREAKEVEN", "OPEN"]);
-                setSelectedModels([]);
-                setSelectedHorizons([]);
-                setSelectedSymbols([]);
-                setSelectedSessions([]);
-                setStartDate("");
-                setEndDate("");
-                setQuickSearch("");
-              }}
+              onClick={() => resetFilters()}
               style={{
                 background: "rgba(239, 83, 80, 0.15)",
                 border: "none",
@@ -1544,6 +1678,8 @@ export default function JournalView() {
                 fontWeight: 700,
                 cursor: "pointer",
               }}
+              title="Reset all active filters to default"
+              aria-label="Reset Filters"
             >
               Reset Filters
             </button>
@@ -1581,6 +1717,9 @@ export default function JournalView() {
             onRowClicked={(event) => setSelectedTrade(event.data)}
             onGridReady={(params) => {
               restoreColumnState(params.api);
+              if (quickSearch && params.api?.setGridOption) {
+                params.api.setGridOption("quickFilterText", quickSearch);
+              }
             }}
             onColumnMoved={(params) => {
               if (params.finished !== false) saveColumnState(params.api);
@@ -1633,16 +1772,7 @@ export default function JournalView() {
             >
               <div>No trade records matching active filters.</div>
               <button
-                onClick={() => {
-                  setSelectedOutcomes(["WIN", "LOSS", "BREAKEVEN", "OPEN"]);
-                  setSelectedModels([]);
-                  setSelectedHorizons([]);
-                  setSelectedSymbols([]);
-                  setSelectedSessions([]);
-                  setStartDate("");
-                  setEndDate("");
-                  setQuickSearch("");
-                }}
+                onClick={() => resetFilters({ resetSheet: true })}
                 style={{
                   padding: "6px 14px",
                   borderRadius: 6,
@@ -1653,6 +1783,8 @@ export default function JournalView() {
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
+                title="Reset all filters and view all trades"
+                aria-label="Reset All Filters"
               >
                 Reset All Filters
               </button>
