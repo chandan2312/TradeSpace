@@ -124,12 +124,26 @@ export default function TopBar({
   });
   const symbolRadarCount = symbolRadarPairs.length;
 
+  // Cockpit badge should strictly display tradeDefault trades (not combine tradeProp & tradeDefault, which doubles R)
+  const isPropTrade = (t) =>
+    Boolean(
+      t.isPropFirm ||
+      t.managementLogic === "prop_firm_safe" ||
+      t.legId === "prop_firm" ||
+      t.legType === "prop_firm" ||
+      /:MG2:|:PROP:|PROP_FIRM/i.test(String(t.brokerComment || ""))
+    );
+  const defaultActiveTrades = activeAutoTrades.filter((t) => !isPropTrade(t));
+  // If tradeDefault trades exist, show only them; if only tradeProp trades exist, fallback to activeAutoTrades
+  const displayAutoTrades = defaultActiveTrades.length > 0 ? defaultActiveTrades : activeAutoTrades;
+
   let autoNetR = 0;
   let hasAutoR = false;
-  activeAutoTrades.forEach((t) => {
+  displayAutoTrades.forEach((t) => {
     const tel = tradeRiskTelemetry(t, ticks || {});
-    if (tel.priceR !== null) {
-      autoNetR += tel.priceR;
+    const r = tel.actualR ?? tel.totalR ?? tel.priceR;
+    if (r !== null && Number.isFinite(r)) {
+      autoNetR += r;
       hasAutoR = true;
     }
   });
@@ -296,20 +310,20 @@ export default function TopBar({
             alignItems: "center",
             gap: 4,
             borderRadius: 6,
-            border: activeAutoTrades.length > 0
+            border: displayAutoTrades.length > 0
               ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.5)" : "rgba(239, 83, 80, 0.5)"}`
               : "1px solid var(--border)",
-            background: activeAutoTrades.length > 0
+            background: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.15)" : "rgba(239, 83, 80, 0.15)")
               : "transparent",
-            color: activeAutoTrades.length > 0
+            color: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
               : "var(--text)",
           }}
         >
-          <Zap size={12} style={{ color: activeAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
-          <span>{activeAutoTrades.length > 0 ? `${activeAutoTrades.length}A` : "Auto"}</span>
-          {activeAutoTrades.length > 0 && hasAutoR && (
+          <Zap size={12} style={{ color: displayAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
+          <span>{displayAutoTrades.length > 0 ? `${displayAutoTrades.length}A` : "Auto"}</span>
+          {displayAutoTrades.length > 0 && hasAutoR && (
             <span style={{ fontFamily: "monospace", fontSize: 10 }}>{formatR(autoNetR)}</span>
           )}
         </button>
@@ -570,7 +584,7 @@ export default function TopBar({
         <button
           className={autoCockpitOpen ? "primary" : "ghost"}
           onClick={onOpenAutoCockpit}
-          title={`Autonomous Cockpit${activeAutoTrades.length > 0 ? ` (${activeAutoTrades.length} Active${hasAutoR ? ` · ${formatR(autoNetR)}` : ""})` : stagedAutoTrades.length > 0 ? ` (${stagedAutoTrades.length} Staged)` : " (Idle)"}`}
+          title={`Autonomous Cockpit${displayAutoTrades.length > 0 ? ` (${displayAutoTrades.length} Active${hasAutoR ? ` · ${formatR(autoNetR)}` : ""})` : stagedAutoTrades.length > 0 ? ` (${stagedAutoTrades.length} Staged)` : " (Idle)"}`}
           aria-label="Toggle Autonomous Cockpit"
           style={{
             fontSize: 12,
@@ -579,13 +593,13 @@ export default function TopBar({
             alignItems: "center",
             gap: 5,
             borderRadius: 6,
-            border: activeAutoTrades.length > 0
+            border: displayAutoTrades.length > 0
               ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.45)" : "rgba(239, 83, 80, 0.45)"}`
               : "1px solid var(--border)",
-            background: activeAutoTrades.length > 0
+            background: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.12)" : "rgba(239, 83, 80, 0.12)")
               : "transparent",
-            color: activeAutoTrades.length > 0
+            color: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
               : "var(--fg)",
             fontWeight: 600,
@@ -600,20 +614,20 @@ export default function TopBar({
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: activeAutoTrades.length > 0
+              background: displayAutoTrades.length > 0
                 ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
                 : stagedAutoTrades.length > 0
                 ? "var(--accent)"
                 : "var(--muted)",
-              boxShadow: activeAutoTrades.length > 0
+              boxShadow: displayAutoTrades.length > 0
                 ? (isAutoNetProfit ? "0 0 6px var(--green)" : "0 0 6px var(--red)")
                 : "none",
             }}
           />
-          <Zap size={13} style={{ color: activeAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
-          {activeAutoTrades.length > 0 ? (
+          <Zap size={13} style={{ color: displayAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
+          {displayAutoTrades.length > 0 ? (
             <span style={{ fontFamily: "monospace", fontSize: 11 }}>
-              {activeAutoTrades.length}A{hasAutoR ? ` · ${formatR(autoNetR)}` : ""}
+              {displayAutoTrades.length}A{hasAutoR ? ` · ${formatR(autoNetR)}` : ""}
             </span>
           ) : stagedAutoTrades.length > 0 ? (
             <span style={{ fontSize: 11, color: "var(--accent)" }}>{stagedAutoTrades.length}S</span>
@@ -681,16 +695,16 @@ export default function TopBar({
               style={{
                 fontSize: 11, padding: "6px 8px", display: "flex", alignItems: "center", gap: 5,
                 borderRadius: 6, fontWeight: 700,
-                background: activeAutoTrades.length > 0
+                background: displayAutoTrades.length > 0
                   ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.15)" : "rgba(239, 83, 80, 0.15)")
                   : "var(--panel-2)",
                 border: "1px solid var(--border)",
-                color: activeAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--text)",
+                color: displayAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--text)",
               }}
             >
               <Zap size={13} style={{ color: "var(--accent)" }} />
               <span>Cockpit</span>
-              {activeAutoTrades.length > 0 && <span style={{ marginLeft: "auto", fontSize: 9 }}>●</span>}
+              {displayAutoTrades.length > 0 && <span style={{ marginLeft: "auto", fontSize: 9 }}>●</span>}
             </button>
             <Link
               href="/autonomous?section=journal"
