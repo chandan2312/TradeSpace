@@ -87,6 +87,9 @@ export default function ControlConsole({
     measureRiskInR: config.measureRiskInR ?? true,
     accountSize: brokerEquity > 0 ? brokerEquity : (config.accountSize ?? 25000),
     maxDailyLossPct: config.maxDailyLossPct ?? 10,
+    pendingExpiryMinutes: config.pendingExpiryMinutes ?? 45,
+    maxPendingRunawayR: config.maxPendingRunawayR ?? 1.5,
+    scalpPendingExpiryMinutes: config.scalpPendingExpiryMinutes ?? 20,
     requireSmtConfirm: config.requireSmtConfirm ?? false,
     enforceSymbolSessions: config.enforceSymbolSessions ?? true,
     telegram: config.telegram ?? true,
@@ -579,6 +582,20 @@ export default function ControlConsole({
                 </div>
               </div>
             </label>
+            <div style={{ marginTop: 12, padding: 10, background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <Clock size={13} style={{ color: "var(--accent)" }} />
+                Resting Limit Order &amp; Stale Order Safeguards
+              </div>
+              <div style={grid}>
+                <NumberField label="Limit expiry (mins)" name="pendingExpiryMinutes" form={form} onChange={change} min={5} max={1440} step={5} />
+                <NumberField label="Max runaway price (R)" name="maxPendingRunawayR" form={form} onChange={change} min={0.5} max={10} step={0.1} />
+                <NumberField label="Scalp limit expiry (mins)" name="scalpPendingExpiryMinutes" form={form} onChange={change} min={5} max={120} step={5} />
+              </div>
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
+                Resting limit orders are automatically cancelled if price expands ≥ Max Runaway R in the profit direction without fill, if target DOL is reached, or if the order exceeds its lifespan.
+              </div>
+            </div>
           </section>
 
           {/* SECTION 2: QUALIFICATION THRESHOLDS */}
