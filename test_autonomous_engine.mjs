@@ -2180,7 +2180,7 @@ console.log("=======================================================");
   // 21.6 Verification of Loosened Enterprise Constraints
   assert(DEFAULT_AUTONOMOUS_CONFIG.maxConcurrentTrades === 10, `maxConcurrentTrades elevated to 10: got ${DEFAULT_AUTONOMOUS_CONFIG.maxConcurrentTrades}`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.maxDailyLossPct === 10.0, `maxDailyLossPct elevated to 10.0: got ${DEFAULT_AUTONOMOUS_CONFIG.maxDailyLossPct}`);
-  assert(DEFAULT_AUTONOMOUS_CONFIG.minConviction === 60, `minConviction loosened to 60: got ${DEFAULT_AUTONOMOUS_CONFIG.minConviction}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.minConviction === 75, `minConviction is institutional standard 75: got ${DEFAULT_AUTONOMOUS_CONFIG.minConviction}`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.minRunwayPct === 15, `minRunwayPct loosened to 15%: got ${DEFAULT_AUTONOMOUS_CONFIG.minRunwayPct}`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.minRR === 1.8, `minRR loosened to 1.8R: got ${DEFAULT_AUTONOMOUS_CONFIG.minRR}`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.partitionedCopierRisk === true, `partitionedCopierRisk is active: got ${DEFAULT_AUTONOMOUS_CONFIG.partitionedCopierRisk}`);
