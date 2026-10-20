@@ -24,7 +24,7 @@ import {
 import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
-import { syncMT5HistoryToJournalThrottled, isTradeSpaceTrade } from "../../../lib/journal/store.js";
+import { syncMT5HistoryToJournalThrottled, isTradeSpaceTrade, JOURNAL_START_BROKER_SEC } from "../../../lib/journal/store.js";
 
 const g = globalThis;
 
@@ -103,6 +103,15 @@ export async function GET() {
           brokerComment: { $not: { $regex: /^MQ:/i } },
           comment: { $not: { $regex: /^MQ:/i } },
           magicNumber: { $not: { $gte: 800000, $lte: 899999 } },
+          $and: [
+            {
+              $or: [
+                { brokerEntryTime: { $gte: JOURNAL_START_BROKER_SEC } },
+                { filledAt: { $gte: new Date(JOURNAL_START_BROKER_SEC * 1000) } },
+                { createdAt: { $gte: new Date(JOURNAL_START_BROKER_SEC * 1000) } },
+              ],
+            },
+          ],
         }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(25).toArray(),
         logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
         !g._tsAutonomousLeaderboard && controlCol
