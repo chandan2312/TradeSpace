@@ -5,9 +5,12 @@ import RangeTelemetry from "./RangeTelemetry";
 import { formatR, formatUsd, markPriceFor, tradeRiskTelemetry } from "./TradeTelemetry";
 
 export default function CockpitTelemetry({ activeTrades = [], rankedPairs = [], ticks = {}, socketState, error, loading }) {
-  const floating = activeTrades.map((trade) => tradeRiskTelemetry(trade, ticks)).filter((item) => item.floatingR !== null);
-  const floatingR = floating.length ? floating.reduce((sum, item) => sum + item.floatingR, 0) : null;
-  const floatingUsd = floating.length && floating.every((item) => item.floatingUsd !== null) ? floating.reduce((sum, item) => sum + item.floatingUsd, 0) : null;
+  const isPropTrade = (t) => Boolean(t.isPropFirm || t.managementLogic === "prop_firm_safe" || t.legId === "prop_firm");
+  const defaultTrades = activeTrades.filter((t) => !isPropTrade(t));
+  const tradesToMeasure = defaultTrades.length > 0 ? defaultTrades : activeTrades;
+  const floating = tradesToMeasure.map((trade) => tradeRiskTelemetry(trade, ticks)).filter((item) => item.floatingR !== null);
+  const floatingR = floating.length ? floating.reduce((sum, item) => sum + (item.actualR ?? item.floatingR), 0) : null;
+  const floatingUsd = floating.length && floating.every((item) => item.floatingUsd !== null) ? floating.reduce((sum, item) => sum + (item.totalUsd ?? item.floatingUsd), 0) : null;
   const lead = rankedPairs.find((pair) => pair.isInMainWatchlist) || rankedPairs[0];
   const statusColor = socketState === "connected" ? "var(--green)" : socketState === "error" ? "var(--red)" : "var(--orange)";
   return (

@@ -87,9 +87,10 @@ export default function ControlConsole({
     measureRiskInR: config.measureRiskInR ?? true,
     accountSize: brokerEquity > 0 ? brokerEquity : (config.accountSize ?? 25000),
     maxDailyLossPct: config.maxDailyLossPct ?? 10,
-    pendingExpiryMinutes: config.pendingExpiryMinutes ?? 45,
-    maxPendingRunawayR: config.maxPendingRunawayR ?? 1.5,
-    scalpPendingExpiryMinutes: config.scalpPendingExpiryMinutes ?? 20,
+    pendingExpiryMinutes: config.pendingExpiryMinutes ?? 180,
+    maxPendingRunawayR: config.maxPendingRunawayR ?? 2.0,
+    scalpPendingExpiryMinutes: config.scalpPendingExpiryMinutes ?? 60,
+    cancelledDedupWindowMinutes: config.cancelledDedupWindowMinutes ?? 120,
     requireSmtConfirm: config.requireSmtConfirm ?? false,
     enforceSymbolSessions: config.enforceSymbolSessions ?? true,
     telegram: config.telegram ?? true,
@@ -591,9 +592,10 @@ export default function ControlConsole({
                 <NumberField label="Limit expiry (mins)" name="pendingExpiryMinutes" form={form} onChange={change} min={5} max={1440} step={5} />
                 <NumberField label="Max runaway price (R)" name="maxPendingRunawayR" form={form} onChange={change} min={0.5} max={10} step={0.1} />
                 <NumberField label="Scalp limit expiry (mins)" name="scalpPendingExpiryMinutes" form={form} onChange={change} min={5} max={120} step={5} />
+                <NumberField label="Cancelled cooldown (mins)" name="cancelledDedupWindowMinutes" form={form} onChange={change} min={10} max={1440} step={10} />
               </div>
               <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
-                Resting limit orders are automatically cancelled if price expands ≥ Max Runaway R in the profit direction without fill, if target DOL is reached, or if the order exceeds its lifespan.
+                Resting limits are protected from churn: price must expand ≥ Max Runaway R past the setup origin or complete ≥85% of target move to expire. Cancelled setups enter a cooldown before re-staging.
               </div>
             </div>
           </section>

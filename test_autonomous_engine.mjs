@@ -2187,7 +2187,7 @@ console.log("=======================================================");
   assert(DEFAULT_AUTONOMOUS_CONFIG.maxSpreadToRisk === 0.25, `maxSpreadToRisk loosened to 0.25: got ${DEFAULT_AUTONOMOUS_CONFIG.maxSpreadToRisk}`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes === 15, `cooldownMinutes loosened to 15m: got ${DEFAULT_AUTONOMOUS_CONFIG.cooldownMinutes}`);
   assert(DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes === 15, `lossCooldownMinutes loosened to 15m: got ${DEFAULT_AUTONOMOUS_CONFIG.lossCooldownMinutes}`);
-  assert(DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes === 20, `dedupFingerprintWindowMinutes loosened to 20m: got ${DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes}`);
+  assert(DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes === 60, `dedupFingerprintWindowMinutes elevated to 60m: got ${DEFAULT_AUTONOMOUS_CONFIG.dedupFingerprintWindowMinutes}`);
 
   // 21.7 High-Capacity Multi-Setup Simulation (5 Setups x 2 Legs = 10 Slots on Master VPS)
   const masterSlots = [];

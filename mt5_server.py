@@ -671,9 +671,14 @@ def handle_order(payload):
     if not all(math.isfinite(v) for v in [volume, price, sl, tp]) or price <= 0:
         return {"ok": False, "status": "bad-request", "message": "Finite positive volume/entry required"}
     if is_limit:
-        if action == "buy" and price >= tick.ask or action == "sell" and price <= tick.bid:
-            return {"ok": False, "status": "bad-limit", "message": "Limit must rest below ask for buy / above bid for sell"}
-        order_type = mt5.ORDER_TYPE_BUY_LIMIT if action == "buy" else mt5.ORDER_TYPE_SELL_LIMIT
+        if (action == "buy" and price >= tick.ask) or (action == "sell" and price <= tick.bid):
+            # Market price has reached or crossed limit entry price during order transit.
+            # Convert immediately to market deal (TRADE_ACTION_DEAL) rather than failing with bad-limit!
+            is_limit = False
+            order_type = mt5.ORDER_TYPE_BUY if action == "buy" else mt5.ORDER_TYPE_SELL
+            price = tick.ask if action == "buy" else tick.bid
+        else:
+            order_type = mt5.ORDER_TYPE_BUY_LIMIT if action == "buy" else mt5.ORDER_TYPE_SELL_LIMIT
     if payload.get("structural_levels"):
         minimum_distance = float(getattr(sym_info, "trade_stops_level", 0)) * float(sym_info.point)
         if sl <= 0 or tp <= 0 or (action == "buy" and not sl < price < tp) or (action == "sell" and not tp < price < sl) or min(abs(price - sl), abs(tp - price)) < minimum_distance:

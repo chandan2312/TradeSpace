@@ -200,7 +200,7 @@ export default function AutonomousLiveHUD({
 
   const activeTrades = useMemo(() => {
     return (trades || []).filter((t) =>
-      ["active", "managing", "closing", "open", "filling", "armed_fill"].includes(t.status)
+      ["active", "managing", "closing", "open", "filling", "armed_fill", "pending"].includes(t.status)
     );
   }, [trades]);
 
@@ -241,30 +241,34 @@ export default function AutonomousLiveHUD({
       .sort((a, b) => new Date(b.closedAt || b.createdAt) - new Date(a.closedAt || a.createdAt));
   }, [trades]);
 
-  // Aggregate telemetry for all active positions
+  // Aggregate telemetry for active positions (strictly defaultActiveTrades to prevent 2x double counting)
   const netTelemetry = useMemo(() => {
     let totalFloatingUsd = 0;
     let totalFloatingR = 0;
     let hasTelemetry = false;
 
-    activeTrades.forEach((trade) => {
+    const tradesToAggregate = defaultActiveTrades.length > 0 ? defaultActiveTrades : activeTrades;
+
+    tradesToAggregate.forEach((trade) => {
+      if (trade.status === "pending") return;
       const tel = tradeRiskTelemetry(trade, ticks);
       if (tel.floatingUsd !== null) {
         totalFloatingUsd += tel.floatingUsd;
         hasTelemetry = true;
       }
-      if (tel.priceR !== null) {
-        totalFloatingR += tel.priceR;
+      const r = tel.actualR ?? tel.totalR ?? tel.priceR;
+      if (r !== null && Number.isFinite(r)) {
+        totalFloatingR += r;
       }
     });
 
     return {
       totalUsd: hasTelemetry ? totalFloatingUsd : null,
       totalR: hasTelemetry ? totalFloatingR : null,
-      count: activeTrades.length,
+      count: tradesToAggregate.length,
       stagedCount: unifiedStagedSetups.length,
     };
-  }, [activeTrades, unifiedStagedSetups, ticks]);
+  }, [defaultActiveTrades, activeTrades, unifiedStagedSetups, ticks]);
 
   // Quick action: close active position
   const handleCloseTrade = async (tradeId) => {
@@ -1258,185 +1262,256 @@ export default function AutonomousLiveHUD({
                           </div>
 
                           <div style={{ textAlign: "right", fontFamily: "monospace" }}>
-                            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 6 }}>
-                              <span
-                                title="Actual R (AR): Effective account return with closed partials + remaining quantity"
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 800,
-                                  color: (telemetry.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-                                }}
-                              >
-                                {formatAR(telemetry.actualR)}
-                              </span>
-                              <span
-                                title="Ideal R (IR): Theoretical return assuming 100% position was held without partials"
-                                style={{
-                                  fontSize: 10,
-                                  color: "var(--muted)",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                ({formatIR(telemetry.idealR)})
-                              </span>
-                            </div>
-                            {(telemetry.totalUsd !== null || telemetry.floatingUsd !== null) && (
-                              <div style={{ fontSize: 10, color: "var(--muted)" }}>
-                                {formatUsd(telemetry.totalUsd ?? telemetry.floatingUsd)}
+                            {trade.status === "pending" ? (
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 800,
+                                    padding: "2px 7px",
+                                    borderRadius: 4,
+                                    background: "rgba(245, 158, 11, 0.2)",
+                                    color: "#fbbf24",
+                                    border: "1px solid rgba(245, 158, 11, 0.4)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <Clock size={11} /> RESTING LIMIT
+                                </span>
+                                <span style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>
+                                  Order #{trade.orderTicket || trade.ticket || "MT5"}
+                                </span>
                               </div>
+                            ) : (
+                              <>
+                                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 6 }}>
+                                  <span
+                                    title="Actual R (AR): Effective account return with closed partials + remaining quantity"
+                                    style={{
+                                      fontSize: 14,
+                                      fontWeight: 800,
+                                      color: (telemetry.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)",
+                                    }}
+                                  >
+                                    {formatAR(telemetry.actualR)}
+                                  </span>
+                                  <span
+                                    title="Ideal R (IR): Theoretical return assuming 100% position was held without partials"
+                                    style={{
+                                      fontSize: 10,
+                                      color: "var(--muted)",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    ({formatIR(telemetry.idealR)})
+                                  </span>
+                                </div>
+                                {(telemetry.totalUsd !== null || telemetry.floatingUsd !== null) && (
+                                  <div style={{ fontSize: 10, color: "var(--muted)" }}>
+                                    {formatUsd(telemetry.totalUsd ?? telemetry.floatingUsd)}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
 
-                        {/* Three-Layered Trade Progress Bar (Below Line -> Max Reached Darker -> Current Progress) */}
-                        <div>
+                        {/* Three-Layered Trade Progress Bar or Pending Order Specs */}
+                        {trade.status === "pending" ? (
                           <div
                             style={{
+                              background: "rgba(245, 158, 11, 0.05)",
+                              border: "1px dashed rgba(245, 158, 11, 0.25)",
+                              borderRadius: 6,
+                              padding: "8px 10px",
                               display: "flex",
-                              justifyContent: "space-between",
-                              fontSize: 10,
-                              color: "var(--muted)",
-                              marginBottom: 4,
+                              flexDirection: "column",
+                              gap: 4,
+                              fontSize: 11,
+                              fontFamily: "monospace",
                             }}
                           >
-                            <span>Fill: {formatPrice(fill)}</span>
-                            <span style={{ fontFamily: "monospace" }}>
-                              {`Live: ${Math.round(currentProgress)}% · Peak: ${Math.round(maxReached)}%`}
-                            </span>
-                            <span>TP: {formatPrice(target)}</span>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ color: "var(--muted)" }}>Limit Entry:</span>
+                              <strong style={{ color: "var(--fg)" }}>{formatPrice(trade.entryPrice)}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ color: "var(--muted)" }}>Current Mark:</span>
+                              <span>
+                                {formatPrice(mark)}{" "}
+                                {mark !== null && trade.entryPrice
+                                  ? `(${Math.abs(mark - trade.entryPrice).toFixed(trade.digits ?? 2)} pts away)`
+                                  : ""}
+                              </span>
+                            </div>
+                            {trade.expiresAt && (
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fbbf24", fontSize: 10 }}>
+                                <span>Expires in:</span>
+                                <span>
+                                  {Math.max(0, Math.round((new Date(trade.expiresAt).getTime() - Date.now()) / 60000))}m if unfilled
+                                </span>
+                              </div>
+                            )}
                           </div>
+                        ) : (
+                          <div>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontSize: 10,
+                                color: "var(--muted)",
+                                marginBottom: 4,
+                              }}
+                            >
+                              <span>Fill: {formatPrice(fill)}</span>
+                              <span style={{ fontFamily: "monospace" }}>
+                                {`Live: ${Math.round(currentProgress)}% · Peak: ${Math.round(maxReached)}%`}
+                              </span>
+                              <span>TP: {formatPrice(target)}</span>
+                            </div>
 
-                          <div
-                            style={{
-                              width: "100%",
-                              height: 7,
-                              borderRadius: 4,
-                              background: "rgba(255, 255, 255, 0.08)", // Layer 1: Progress below line
-                              position: "relative",
-                              overflow: "visible",
-                            }}
-                          >
-                            {/* Layer 2: Max Reached Range (Darker background color showing peak excursion) */}
-                            {maxReached > 0 && (
+                            <div
+                              style={{
+                                width: "100%",
+                                height: 7,
+                                borderRadius: 4,
+                                background: "rgba(255, 255, 255, 0.08)", // Layer 1: Progress below line
+                                position: "relative",
+                                overflow: "visible",
+                              }}
+                            >
+                              {/* Layer 2: Max Reached Range (Darker background color showing peak excursion) */}
+                              {maxReached > 0 && (
+                                <div
+                                  title={`Peak Reached: ${Math.round(maxReached)}%`}
+                                  style={{
+                                    position: "absolute",
+                                    left: 0,
+                                    top: 0,
+                                    width: `${Math.min(100, Math.max(0, maxReached))}%`,
+                                    height: "100%",
+                                    background: isProfitable
+                                      ? "rgba(16, 185, 129, 0.28)" // Darker green background
+                                      : "rgba(239, 68, 68, 0.28)", // Darker red background
+                                    borderRadius: 4,
+                                    transition: "width 0.3s ease",
+                                    zIndex: 1,
+                                  }}
+                                />
+                              )}
+
+                              {/* Layer 2 Peak Boundary Notch */}
+                              {maxReached > 0 && (
+                                <div
+                                  title={`Highest Reach Point: ${Math.round(maxReached)}%`}
+                                  style={{
+                                    position: "absolute",
+                                    left: `calc(${Math.min(100, Math.max(0, maxReached))}% - 1px)`,
+                                    top: -2,
+                                    width: 2,
+                                    height: 11,
+                                    background: isProfitable ? "#34d399" : "#f87171",
+                                    borderRadius: 1,
+                                    zIndex: 2,
+                                    boxShadow: isProfitable ? "0 0 5px rgba(52, 211, 153, 0.9)" : "0 0 5px rgba(248, 113, 113, 0.9)",
+                                  }}
+                                />
+                              )}
+
+                              {/* 50% Milestone Marker (Books 40% & moves SL to BE) */}
                               <div
-                                title={`Peak Reached: ${Math.round(maxReached)}%`}
+                                title="50% Target Milestone (40% Booked, SL to BE)"
+                                style={{
+                                  position: "absolute",
+                                  left: "calc(50% - 1px)",
+                                  top: -2,
+                                  width: 2,
+                                  height: 11,
+                                  background: trade.halfTargetBooked || trade.isBreakeven ? "var(--green)" : "rgba(255, 255, 255, 0.4)",
+                                  borderRadius: 1,
+                                  zIndex: 3,
+                                }}
+                              />
+
+                              {/* Layer 3: Current Progress Bar (Bright active fill) */}
+                              <div
+                                title={`Current Progress: ${Math.round(currentProgress)}%`}
                                 style={{
                                   position: "absolute",
                                   left: 0,
                                   top: 0,
-                                  width: `${Math.min(100, Math.max(0, maxReached))}%`,
+                                  width: `${Math.min(100, Math.max(0, currentProgress))}%`,
                                   height: "100%",
-                                  background: isProfitable
-                                    ? "rgba(16, 185, 129, 0.28)" // Darker green background
-                                    : "rgba(239, 68, 68, 0.28)", // Darker red background
                                   borderRadius: 4,
+                                  background: isProfitable
+                                    ? "linear-gradient(90deg, #10b981, #059669)"
+                                    : "linear-gradient(90deg, #ef4444, #dc2626)",
                                   transition: "width 0.3s ease",
-                                  zIndex: 1,
+                                  zIndex: 4,
                                 }}
                               />
-                            )}
+                            </div>
 
-                            {/* Layer 2 Peak Boundary Notch */}
-                            {maxReached > 0 && (
+                            {/* Milestone & Trailing state label */}
+                            {(trade.isTrailing || trade.halfTargetBooked || trade.isBreakeven) && (
                               <div
-                                title={`Highest Reach Point: ${Math.round(maxReached)}%`}
                                 style={{
-                                  position: "absolute",
-                                  left: `calc(${Math.min(100, Math.max(0, maxReached))}% - 1px)`,
-                                  top: -2,
-                                  width: 2,
-                                  height: 11,
-                                  background: isProfitable ? "#34d399" : "#f87171",
-                                  borderRadius: 1,
-                                  zIndex: 2,
-                                  boxShadow: isProfitable ? "0 0 5px rgba(52, 211, 153, 0.9)" : "0 0 5px rgba(248, 113, 113, 0.9)",
+                                  fontSize: 9,
+                                  color: "var(--green)",
+                                  fontWeight: 700,
+                                  marginTop: 4,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
                                 }}
-                              />
+                              >
+                                <Shield size={10} />
+                                {trade.isTrailing
+                                  ? (trade.halfTargetBooked ? "40% Booked · Trailing Stop Active" : "Trailing Stop Active")
+                                  : trade.halfTargetBooked
+                                  ? "40% Booked · Stop at Breakeven"
+                                  : Boolean(trade.isPropFirm || trade.managementLogic === "prop_firm_safe" || trade.legId === "prop_firm")
+                                  ? "Stop at Breakeven · Risk-Free Bracket"
+                                  : "Stop at Breakeven"}
+                              </div>
                             )}
 
-                            {/* 50% Milestone Marker (Books 40% & moves SL to BE) */}
-                            <div
-                              title="50% Target Milestone (40% Booked, SL to BE)"
-                              style={{
-                                position: "absolute",
-                                left: "calc(50% - 1px)",
-                                top: -2,
-                                width: 2,
-                                height: 11,
-                                background: trade.halfTargetBooked || trade.isBreakeven ? "var(--green)" : "rgba(255, 255, 255, 0.4)",
-                                borderRadius: 1,
-                                zIndex: 3,
-                              }}
-                            />
-
-                            {/* Layer 3: Current Progress Bar (Bright active fill) */}
-                            <div
-                              title={`Current Progress: ${Math.round(currentProgress)}%`}
-                              style={{
-                                position: "absolute",
-                                left: 0,
-                                top: 0,
-                                width: `${Math.min(100, Math.max(0, currentProgress))}%`,
-                                height: "100%",
-                                borderRadius: 4,
-                                background: isProfitable
-                                  ? "linear-gradient(90deg, #10b981, #059669)"
-                                  : "linear-gradient(90deg, #ef4444, #dc2626)",
-                                transition: "width 0.3s ease",
-                                zIndex: 4,
-                              }}
-                            />
-                          </div>
-
-                          {/* Milestone state label */}
-                          {(trade.halfTargetBooked || trade.isBreakeven) && (
-                            <div
-                              style={{
-                                fontSize: 9,
-                                color: "var(--green)",
-                                fontWeight: 700,
-                                marginTop: 4,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                            >
-                              <Shield size={10} /> 40% Booked · Stop at Breakeven
-                            </div>
-                          )}
-
-                          {trade.redecisionDone && (
-                            <div
-                              style={{
-                                fontSize: 9,
-                                color:
-                                  trade.redecisionAction === "CLOSE_FULL_NOW"
-                                    ? "var(--red)"
+                            {trade.redecisionDone && (
+                              <div
+                                style={{
+                                  fontSize: 9,
+                                  color:
+                                    trade.redecisionAction === "CLOSE_FULL_NOW"
+                                      ? "var(--red)"
+                                      : trade.redecisionAction === "REDUCE_TP"
+                                      ? "var(--accent)"
+                                      : trade.redecisionAction === "EXPAND_TP"
+                                      ? "var(--purple, #c084fc)"
+                                      : "var(--green)",
+                                  fontWeight: 700,
+                                  marginTop: 2,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                <span>
+                                  {trade.redecisionAction === "CLOSE_FULL_NOW"
+                                    ? "⚡ Redecision: Closed Full Runner"
                                     : trade.redecisionAction === "REDUCE_TP"
-                                    ? "var(--accent)"
+                                    ? `⚡ Redecision: Reduced TP (${trade.redecisionNewRR || trade.targetRR}R)`
                                     : trade.redecisionAction === "EXPAND_TP"
-                                    ? "var(--purple, #c084fc)"
-                                    : "var(--green)",
-                                fontWeight: 700,
-                                marginTop: 2,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                                fontFamily: "monospace",
-                              }}
-                            >
-                              <span>
-                                {trade.redecisionAction === "CLOSE_FULL_NOW"
-                                  ? "⚡ Redecision: Closed Full Runner"
-                                  : trade.redecisionAction === "REDUCE_TP"
-                                  ? `🎯 Redecision: Reduced TP (${trade.redecisionNewRR || trade.targetRR}R)`
-                                  : trade.redecisionAction === "EXPAND_TP"
-                                  ? `🚀 Redecision: Expanded TP (${trade.redecisionNewRR || trade.targetRR}R)`
-                                  : `💎 Redecision: Hold Full (${trade.targetRR}R)`}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                                    ? `🚀 Redecision: Expanded TP (${trade.redecisionNewRR || trade.targetRR}R)`
+                                    : `💎 Redecision: Hold Full (${trade.targetRR}R)`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Price chips & Actions */}
                         <div
@@ -1469,13 +1544,15 @@ export default function AutonomousLiveHUD({
                               borderRadius: 4,
                               fontSize: 10,
                               fontWeight: 700,
-                              background: "rgba(239, 68, 68, 0.15)",
-                              color: "var(--red)",
-                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                              background: trade.status === "pending" ? "rgba(245, 158, 11, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                              color: trade.status === "pending" ? "#fbbf24" : "var(--red)",
+                              border: trade.status === "pending" ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(239, 68, 68, 0.3)",
                               cursor: isClosing ? "wait" : "pointer",
                             }}
                           >
-                            {isClosing ? "Closing..." : "Close"}
+                            {isClosing
+                              ? (trade.status === "pending" ? "Cancelling..." : "Closing...")
+                              : (trade.status === "pending" ? "Cancel Order" : "Close")}
                           </button>
                         </div>
                       </div>

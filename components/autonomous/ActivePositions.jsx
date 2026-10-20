@@ -569,17 +569,17 @@ function StandaloneDefaultTradeCard({
         <TelemetryValue label="Mark" value={formatPrice(mark)} color="var(--accent)" />
         <TelemetryValue
           label={
-            trade.isBreakeven
-              ? "SL (BE)"
-              : trade.isTrailing
+            trade.isTrailing
               ? "SL (Trail)"
+              : trade.isBreakeven
+              ? "SL (BE)"
               : trade.isHalfRisk || trade.slHalfMoved
               ? "SL (50%)"
               : "SL"
           }
           value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}
           color={
-            isMilestoneBooked || trade.isBreakeven
+            trade.isTrailing || isMilestoneBooked || trade.isBreakeven
               ? "var(--green)"
               : trade.isHalfRisk
               ? "var(--orange)"
@@ -603,7 +603,7 @@ function StandaloneDefaultTradeCard({
         />
       </div>
 
-      {/* 4. 50% Milestone Progress Bar */}
+      {/* 4. 50% Milestone & Runner Progress */}
       <div>
         <div
           style={{
@@ -614,11 +614,15 @@ function StandaloneDefaultTradeCard({
             marginBottom: 4,
           }}
         >
-          <span>Milestone 50% Progress</span>
+          <span>{trade.halfTargetBooked ? "Runner (60% Volume) Target Progress" : "Milestone 50% Progress"}</span>
           <span style={{ fontFamily: "monospace" }}>
-            {isMilestoneBooked ? (
+            {trade.halfTargetBooked ? (
               <span style={{ color: "var(--green)", fontWeight: 700 }}>
-                ✓ 40% Booked · SL @ BE
+                ✓ 40% Booked · {trade.isTrailing ? `Trailing SL @ ${formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}` : "SL @ BE"}
+              </span>
+            ) : trade.isBreakeven ? (
+              <span style={{ color: "var(--green)", fontWeight: 700 }}>
+                ✓ Stop at Breakeven · Risk-Free
               </span>
             ) : (
               <span>
@@ -1110,17 +1114,17 @@ function StandalonePropTradeCard({
         <TelemetryValue label="Mark" value={formatPrice(mark)} color="var(--accent)" />
         <TelemetryValue
           label={
-            trade.isBreakeven
-              ? "SL (BE)"
-              : trade.isTrailing
+            trade.isTrailing
               ? "SL (Trail)"
+              : trade.isBreakeven
+              ? "SL (BE)"
               : trade.isHalfRisk || trade.slHalfMoved
               ? "SL (-0.5R)"
               : "SL"
           }
           value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}
           color={
-            is1_5RReached || trade.isBreakeven
+            trade.isTrailing || is1_5RReached || trade.isBreakeven
               ? "var(--green)"
               : is1RReached || trade.isHalfRisk
               ? "var(--orange)"

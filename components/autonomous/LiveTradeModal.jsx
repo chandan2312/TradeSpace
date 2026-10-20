@@ -409,7 +409,12 @@ export default function LiveTradeModal({
 
               {(trade.halfTargetBooked || trade.isBreakeven) && (
                 <div style={{ fontSize: 10, color: "var(--green)", fontWeight: 700, display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-                  <Shield size={12} /> 40% Volume Booked · Stop-Loss Locked at Breakeven
+                  <Shield size={12} />
+                  {trade.halfTargetBooked
+                    ? "40% Volume Booked · Stop-Loss Locked at Breakeven"
+                    : isProp
+                    ? "Stop-Loss Locked at Breakeven · Risk-Free Bracket"
+                    : "Stop-Loss Locked at Breakeven"}
                 </div>
               )}
             </div>
@@ -520,7 +525,7 @@ export default function LiveTradeModal({
                 cursor: closing ? "wait" : "pointer",
               }}
             >
-              <X size={13} /> {closing ? "Closing Position..." : "Market Close Position"}
+              <X size={13} /> {closing ? (trade.status === "pending" ? "Cancelling Order..." : "Closing Position...") : (trade.status === "pending" ? "Cancel Resting Limit" : "Market Close Position")}
             </button>
           )}
 

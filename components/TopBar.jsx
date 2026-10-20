@@ -102,7 +102,7 @@ export default function TopBar({
 
   // Autonomous Trades Telemetry for TopBar status badge
   const activeAutoTrades = (autonomousTrades || []).filter((t) =>
-    ["active", "managing", "closing", "open", "filling", "armed_fill"].includes(t.status)
+    ["active", "managing", "closing", "open", "filling", "armed_fill", "pending"].includes(t.status)
   );
   const stagedAutoTrades = (autonomousTrades || []).filter((t) =>
     ["staged", "confirming", "armed"].includes(t.status)
@@ -140,6 +140,7 @@ export default function TopBar({
   let autoNetR = 0;
   let hasAutoR = false;
   displayAutoTrades.forEach((t) => {
+    if (t.status === "pending") return;
     const tel = tradeRiskTelemetry(t, ticks || {});
     const r = tel.actualR ?? tel.totalR ?? tel.priceR;
     if (r !== null && Number.isFinite(r)) {

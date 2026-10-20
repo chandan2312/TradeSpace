@@ -24,7 +24,7 @@ import {
 import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
-import { syncMT5HistoryToJournalThrottled } from "../../../lib/journal/store.js";
+import { syncMT5HistoryToJournalThrottled, isTradeSpaceTrade } from "../../../lib/journal/store.js";
 
 const g = globalThis;
 
@@ -89,12 +89,20 @@ export async function GET() {
           getMT5Account().catch(() => null),
           new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
         ]),
-        tradesCol.find({ status: { $in: OPEN_STATES } }, { projection: CLOSED_TRADES_PROJECTION }).sort({ createdAt: -1 }).toArray(),
+        tradesCol.find({
+          status: { $in: OPEN_STATES },
+          brokerComment: { $not: { $regex: /^MQ:/i } },
+          comment: { $not: { $regex: /^MQ:/i } },
+          magicNumber: { $not: { $gte: 800000, $lte: 899999 } },
+        }, { projection: CLOSED_TRADES_PROJECTION }).sort({ createdAt: -1 }).toArray(),
         tradesCol.find({
           $or: [
             { status: { $in: ["closed_tp", "closed_sl", "closed_be", "closed"] } },
             { filledAt: { $exists: true, $ne: null }, status: { $in: TERMINAL_STATES } },
           ],
+          brokerComment: { $not: { $regex: /^MQ:/i } },
+          comment: { $not: { $regex: /^MQ:/i } },
+          magicNumber: { $not: { $gte: 800000, $lte: 899999 } },
         }, { projection: CLOSED_TRADES_PROJECTION }).sort({ closedAt: -1, filledAt: -1, createdAt: -1 }).limit(25).toArray(),
         logsCol.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
         !g._tsAutonomousLeaderboard && controlCol
@@ -120,9 +128,10 @@ export async function GET() {
         const { brain, stagedLevel, ...rest } = t;
         return rest;
       };
-      const openTrades = rawOpenTrades.map(sanitizeTrade);
+      const openTrades = rawOpenTrades.filter(isTradeSpaceTrade).map(sanitizeTrade);
+      const cleanRecentClosed = recentClosed.filter(isTradeSpaceTrade);
 
-      const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status));
+      const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status) || trade.status === "pending");
       const stagedTrades = openTrades.filter((trade) => ["staged", "armed", "confirming"].includes(trade.status));
       // Surface every nonterminal execution/reconciliation state without reproducing engine transitions.
       const executionTrades = openTrades.filter((trade) => !activeTrades.includes(trade) && !stagedTrades.includes(trade));
@@ -157,7 +166,7 @@ export async function GET() {
         runAutonomousScan("interval").catch(() => {});
       }
 
-      const events = [...rawOpenTrades, ...recentClosed].flatMap((trade) =>
+      const events = [...rawOpenTrades.filter(isTradeSpaceTrade), ...cleanRecentClosed].flatMap((trade) =>
         (Array.isArray(trade.events) ? trade.events : []).map((event, index, timeline) => ({
           ...event,
           tradeId: trade._id,
@@ -174,7 +183,7 @@ export async function GET() {
         activeTrades,
         stagedTrades,
         executionTrades,
-        recentClosed,
+        recentClosed: cleanRecentClosed,
         leaderboard,
         currentTimeSlot,
         allTimeSlots: getAllTimeSlots(config),
