@@ -1661,6 +1661,9 @@ export default function ChartPanel({
       if (hit) {
         setDragHandle(hit);
         setLockedAlertId(hit.id);
+      } else {
+        setDragHandle(null);
+        setLockedAlertId(null);
       }
     };
     chart.subscribeClick(handler);
@@ -1701,25 +1704,6 @@ export default function ChartPanel({
     if (lockedAlertId) {
       setLockedAlertId(null);
       setDragHandle(null);
-    } else {
-      const priceScaleW = chartRef.current?.priceScale("right")?.width() || 65;
-      const isYAxisArea = rect.width - x <= priceScaleW;
-      if (isYAxisArea && seriesRef.current) {
-        let hit = null;
-        for (const a of alertsRef.current) {
-          const ay = seriesRef.current.priceToCoordinate(a.price);
-          if (ay != null && Math.abs(ay - y) < (isMobile ? 15 : 7)) { 
-            hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 }; 
-            break; 
-          }
-        }
-        if (hit) {
-          setDragHandle(hit);
-          setLockedAlertId(hit.id);
-          ev.stopPropagation();
-          return;
-        }
-      }
     }
 
     if (layerSpawnAlertId && seriesRef.current) {
@@ -1769,7 +1753,8 @@ export default function ChartPanel({
       onMouseLeave={() => { 
         const isTouch = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
         if (!isTouch) {
-          setHoverBtn(null); setDragHandle(null); 
+          setHoverBtn(null);
+          if (!lockedAlertId) setDragHandle(null); 
         }
       }}
     >
@@ -1909,8 +1894,13 @@ export default function ChartPanel({
           onMouseEnter={() => setIsHoveringBtn(true)}
           onMouseLeave={() => setIsHoveringBtn(false)}
           style={{
-            position: "absolute", right: 65, top: hoverBtn.y, transform: "translateY(-50%)",
-            zIndex: 20, fontWeight: 700, lineHeight: 1,
+            position: "absolute",
+            right: (chartRef.current?.priceScale("right")?.width() || 65) + 4,
+            top: hoverBtn.y,
+            transform: "translateY(-50%)",
+            zIndex: 20,
+            fontWeight: 700,
+            lineHeight: 1,
           }}
           onClick={() => onAddAlert(hoverBtn.price)}
           title="Add alert at this price"
@@ -1960,7 +1950,13 @@ export default function ChartPanel({
               </button>
             )}
             <button
-              onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onDeleteAlert(dragHandle.id); }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onDeleteAlert(dragHandle.id);
+                setDragHandle(null);
+                setLockedAlertId(null);
+              }}
               style={{ background: "var(--panel-2)", border: "none", borderLeft: "1px solid var(--border)", color: "inherit", padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
               title="Delete alert"
             >
