@@ -177,8 +177,18 @@ export async function GET() {
         const { snapshot, ...rest } = pair;
         const c = canonOf(rest.symbol || rest.tradeableSymbol);
         const inMain = mainSymbolSet.has(c);
+        const trueScore = Math.max(0, Math.min(100, Math.round(
+          rest.stagedLevel?.confluenceScore ??
+          rest.rawScore ??
+          rest.confluenceBreakdown?.netScore ??
+          rest.opportunityScore ??
+          0
+        )));
         return {
           ...rest,
+          opportunityScore: trueScore,
+          convictionBreakdown: rest.convictionBreakdown ?? rest.brain?.convictionBreakdown ?? null,
+          primaryDrag: rest.primaryDrag ?? rest.brain?.primaryDrag ?? null,
           isInMainWatchlist: inMain,
           isTradeable: inMain,
         };

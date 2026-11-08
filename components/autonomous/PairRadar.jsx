@@ -23,6 +23,8 @@ import {
 import { finiteNumber, formatPrice, markPriceFor } from "./TradeTelemetry";
 import { resolveRadarTradeIdeaPricing } from "../../lib/autonomous/tradeDrawing";
 import ModelBadge from "./ModelBadge";
+import NegativeScoreBarWithTooltip from "./NegativeScoreBarWithTooltip";
+import PositiveScoreBarWithTooltip from "./PositiveScoreBarWithTooltip";
 
 const HORIZON_ICONS = {
   all: Layers,
@@ -94,7 +96,7 @@ export default function PairRadar({
   ticks = {},
 }) {
   const [horizonFilter, setHorizonFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("prime");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState("opportunity");
@@ -178,14 +180,12 @@ export default function PairRadar({
       if (statusFilter === "top") {
         return (
           status === "PRIME_QUALIFIED" ||
-          status.startsWith("WATCHING") ||
-          status.startsWith("SCANNING") ||
-          (pair.brain?.conviction || 0) >= 75 ||
           (pair.opportunityScore || 0) >= 60 ||
+          (pair.brain?.conviction || 0) >= 75 ||
           (pair.rawScore || pair.stagedLevel?.confluenceScore || 0) >= 70
         );
       }
-      if (statusFilter === "prime") return status === "PRIME_QUALIFIED" || status.startsWith("SCANNING");
+      if (statusFilter === "prime") return status === "PRIME_QUALIFIED";
       if (statusFilter === "watching") return status.startsWith("WATCHING");
       if (statusFilter === "watchlist") return Boolean(pair.isInMainWatchlist);
       if (statusFilter === "starred") return whitelistSet.has(pair.symbol);
@@ -767,10 +767,9 @@ export default function PairRadar({
               Math.max(
                 0,
                 Math.round(
-                  pair.opportunityScore ??
-                  level?.netCompositeScore ??
                   level?.confluenceScore ??
                   pair.rawScore ??
+                  pair.opportunityScore ??
                   0
                 )
               )
@@ -825,6 +824,93 @@ export default function PairRadar({
               rawTags.forEach((t) => {
                 activeNegativeTags.push({ label: String(t).replace(/_/g, " "), val: "" });
               });
+            }
+
+            // Conviction DBCC breakdown extraction
+            const convictionBreakdown = pair.convictionBreakdown || pair.brain?.convictionBreakdown || null;
+            const convictionDeductions = convictionBreakdown?.deductions || [];
+            const convictionNegMod = convictionBreakdown?.negativeMod ?? 0;
+
+            // Positive Confluence Edge factors
+            const activePositiveFactors = [];
+            if (typeof breakdown.dolAlignment === "number" && breakdown.dolAlignment > 0) {
+              activePositiveFactors.push({ label: "DOL Alignment", val: `+${breakdown.dolAlignment} pts` });
+            }
+            if (typeof breakdown.premiumDiscount === "number" && breakdown.premiumDiscount > 0) {
+              activePositiveFactors.push({ label: "Premium / Discount Zone", val: `+${breakdown.premiumDiscount} pts` });
+            }
+            if (typeof breakdown.displacement === "number" && breakdown.displacement > 0) {
+              activePositiveFactors.push({ label: "Displacement / MSS", val: `+${breakdown.displacement} pts` });
+            }
+            if (typeof breakdown.retracementQuality === "number" && breakdown.retracementQuality > 0) {
+              activePositiveFactors.push({ label: "Retracement Quality", val: `+${breakdown.retracementQuality} pts` });
+            }
+            if (typeof breakdown.killzone === "number" && breakdown.killzone > 0) {
+              activePositiveFactors.push({ label: "Killzone Timing", val: `+${breakdown.killzone} pts` });
+            }
+            if (typeof breakdown.smt === "number" && breakdown.smt > 0) {
+              activePositiveFactors.push({ label: "SMT Divergence", val: `+${breakdown.smt} pts` });
+            }
+            if (typeof breakdown.htfPdArray === "number" && breakdown.htfPdArray > 0) {
+              activePositiveFactors.push({ label: "HTF PD Array", val: `+${breakdown.htfPdArray} pts` });
+            }
+            if (activePositiveFactors.length === 0) {
+              if (dolTarget) {
+                activePositiveFactors.push({ label: `DOL: ${dolTarget}`, val: "+25 pts" });
+              }
+              if (modelName) {
+                activePositiveFactors.push({ label: `Model: ${modelName}`, val: "+30 pts" });
+              }
+              if (pair.positiveTags && Array.isArray(pair.positiveTags)) {
+                pair.positiveTags.forEach((t) => {
+                  activePositiveFactors.push({ label: String(t).replace(/_/g, " "), val: "+pts" });
+                });
+              }
+              if (posScore > 0 && activePositiveFactors.length === 0) {
+                activePositiveFactors.push({ label: "Market Structure Alignment", val: `+${posScore} pts` });
+              }
+            }
+
+            // Positive Conviction Drivers
+            const activeConvictionFactors = [];
+            if (convictionBreakdown?.baseConviction) {
+              const baseName = convictionBreakdown.baseScenario
+                ? convictionBreakdown.baseScenario.replace(/_/g, " ")
+                : "Base Setup Baseline";
+              activeConvictionFactors.push({
+                label: `Base: ${baseName}`,
+                val: `${convictionBreakdown.baseConviction}%`,
+              });
+            }
+            if (Array.isArray(convictionBreakdown?.bonuses) && convictionBreakdown.bonuses.length > 0) {
+              convictionBreakdown.bonuses.forEach((b) => {
+                activeConvictionFactors.push({
+                  label: b.label || String(b.key || "Bonus").replace(/_/g, " "),
+                  val: `+${b.pts}%`,
+                });
+              });
+            }
+            if (activeConvictionFactors.length === 0) {
+              const stability = pair.brain?.stability;
+              const agreement = pair.brain?.agreement;
+              if (typeof stability === "number") {
+                activeConvictionFactors.push({
+                  label: `Multi-Frame Stability (${Math.round(stability)}%)`,
+                  val: "Aligned",
+                });
+              }
+              if (typeof agreement === "number") {
+                activeConvictionFactors.push({
+                  label: `Multi-Lens Consensus (${Math.round(agreement)}%)`,
+                  val: "High",
+                });
+              }
+              if (conviction !== null && activeConvictionFactors.length === 0) {
+                activeConvictionFactors.push({
+                  label: "Composite Model Conviction",
+                  val: `${conviction}%`,
+                });
+              }
             }
 
             const scoreColor =
@@ -1045,134 +1131,90 @@ export default function PairRadar({
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr",
                     gap: 8,
-                    padding: "6px 8px",
+                    padding: "7px 9px",
                     background: "var(--panel)",
                     borderRadius: 6,
                     border: "1px solid var(--border)",
                   }}
                 >
-                  {/* Opportunity Score Meter */}
-                  <div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        fontSize: 9.5,
-                        color: "var(--muted)",
-                        marginBottom: 3,
-                      }}
-                    >
-                      <span>Opportunity</span>
-                      <strong style={{ fontFamily: "monospace", color: scoreColor }}>
-                        {effectiveScore}/100
-                      </strong>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: 4,
-                        borderRadius: 2,
-                        background: "var(--panel-2)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${Math.min(100, Math.max(0, effectiveScore))}%`,
-                          height: "100%",
-                          background: scoreColor,
-                          borderRadius: 2,
-                        }}
-                      />
-                    </div>
+                  {/* Column 1: Opportunity Score + Red Opp Drag Meter */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {/* Positive Opportunity Score Bar with Tooltip */}
+                    <PositiveScoreBarWithTooltip
+                      label="Opportunity"
+                      value={effectiveScore}
+                      valueDisplay={`${effectiveScore}/100`}
+                      barPercent={effectiveScore}
+                      barColor={scoreColor}
+                      icon="▲"
+                      factors={activePositiveFactors}
+                      tooltipTitle="Opportunity Confluence Pillars"
+                      emptyText="Evaluating macro context & SMC order flow..."
+                      align="left"
+                      placement="bottom"
+                    />
+
+                    {/* Red Negative Opportunity / Friction Drag Bar with Tooltip */}
+                    <NegativeScoreBarWithTooltip
+                      label="Opp Drag"
+                      value={negScore}
+                      barPercent={Math.min(100, Math.round(Math.abs(negScore) * 1.5))}
+                      factors={activeNegativeTags}
+                      tooltipTitle="Opportunity Negative Drag"
+                      emptyText="No adverse friction. Pristine macro/SMC alignment."
+                      align="left"
+                      placement="bottom"
+                    />
                   </div>
 
-                  {/* Brain Conviction Meter */}
-                  <div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        fontSize: 9.5,
-                        color: "var(--muted)",
-                        marginBottom: 3,
-                      }}
-                    >
-                      <span>Conviction</span>
-                      <strong
-                        style={{
-                          fontFamily: "monospace",
-                          color: (conviction ?? 0) >= 75 ? "var(--green)" : "var(--accent)",
-                        }}
-                      >
-                        {conviction !== null ? `${conviction}%` : "—"}
-                      </strong>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: 4,
-                        borderRadius: 2,
-                        background: "var(--panel-2)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${Math.min(100, Math.max(0, conviction ?? 0))}%`,
-                          height: "100%",
-                          background: (conviction ?? 0) >= 75 ? "var(--green)" : "var(--accent)",
-                          borderRadius: 2,
-                        }}
-                      />
-                    </div>
+                  {/* Column 2: Brain Conviction + Red Conviction Drag Meter */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {/* Positive Brain Conviction Bar with Tooltip */}
+                    <PositiveScoreBarWithTooltip
+                      label="Conviction"
+                      value={conviction ?? 0}
+                      valueDisplay={conviction !== null ? `${conviction}%` : "—"}
+                      barPercent={conviction ?? 0}
+                      barColor={(conviction ?? 0) >= 75 ? "var(--green)" : "var(--accent)"}
+                      icon="▲"
+                      factors={activeConvictionFactors}
+                      tooltipTitle="Market Brain Conviction Drivers"
+                      emptyText="Analyzing multi-timeframe consensus & stability..."
+                      align="right"
+                      placement="bottom"
+                    />
+
+                    {/* Red Negative Conviction Drag Bar with Tooltip */}
+                    <NegativeScoreBarWithTooltip
+                      label="Conviction Drag"
+                      value={convictionNegMod}
+                      barPercent={Math.min(100, Math.round(Math.abs(convictionNegMod) * 2.0))}
+                      factors={convictionDeductions.map((d) => ({ label: d.label, val: d.pts }))}
+                      tooltipTitle="Conviction Deductions"
+                      emptyText="No conviction deductions. Full multi-timeframe confirmation."
+                      align="right"
+                      placement="bottom"
+                    />
                   </div>
 
-                  {/* Confluence & Negative Friction Breakdown Sub-row */}
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      flexWrap: "wrap",
-                      gap: 4,
-                      paddingTop: 4,
-                      borderTop: "1px solid rgba(255, 255, 255, 0.05)",
-                      fontSize: 9,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ color: "var(--muted)", fontSize: 8.5 }}>Score Split:</span>
-                      <span style={{ color: "var(--green)", fontWeight: 700 }}>+{posScore} Pos</span>
-                      {negScore < 0 ? (
-                        <span
-                          style={{
-                            color: "var(--red)",
-                            fontWeight: 700,
-                            background: "rgba(239, 68, 68, 0.12)",
-                            padding: "0 4px",
-                            borderRadius: 3,
-                            border: "1px solid rgba(239, 68, 68, 0.25)",
-                          }}
-                          title={`Adverse friction & structural risk deductions: ${negScore} pts`}
-                        >
-                          {negScore} Neg
-                        </span>
-                      ) : (
-                        <span style={{ color: "var(--muted)", opacity: 0.65 }}>0 Drag</span>
-                      )}
-                    </div>
-
-                    {(level?.isBlended || pair.isBlended) && (
+                  {/* Optional: Blended Sweet Spot indicator */}
+                  {(level?.isBlended || pair.isBlended) && (
+                    <div
+                      style={{
+                        gridColumn: "1 / -1",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        paddingTop: 1,
+                      }}
+                    >
                       <span
                         style={{
                           fontSize: 8.5,
                           fontWeight: 800,
                           color: "var(--purple, #c084fc)",
                           background: "rgba(168, 85, 247, 0.12)",
-                          padding: "1px 4px",
+                          padding: "1px 5px",
                           borderRadius: 3,
                           border: "1px solid rgba(168, 85, 247, 0.3)",
                         }}
@@ -1180,90 +1222,85 @@ export default function PairRadar({
                       >
                         💎 Blended Sweet Spot
                       </span>
-                    )}
-                  </div>
-
-                  {/* Active Negative Friction Deductions */}
-                  {activeNegativeTags.length > 0 && (
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 3,
-                        paddingTop: 2,
-                      }}
-                    >
-                      {activeNegativeTags.slice(0, 3).map((item, idx) => (
-                        <span
-                          key={idx}
-                          style={{
-                            fontSize: 8.5,
-                            fontFamily: "monospace",
-                            fontWeight: 700,
-                            background: "rgba(239, 68, 68, 0.12)",
-                            border: "1px solid rgba(239, 68, 68, 0.28)",
-                            color: "var(--red)",
-                            padding: "1px 5px",
-                            borderRadius: 3,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                          title={`Negative factor deduction: ${item.val} pts`}
-                        >
-                          <span style={{ fontSize: 8 }}>⚠️</span>
-                          {item.val !== "" && <span>{item.val}</span>}
-                          <span style={{ color: "var(--fg)", opacity: 0.85 }}>{item.label}</span>
-                        </span>
-                      ))}
-                      {activeNegativeTags.length > 3 && (
-                        <span style={{ fontSize: 8.5, color: "var(--red)", opacity: 0.8, alignSelf: "center" }}>
-                          +{activeNegativeTags.length - 3} more
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
 
                 {/* 3. Setup Price Geometry Grid (The Core Trade Idea Data) */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4, 1fr)",
-                    gap: 6,
-                    padding: "6px 8px",
-                    background: "var(--panel)",
-                    borderRadius: 6,
-                    border: "1px solid var(--border)",
-                    fontFamily: "monospace",
-                    fontSize: 10,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Mark</div>
-                    <div style={{ fontWeight: 700, color: "var(--fg)" }}>{formatPrice(currentMark)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Entry</div>
-                    <div style={{ fontWeight: 700, color: "var(--accent)" }}>{entry !== null ? formatPrice(entry) : "—"}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>SL</div>
-                    <div style={{ fontWeight: 700, color: "#ea580c" }}>{sl !== null ? formatPrice(sl) : "—"}</div>
-                  </div>
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                      <span style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>TP / RR</span>
-                      {displayRR !== null && (
-                        <span style={{ fontSize: 9, fontWeight: 800, color: "var(--purple, #c084fc)" }}>
-                          {displayRR.toFixed(1)}R
-                        </span>
-                      )}
+                {pricing.hasSetup ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(4, 1fr)",
+                      gap: 6,
+                      padding: "6px 8px",
+                      background: "var(--panel)",
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      fontFamily: "monospace",
+                      fontSize: 10,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Mark</div>
+                      <div style={{ fontWeight: 700, color: "var(--fg)" }}>{formatPrice(currentMark)}</div>
                     </div>
-                    <div style={{ fontWeight: 700, color: "#a855f7" }}>{tp !== null ? formatPrice(tp) : "—"}</div>
+                    <div>
+                      <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Entry</div>
+                      <div style={{ fontWeight: 700, color: "var(--accent)" }}>{formatPrice(entry)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>SL</div>
+                      <div style={{ fontWeight: 700, color: "#ea580c" }}>{formatPrice(sl)}</div>
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>TP / RR</span>
+                        {displayRR !== null && (
+                          <span style={{ fontSize: 9, fontWeight: 800, color: "var(--purple, #c084fc)" }}>
+                            {displayRR.toFixed(1)}R
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 700, color: "#a855f7" }}>{formatPrice(tp)}</div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 6,
+                      padding: "6px 8px",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      borderRadius: 6,
+                      border: "1px dashed rgba(255, 255, 255, 0.1)",
+                      fontFamily: "monospace",
+                      fontSize: 9.5,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>Mark:</span>
+                      <strong style={{ color: "var(--fg)", fontWeight: 700 }}>{formatPrice(currentMark)}</strong>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, color: isWatching ? "var(--orange, #fb923c)" : isBlocked ? "var(--red, #ef4444)" : "var(--muted)" }}>
+                      <span style={{ fontSize: 9 }}>{isWatching ? "⏳" : isBlocked ? "🛡️" : "📡"}</span>
+                      <span style={{ fontWeight: 700, fontSize: 9 }}>
+                        {isWatching
+                          ? "Awaiting Retracement Level (FVG/OTE)"
+                          : isBlocked
+                          ? (pair.statusReason?.slice(0, 34) || "Execution Veto Active")
+                          : "Scanning Order Flow..."}
+                      </span>
+                    </div>
+                    {typeof dolTarget === "string" && Boolean(dolTarget) && (
+                      <span style={{ fontSize: 8.5, color: "var(--accent)", maxWidth: "35%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        🎯 {dolTarget}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* 4. HTF Dealing Range & DOL Landmark */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 9.5 }}>

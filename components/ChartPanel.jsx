@@ -1320,21 +1320,18 @@ export default function ChartPanel({
       time = barsRef.current[barsRef.current.length - 1].time;
     }
 
-    // proximity test for drag handle
+    // Alerts are selected via explicit click (subscribeClick) or context menu.
+    // We intentionally suppress hover-triggered badges over the Y-axis so the price
+    // scale stays 100% clean, legible, and unhindered for vertical scaling.
     let hit = null;
-    const hitRadius = isMobile ? 15 : 7;
 
-    if (isYAxisArea) {
-      for (const a of alertsRef.current) {
-        const ay = series.priceToCoordinate(a.price);
-        if (ay != null && Math.abs(ay - y) < hitRadius) {
-          hit = { id: a._id, y: ay, price: a.price, status: a.status, chainLength: a.chain?.length || 1 };
-          break;
-        }
-      }
+    // Only show the "+" alert add button when pointer is on the chart canvas (not over the Y-axis)
+    if (isYAxisArea && !isHoveringBtn) {
+      pendingHoverRef.current = null;
+    } else {
+      pendingHoverRef.current = { y, price, time, isYAxisArea: false };
     }
 
-    pendingHoverRef.current = { y, price, time, isYAxisArea };
     // `undefined` = locked handle: leave dragHandle untouched (original behaviour
     // was to skip the setDragHandle call entirely while an alert is locked)
     pendingHitRef.current = lockedAlertId ? undefined : hit;
@@ -1346,10 +1343,13 @@ export default function ChartPanel({
           const last = lastHoverRef.current;
           // skip when the button-relevant fields are unchanged — a horizontal
           // zoom drag moves x only, so this drops its re-renders entirely
-          if (!last || last.y !== p.y || last.isYAxisArea !== p.isYAxisArea || last.price !== p.price) {
+          if (!last || last.y !== p.y || last.price !== p.price) {
             lastHoverRef.current = p;
             setHoverBtn(p);
           }
+        } else if (lastHoverRef.current !== null) {
+          lastHoverRef.current = null;
+          setHoverBtn(null);
         }
         if (pendingHitRef.current === undefined) return;
         const h = pendingHitRef.current;
@@ -1400,10 +1400,10 @@ export default function ChartPanel({
     };
   }, []);
 
-  // ---------- maintain crosshair while hovering the add button or Y axis ----------
+  // ---------- maintain crosshair while hovering the add button ----------
   const wasForcingCrosshairRef = useRef(false);
   useEffect(() => {
-    if ((isHoveringBtn || hoverBtn?.isYAxisArea) && hoverBtn && chartRef.current && seriesRef.current && hoverBtn.time) {
+    if (isHoveringBtn && hoverBtn && chartRef.current && seriesRef.current && hoverBtn.time) {
       chartRef.current.setCrosshairPosition(hoverBtn.price, hoverBtn.time, seriesRef.current);
       wasForcingCrosshairRef.current = true;
     } else if (wasForcingCrosshairRef.current) {

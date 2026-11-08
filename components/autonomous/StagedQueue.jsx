@@ -29,6 +29,8 @@ import EvidenceDetails from "./EvidenceDetails";
 import StagedIdeaChart from "./StagedIdeaChart";
 import StagedTradeModal from "./StagedTradeModal";
 import ModelBadge from "./ModelBadge";
+import NegativeScoreBarWithTooltip from "./NegativeScoreBarWithTooltip";
+import PositiveScoreBarWithTooltip from "./PositiveScoreBarWithTooltip";
 import {
   TelemetryValue,
   TargetLadder,
@@ -387,6 +389,94 @@ export default function StagedQueue({
               });
             }
 
+            // Staged trade conviction & DBCC breakdown extraction
+            const stagedConviction = finiteNumber(trade.brain?.conviction ?? trade.brainSnapshot?.conviction);
+            const stagedConvictionBreakdown = trade.convictionBreakdown || trade.brainSnapshot?.convictionBreakdown || trade.brain?.convictionBreakdown || null;
+            const stagedConvictionDeductions = stagedConvictionBreakdown?.deductions || [];
+            const stagedConvictionNegMod = stagedConvictionBreakdown?.negativeMod ?? 0;
+
+            // Positive Confluence Edge factors
+            const activePositiveFactors = [];
+            if (typeof breakdown.dolAlignment === "number" && breakdown.dolAlignment > 0) {
+              activePositiveFactors.push({ label: "DOL Alignment", val: `+${breakdown.dolAlignment} pts` });
+            }
+            if (typeof breakdown.premiumDiscount === "number" && breakdown.premiumDiscount > 0) {
+              activePositiveFactors.push({ label: "Premium / Discount Zone", val: `+${breakdown.premiumDiscount} pts` });
+            }
+            if (typeof breakdown.displacement === "number" && breakdown.displacement > 0) {
+              activePositiveFactors.push({ label: "Displacement / MSS", val: `+${breakdown.displacement} pts` });
+            }
+            if (typeof breakdown.retracementQuality === "number" && breakdown.retracementQuality > 0) {
+              activePositiveFactors.push({ label: "Retracement Quality", val: `+${breakdown.retracementQuality} pts` });
+            }
+            if (typeof breakdown.killzone === "number" && breakdown.killzone > 0) {
+              activePositiveFactors.push({ label: "Killzone Timing", val: `+${breakdown.killzone} pts` });
+            }
+            if (typeof breakdown.smt === "number" && breakdown.smt > 0) {
+              activePositiveFactors.push({ label: "SMT Divergence", val: `+${breakdown.smt} pts` });
+            }
+            if (typeof breakdown.htfPdArray === "number" && breakdown.htfPdArray > 0) {
+              activePositiveFactors.push({ label: "HTF PD Array", val: `+${breakdown.htfPdArray} pts` });
+            }
+            if (activePositiveFactors.length === 0) {
+              if (trade.modelName || level.modelName) {
+                activePositiveFactors.push({ label: `Model: ${trade.modelName || level.modelName}`, val: "+30 pts" });
+              }
+              const stagedDol =
+                trade.dolName ||
+                level.dolName ||
+                (typeof trade.dol === "string" ? trade.dol : trade.dol?.name || trade.dol?.target || trade.dol?.label) ||
+                (typeof level.dol === "string" ? level.dol : level.dol?.name || level.dol?.target || level.dol?.label);
+              if (stagedDol) {
+                activePositiveFactors.push({ label: `DOL: ${stagedDol}`, val: "+25 pts" });
+              }
+              if (stagedPosScore > 0 && activePositiveFactors.length === 0) {
+                activePositiveFactors.push({ label: "Entry Geometry & Retracement", val: `+${stagedPosScore} pts` });
+              }
+            }
+
+            // Staged trade positive conviction factors
+            const activeConvictionFactors = [];
+            if (stagedConvictionBreakdown?.baseConviction) {
+              const baseName = stagedConvictionBreakdown.baseScenario
+                ? stagedConvictionBreakdown.baseScenario.replace(/_/g, " ")
+                : "Staged Setup Baseline";
+              activeConvictionFactors.push({
+                label: `Base: ${baseName}`,
+                val: `${stagedConvictionBreakdown.baseConviction}%`,
+              });
+            }
+            if (Array.isArray(stagedConvictionBreakdown?.bonuses) && stagedConvictionBreakdown.bonuses.length > 0) {
+              stagedConvictionBreakdown.bonuses.forEach((b) => {
+                activeConvictionFactors.push({
+                  label: b.label || String(b.key || "Bonus").replace(/_/g, " "),
+                  val: `+${b.pts}%`,
+                });
+              });
+            }
+            if (activeConvictionFactors.length === 0) {
+              const stability = trade.brain?.stability ?? trade.brainSnapshot?.stability;
+              const agreement = trade.brain?.agreement ?? trade.brainSnapshot?.agreement;
+              if (typeof stability === "number") {
+                activeConvictionFactors.push({
+                  label: `Multi-Frame Stability (${Math.round(stability)}%)`,
+                  val: "Aligned",
+                });
+              }
+              if (typeof agreement === "number") {
+                activeConvictionFactors.push({
+                  label: `Multi-Lens Consensus (${Math.round(agreement)}%)`,
+                  val: "High",
+                });
+              }
+              if (stagedConviction !== null && activeConvictionFactors.length === 0) {
+                activeConvictionFactors.push({
+                  label: "Staged Order Flow Conviction",
+                  val: `${stagedConviction}%`,
+                });
+              }
+            }
+
             const routingDefault = defaultLeg ? (defaultLeg.copierRouting || resolveCopierRouting(defaultLeg)) : null;
             const routingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
             const isApproving = setup.tradeIds?.some((id) => pendingAction === id) || pendingAction === setup._id;
@@ -627,14 +717,6 @@ export default function StagedQueue({
                       <ModelBadge item={trade} size="xs" showName={true} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "monospace", fontSize: 10.5 }}>
-                      <span
-                        style={{
-                          fontWeight: 800,
-                          color: scoreColor,
-                        }}
-                      >
-                        Net: {confluence}/100
-                      </span>
                       <span style={{ color: "var(--green)", fontWeight: 700, fontSize: 9.5 }}>
                         +{stagedPosScore} Pos
                       </span>
@@ -659,55 +741,78 @@ export default function StagedQueue({
                     </div>
                   </div>
 
-                  {/* Visual Confluence Bar */}
+                  {/* Institutional Dual Meter Strip: Confluence & Conviction with Red Drag Progress Bars */}
                   <div
                     style={{
-                      width: "100%",
-                      height: 4,
-                      background: "rgba(255, 255, 255, 0.08)",
-                      borderRadius: 2,
-                      overflow: "hidden",
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                      padding: "7px 9px",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255, 255, 255, 0.06)",
                     }}
                   >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${Math.min(100, Math.max(0, confluence))}%`,
-                        background: scoreColor,
-                        borderRadius: 2,
-                        transition: "width 0.3s ease",
-                      }}
-                    />
-                  </div>
+                    {/* Column 1: Confluence Score + Red Friction Drag Meter */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {/* Positive Confluence Score Bar with Tooltip */}
+                      <PositiveScoreBarWithTooltip
+                        label="Confluence"
+                        value={confluence}
+                        valueDisplay={`${confluence}/100`}
+                        barPercent={confluence}
+                        barColor={scoreColor}
+                        icon="▲"
+                        factors={activePositiveFactors}
+                        tooltipTitle="Confluence Edge Pillars"
+                        emptyText="Evaluating macro context & SMC order flow..."
+                        align="left"
+                        placement="bottom"
+                      />
 
-                  {/* Active Negative Friction Chips */}
-                  {activeNegativeTags.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 2 }}>
-                      {activeNegativeTags.map((item, idx) => (
-                        <span
-                          key={idx}
-                          style={{
-                            fontSize: 8.5,
-                            fontFamily: "monospace",
-                            fontWeight: 700,
-                            background: "rgba(239, 68, 68, 0.12)",
-                            border: "1px solid rgba(239, 68, 68, 0.28)",
-                            color: "var(--red)",
-                            padding: "1px 5px",
-                            borderRadius: 3,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                          title={`Negative factor deduction: ${item.val} pts`}
-                        >
-                          <span style={{ fontSize: 8 }}>⚠️</span>
-                          {item.val !== "" && <span>{item.val}</span>}
-                          <span style={{ color: "var(--fg)", opacity: 0.85 }}>{item.label}</span>
-                        </span>
-                      ))}
+                      {/* Red Negative Friction Drag Bar with Tooltip */}
+                      <NegativeScoreBarWithTooltip
+                        label="Friction Drag"
+                        value={stagedNegScore}
+                        barPercent={Math.min(100, Math.round(Math.abs(stagedNegScore) * 1.5))}
+                        factors={activeNegativeTags}
+                        tooltipTitle="Staged Negative Friction"
+                        emptyText="No adverse friction. Pristine entry geometry."
+                        align="left"
+                        placement="bottom"
+                      />
                     </div>
-                  )}
+
+                    {/* Column 2: Conviction + Red Conviction Drag Meter */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {/* Positive Conviction Bar with Tooltip */}
+                      <PositiveScoreBarWithTooltip
+                        label="Conviction"
+                        value={stagedConviction ?? 0}
+                        valueDisplay={stagedConviction !== null ? `${stagedConviction}%` : "—"}
+                        barPercent={stagedConviction ?? 0}
+                        barColor={(stagedConviction ?? 0) >= 75 ? "var(--green)" : "var(--accent)"}
+                        icon="▲"
+                        factors={activeConvictionFactors}
+                        tooltipTitle="Market Brain Conviction Drivers"
+                        emptyText="Analyzing multi-timeframe consensus & stability..."
+                        align="right"
+                        placement="bottom"
+                      />
+
+                      {/* Red Negative Conviction Drag Bar with Tooltip */}
+                      <NegativeScoreBarWithTooltip
+                        label="Conviction Drag"
+                        value={stagedConvictionNegMod}
+                        barPercent={Math.min(100, Math.round(Math.abs(stagedConvictionNegMod) * 2.0))}
+                        factors={stagedConvictionDeductions.map((d) => ({ label: d.label, val: d.pts }))}
+                        tooltipTitle="Conviction Deductions"
+                        emptyText="No conviction deductions. Full multi-timeframe confirmation."
+                        align="right"
+                        placement="bottom"
+                      />
+                    </div>
+                  </div>
 
                   {/* Dynamic Arbiter summary if multiple models evaluated */}
                   {topContenders.length > 1 && (
