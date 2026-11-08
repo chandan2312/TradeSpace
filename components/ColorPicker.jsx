@@ -411,6 +411,8 @@ export default function ColorPicker({ value, onChange, label, size = 20 }) {
       {open && mounted && typeof document !== "undefined" && createPortal(
         <div
           ref={popRef}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           style={{

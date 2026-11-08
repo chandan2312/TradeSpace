@@ -16,7 +16,13 @@ export default function SymbolPalette({ mode, initialQuery = "", onClose, onPick
   const listRef = useRef(null);
   const reqId = useRef(0);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+      const len = inputRef.current.value.length;
+      inputRef.current.setSelectionRange(len, len);
+    }
+  }, []);
 
   // Debounced search against the cached broker symbol list.
   useEffect(() => {

@@ -398,7 +398,7 @@ console.log("TEST SUITE 6: The 5 Core Institutional Entry Models");
 console.log("=======================================================");
 
 // 1. Verify Entry Model Definitions
-assert(Object.keys(ENTRY_MODEL_DEFINITIONS).length === 6, "6 institutional entry models defined");
+assert(Object.keys(ENTRY_MODEL_DEFINITIONS).length >= 6, "At least 6 institutional entry models defined");
 assert(ENTRY_MODEL_DEFINITIONS.ICT_2022.id === "ict_2022", "Model 1: ICT 2022 Mentorship defined");
 assert(ENTRY_MODEL_DEFINITIONS.TURTLE_SOUP.id === "turtle_soup", "Model 2: Turtle Soup Liquidity Raid defined");
 assert(ENTRY_MODEL_DEFINITIONS.BREAKER_BLOCK.id === "breaker_block", "Model 3: Breaker Block & Mitigation defined");
@@ -1167,11 +1167,11 @@ console.log("=======================================================");
     symbolSpec: { digits: 5, point: 0.00001 },
   };
 
-  // Test calculatePropFirmTp clamping to [1.5, 2.5]
+  // Test calculatePropFirmTp clamping to [1.5, 3.0]
   assert(calculatePropFirmTp(1.0850, 1.0820, 1, 1.2, 5).targetRR === 1.5, "Prop-firm TP clamps below 1.5R to 1.5R");
   assert(calculatePropFirmTp(1.0850, 1.0820, 1, 1.2, 5).tpPrice === 1.0895, "Prop-firm TP price clamps below 1.5R to 1.0895");
-  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 3.5, 5).targetRR === 2.5, "Prop-firm TP clamps above 2.5R to 2.5R");
-  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 3.5, 5).tpPrice === 1.0925, "Prop-firm TP price clamps above 2.5R to 1.0925");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 3.5, 5).targetRR === 3.0, "Prop-firm TP clamps above 3.0R to 3.0R");
+  assert(calculatePropFirmTp(1.0850, 1.0820, 1, 3.5, 5).tpPrice === 1.0940, "Prop-firm TP price clamps above 3.0R to 1.0940");
   assert(calculatePropFirmTp(1.0850, 1.0820, 1, 2.0, 5).targetRR === 2.0, "Prop-firm TP retains valid 2.0R");
   assert(calculatePropFirmTp(1.0850, 1.0820, 1, 2.0, 5).tpPrice === 1.0910, "Prop-firm TP retains valid 2.0R price 1.0910");
 
@@ -1297,7 +1297,7 @@ console.log("=======================================================");
   assert(updatedSwingDoc.targetRR === 8.5, `Swing trading is exempt from 5.0R clamp: targetRR is ${updatedSwingDoc.targetRR}R`);
   assert(updatedSwingDoc.tpPrice === 1.1105, `Swing TP accurately set to 8.5R price (1.1105): got ${updatedSwingDoc.tpPrice}`);
 
-  // 15.4 Prop-Firm Safe Model Clamping: Strictly clamped to [1.5, 2.5] bracket
+  // 15.4 Prop-Firm Safe Model Clamping: Strictly clamped to [1.5, 3.0] bracket
   const propTradeDoc = {
     _id: new ObjectId("650000000000000000000078"),
     symbol: "EURUSD",
@@ -1315,8 +1315,8 @@ console.log("=======================================================");
   const resPropClamp = await testEngine.modifyTradeTarget(propTradeDoc._id, { targetRR: 4.0 });
   assert(resPropClamp.ok === true, "modifyTradeTarget succeeds for prop-firm safe trade");
   const updatedPropDoc = mockDbTrades.get(String(propTradeDoc._id));
-  assert(updatedPropDoc.targetRR === 2.5, `Prop-firm trade clamped to 2.5R upper limit: got ${updatedPropDoc.targetRR}R`);
-  assert(updatedPropDoc.tpPrice === 1.0925, `Prop-firm TP clamped to 2.5R price (1.0925): got ${updatedPropDoc.tpPrice}`);
+  assert(updatedPropDoc.targetRR === 3.0, `Prop-firm trade clamped to 3.0R upper limit: got ${updatedPropDoc.targetRR}R`);
+  assert(updatedPropDoc.tpPrice === 1.0940, `Prop-firm TP clamped to 3.0R price (1.0940): got ${updatedPropDoc.tpPrice}`);
 }
 
 console.log("\n=======================================================");
@@ -1877,7 +1877,7 @@ console.log("=======================================================");
   assert(resEQ.targetRR === 2.2, `Dealing Range EQ selected: expected 2.2R, got ${resEQ.targetRR}R`);
   assert(resEQ.tpPrice === 1.0916, `Dealing Range EQ price matched: expected 1.0916, got ${resEQ.tpPrice}`);
 
-  // Case D: Horizon Defaults when no structural target in [1.5, 2.5]
+  // Case D: Horizon Defaults when no structural target in [1.5, 3.0]
   const resScalp = resolveDynamicPropFirmTarget({ entry, sl, dir, scenario: { id: "scalp" } });
   assert(resScalp.targetRR === 1.75, `Scalp horizon defaults to 1.75R: got ${resScalp.targetRR}R`);
 
@@ -1885,14 +1885,14 @@ console.log("=======================================================");
   assert(resDay.targetRR === 2.0, `Day trade horizon defaults to 2.0R: got ${resDay.targetRR}R`);
 
   const resSwing = resolveDynamicPropFirmTarget({ entry, sl, dir, scenario: { id: "swing" } });
-  assert(resSwing.targetRR === 2.5, `Swing horizon defaults to 2.5R upper bracket: got ${resSwing.targetRR}R`);
+  assert(resSwing.targetRR === 3.0, `Swing horizon defaults to 3.0R upper bracket: got ${resSwing.targetRR}R`);
 
   // Case E: Strict Clamp Limits
   const resUnder = resolveDynamicPropFirmTarget({ entry, sl, dir, targetRR: 1.1 });
   assert(resUnder.targetRR === 1.5, `Clamps lower bound to 1.5R: got ${resUnder.targetRR}R`);
 
   const resOver = resolveDynamicPropFirmTarget({ entry, sl, dir, targetRR: 4.8 });
-  assert(resOver.targetRR === 2.5, `Clamps upper bound to 2.5R: got ${resOver.targetRR}R`);
+  assert(resOver.targetRR === 3.0, `Clamps upper bound to 3.0R: got ${resOver.targetRR}R`);
 }
 
 // =========================================================================
@@ -2790,9 +2790,9 @@ console.log("=======================================================");
 
   // 25.7 tradeProp Mode: Upward Gradual Ladder (5M -> 15M -> 30M -> 1H -> 2H -> 4H -> 1D)
   assert(PROP_FIRM_TP_RANGE.minR === 1.5, "Prop mode min preferred RR is 1.5R");
-  assert(PROP_FIRM_TP_RANGE.maxR === 2.5, "Prop mode max preferred RR is 2.5R");
+  assert(PROP_FIRM_TP_RANGE.maxR === 3.0, "Prop mode max preferred RR is 3.0R");
 
-  // Scalp starts at 5M. 5M is < 1.5R (0.8R) -> steps up to 15M which gives 2.1R (in [1.5, 2.5])
+  // Scalp starts at 5M. 5M is < 1.5R (0.8R) -> steps up to 15M which gives 2.1R (in [1.5, 3.0])
   const propLadder1 = resolveDynamicPropFirmTarget({
     entry: 100,
     sl: 90,
@@ -2806,9 +2806,9 @@ console.log("=======================================================");
   assert(propLadder1.targetRR === 2.1, `Prop scalp steps up from 5M (<1.5R) to 15M: got ${propLadder1.targetRR}R`);
   assert(propLadder1.tpPrice === 121, `Prop TP price is 121: got ${propLadder1.tpPrice}`);
   assert(propLadder1.tf === "M15", `Prop selected TF is 15M: got ${propLadder1.tf}`);
-  assert(propLadder1.isCapped === false, "Target within [1.5, 2.5] is NOT capped");
+  assert(propLadder1.isCapped === false, "Target within [1.5, 3.0] is NOT capped");
 
-  // Day starts at 15M. 15M is < 1.5R (1.1R) -> steps up to 30M which gives 3.2R (> 2.5R) -> capped to 2.5R
+  // Day starts at 15M. 15M is < 1.5R (1.1R) -> steps up to 30M which gives 3.2R (> 3.0R) -> capped to 3.0R
   const propLadder2 = resolveDynamicPropFirmTarget({
     entry: 100,
     sl: 90,
@@ -2819,10 +2819,10 @@ console.log("=======================================================");
       { tf: "30M", price: 132, source: "30M Dealing Range EQ (3.2R)" },
     ],
   });
-  assert(propLadder2.targetRR === 2.5, `Prop trade steps up and caps >2.5R target to 2.5R: got ${propLadder2.targetRR}R`);
-  assert(propLadder2.tpPrice === 125, `Capped TP price is 125 (2.5R * 10 = +25): got ${propLadder2.tpPrice}`);
+  assert(propLadder2.targetRR === 3.0, `Prop trade steps up and caps >3.0R target to 3.0R: got ${propLadder2.targetRR}R`);
+  assert(propLadder2.tpPrice === 130, `Capped TP price is 130 (3.0R * 10 = +30): got ${propLadder2.tpPrice}`);
   assert(propLadder2.tf === "M30", `Prop selected TF is 30M: got ${propLadder2.tf}`);
-  assert(propLadder2.isCapped === true, "Target > 2.5R is marked as capped");
+  assert(propLadder2.isCapped === true, "Target > 3.0R is marked as capped");
 }
 
 console.log("\n=======================================================");

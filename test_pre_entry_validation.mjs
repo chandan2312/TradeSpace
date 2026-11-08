@@ -65,6 +65,10 @@ assert("Dealing range low closed below triggers DEALING_RANGE_BLOWN", rangeBlown
 const cleanGeoResult = evaluateLevelGeometry(baseTradeBuy, 1.0855);
 assert("Clean geometry passes with full score (25 pts)", cleanGeoResult.pass === true && cleanGeoResult.score === 25, cleanGeoResult);
 
+// 1.5 Target runway largely consumed (e.g. 50 pips into 60 pip move = 83% consumed)
+const runwayConsumedResult = evaluateLevelGeometry(baseTradeBuy, 1.0900); // 1.0900 is 50/60 pips = 83.3% consumed
+assert("Target runway largely consumed triggers TARGET_RUNWAY_EXHAUSTED", runwayConsumedResult.pass === false && runwayConsumedResult.vetoes[0]?.code === "TARGET_RUNWAY_EXHAUSTED", runwayConsumedResult);
+
 // ---------------------------------------------------------------------------
 // 2. Pillar 2: Adverse Freight Train / Momentum Expansion
 // ---------------------------------------------------------------------------

@@ -49,9 +49,9 @@ test("Normalizes Default Model WIN trade correctly", () => {
     targetLandmark: "4H FVG Consequent Encroachment (CE 50%)",
     magicNumber: 23121101,
     brokerComment: "TS:NAS:15M:M1:MG1:T01",
-    createdAt: new Date("2026-10-06T14:30:00Z"),
-    filledAt: new Date("2026-10-06T14:35:00Z"),
-    closedAt: new Date("2026-10-06T15:45:00Z"),
+    createdAt: new Date("2026-10-22T14:30:00Z"),
+    filledAt: new Date("2026-10-22T14:35:00Z"),
+    closedAt: new Date("2026-10-22T15:45:00Z"),
     isLive: true,
   };
 
@@ -100,9 +100,9 @@ test("Normalizes Prop-Firm Safe Model trade with landmark & MAE", () => {
     activeTimeSlot: { label: "New York AM Killzone", session: "NEW YORK" },
     targetLandmark: "4H FVG Consequent Encroachment (CE 50%)",
     magicNumber: 23122101,
-    createdAt: new Date("2026-10-06T14:30:00Z"),
-    filledAt: new Date("2026-10-06T14:35:00Z"),
-    closedAt: new Date("2026-10-06T15:10:00Z"),
+    createdAt: new Date("2026-10-22T14:30:00Z"),
+    filledAt: new Date("2026-10-22T14:35:00Z"),
+    closedAt: new Date("2026-10-22T15:10:00Z"),
     isLive: false,
   };
 

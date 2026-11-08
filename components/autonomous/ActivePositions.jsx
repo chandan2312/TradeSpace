@@ -57,23 +57,7 @@ export default function ActivePositions({
   ticks = {},
   pendingAction,
 }) {
-  // Strategy filter: "all" | "default" | "prop_firm"
-  const [modelFilter, setModelFilter] = useState("all");
-
-  const defaultTrades = useMemo(
-    () => activeTrades.filter((t) => !isPropTrade(t)),
-    [activeTrades]
-  );
-  const propTrades = useMemo(
-    () => activeTrades.filter((t) => isPropTrade(t)),
-    [activeTrades]
-  );
-
-  const displayedTrades = useMemo(() => {
-    if (modelFilter === "default") return defaultTrades;
-    if (modelFilter === "prop_firm") return propTrades;
-    return activeTrades;
-  }, [activeTrades, defaultTrades, propTrades, modelFilter]);
+  const displayedTrades = activeTrades;
 
   return (
     <div
@@ -119,116 +103,35 @@ export default function ActivePositions({
           </span>
         </div>
 
-        {/* Strategy Switcher Tabs: Show All vs TradeDefault Only vs TradeProp Only */}
+        {/* Strategy Indicator: Standardized TradeProp (Safe) */}
         <div
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 4,
-            background: "rgba(255, 255, 255, 0.04)",
-            border: "1px solid var(--border)",
+            gap: 6,
+            background: "rgba(168, 85, 247, 0.12)",
+            border: "1px solid rgba(168, 85, 247, 0.3)",
             borderRadius: 8,
-            padding: 3,
+            padding: "4px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--purple, #c084fc)",
           }}
         >
-          <button
-            onClick={() => setModelFilter("all")}
+          <Shield size={13} style={{ color: "var(--purple, #c084fc)" }} />
+          <span>TradeProp Mode (Safe 1.5R–3.0R)</span>
+          <span
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              borderRadius: 6,
-              border: "none",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: modelFilter === "all" ? "var(--accent)" : "transparent",
-              color: modelFilter === "all" ? "#fff" : "var(--muted)",
-              transition: "all 0.15s ease",
+              fontSize: 9.5,
+              padding: "1px 6px",
+              borderRadius: 4,
+              background: "rgba(168, 85, 247, 0.25)",
+              color: "#fff",
+              fontFamily: "monospace",
             }}
           >
-            <Layers size={12} />
-            <span>All Positions</span>
-            <span
-              style={{
-                fontSize: 9,
-                padding: "1px 5px",
-                borderRadius: 4,
-                background: modelFilter === "all" ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.08)",
-                color: modelFilter === "all" ? "#fff" : "var(--muted)",
-                fontFamily: "monospace",
-              }}
-            >
-              {activeTrades.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setModelFilter("default")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              borderRadius: 6,
-              border: "none",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: modelFilter === "default" ? "rgba(56, 189, 248, 0.2)" : "transparent",
-              color: modelFilter === "default" ? "var(--accent)" : "var(--muted)",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <Zap size={12} style={{ color: modelFilter === "default" ? "var(--accent)" : "var(--muted)" }} />
-            <span>TradeDefault</span>
-            <span
-              style={{
-                fontSize: 9,
-                padding: "1px 5px",
-                borderRadius: 4,
-                background: modelFilter === "default" ? "var(--accent)" : "rgba(255, 255, 255, 0.08)",
-                color: modelFilter === "default" ? "#fff" : "var(--muted)",
-                fontFamily: "monospace",
-              }}
-            >
-              {defaultTrades.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setModelFilter("prop_firm")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              borderRadius: 6,
-              border: "none",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: modelFilter === "prop_firm" ? "rgba(168, 85, 247, 0.2)" : "transparent",
-              color: modelFilter === "prop_firm" ? "var(--purple, #c084fc)" : "var(--muted)",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <Shield size={12} style={{ color: modelFilter === "prop_firm" ? "var(--purple, #c084fc)" : "var(--muted)" }} />
-            <span>TradeProp</span>
-            <span
-              style={{
-                fontSize: 9,
-                padding: "1px 5px",
-                borderRadius: 4,
-                background: modelFilter === "prop_firm" ? "var(--purple, #c084fc)" : "rgba(255, 255, 255, 0.08)",
-                color: modelFilter === "prop_firm" ? "#fff" : "var(--muted)",
-                fontFamily: "monospace",
-              }}
-            >
-              {propTrades.length}
-            </span>
-          </button>
+            {activeTrades.length} Active
+          </span>
         </div>
       </div>
 
@@ -244,11 +147,7 @@ export default function ActivePositions({
             borderRadius: 8,
           }}
         >
-          {activeTrades.length === 0
-            ? "No open positions currently running. Qualified SMC limits enter on broker fill."
-            : modelFilter === "default"
-            ? "No active TradeDefault positions currently running."
-            : "No active TradeProp positions currently running."}
+          No open positions currently running. Qualified SMC limits enter on broker fill.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -815,7 +714,7 @@ function StandaloneDefaultTradeCard({
 }
 
 // ============================================================================
-// STANDALONE TRADEPROP CARD (Prop-Firm Safe 1.5R–2.5R Bracket)
+// STANDALONE TRADEPROP CARD (Prop-Firm Safe 1.5R–3.0R Bracket)
 // ============================================================================
 function StandalonePropTradeCard({
   trade,
@@ -950,7 +849,7 @@ function StandalonePropTradeCard({
               gap: 4,
             }}
           >
-            <Shield size={11} /> TRADEPROP · PROP-FIRM SAFE (1.5R–2.5R)
+            <Shield size={11} /> TRADEPROP · PROP-FIRM SAFE (1.5R–3.0R)
           </span>
 
           <span
@@ -1073,7 +972,7 @@ function StandalonePropTradeCard({
 
       {/* 2. Strategy Logic Descriptor */}
       <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
-        <strong>Execution Model:</strong> 1.0R halves risk (SL to -0.5R) · 1.5R moves SL to Breakeven · Target {targetRR}R (1.5R–2.5R tight safe bracket full exit)
+        <strong>Execution Model:</strong> 1.0R halves risk (SL to -0.5R) · 1.5R moves SL to Breakeven · Target {targetRR}R (1.5R–3.0R safe bracket full exit)
       </div>
 
       {/* 3. Landmark Callout */}

@@ -144,8 +144,8 @@ async function main() {
   // ---- Alert engine ---------------------------------------------------
   startPollLoop();
 
-  // ---- Currency-algo paper-trade engine (monitor rides the tick stream) ---
-  startAlgoLoop();
+  // ---- Currency-algo paper-trade engine (DECOMMISSIONED to prevent stale alerts & VPS load) ---
+  // startAlgoLoop();
 
   // ---- Executor engine (executes user-placed setups; rides the tick stream) ---
   startExecutorLoop();

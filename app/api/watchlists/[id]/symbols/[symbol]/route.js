@@ -1,8 +1,9 @@
-import { getCols, allWatchlists } from "@/lib/mongo";
+import { getCols, allWatchlists, invalidateWatchlistsCache } from "@/lib/mongo";
 import { broadcast } from "@/lib/realtime";
 import { json, oid } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
 import { getSymbolAliases } from "@/lib/watchlistAliases";
+import { runAutonomousScan } from "@/lib/autonomous/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,18 @@ export async function DELETE(_req, { params }) {
     { _id },
     { $pull: { symbols: { $in: targets } } }
   );
+
+  invalidateWatchlistsCache();
+  if (typeof globalThis._tsInvalidateAutonomousRouteCache === "function") {
+    try { globalThis._tsInvalidateAutonomousRouteCache(); } catch {}
+  }
+
   broadcast({ type: "watchlists_changed" });
-  return json({ ok: true, watchlists: await allWatchlists() });
+  broadcast({ type: "autonomous_changed" });
+
+  runAutonomousScan("watchlist_symbol_removed").catch((err) => {
+    console.warn("[watchlist symbol removed scan error]", err?.message || err);
+  });
+
+  return json({ ok: true, watchlists: await allWatchlists(true) });
 }

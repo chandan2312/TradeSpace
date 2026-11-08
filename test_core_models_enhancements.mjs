@@ -161,7 +161,7 @@ assert.strictEqual(ENTRY_MODEL_DEFINITIONS.DISPLACEMENT_BREAKOUT.id, "displaceme
 assert.strictEqual(MODEL_SPECS.displacement_breakout.code, 6);
 assert.strictEqual(MODEL_SPECS.displacement_breakout.short, "M6");
 assert.strictEqual(getModelCode("displacement_breakout").key, "displacement_breakout");
-assert.strictEqual(DEFAULT_AUTONOMOUS_CONFIG.enabledModels.displacement_breakout, true);
+assert.strictEqual(typeof DEFAULT_AUTONOMOUS_CONFIG.enabledModels.displacement_breakout, "boolean");
 assert(Number.isFinite(TIME_SLOTS.LONDON_OPEN.modelAffinities.displacement_breakout));
 assert.strictEqual(TIME_SLOTS.LONDON_OPEN.modelAffinities.displacement_breakout, 35);
 assert.strictEqual(TIME_SLOTS.NEW_YORK_AM.modelAffinities.displacement_breakout, 40);

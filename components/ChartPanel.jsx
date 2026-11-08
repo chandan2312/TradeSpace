@@ -10,8 +10,15 @@ import DrawingToolbar from "./DrawingToolbar.jsx";
 import DrawingContextMenu from "./DrawingContextMenu.jsx";
 import DrawingSettings from "./DrawingSettings.jsx";
 import MiniDrawingToolbar from "./MiniDrawingToolbar.jsx";
-import { tradeToPositionDrawing, tradeToPositionDrawings, tradeToStagedPositionDrawings, pairToRadarTradeIdeaDrawings } from "../lib/autonomous/tradeDrawing.js";
+import {
+  tradeToPositionDrawing,
+  tradeToPositionDrawings,
+  tradeToStagedPositionDrawings,
+  pairToRadarTradeIdeaDrawings,
+  resolveRadarTradeIdeaPricing,
+} from "../lib/autonomous/tradeDrawing.js";
 import { normalizeCandles } from "../lib/candleNormalization.js";
+import { getEetTime, getTradingDateString, getEetOffsetSec } from "../lib/time.js";
 
 const TF_SEC = {
   M1: 60, "1M": 60,
@@ -260,6 +267,8 @@ export default function ChartPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bridgeOfflineInfo, setBridgeOfflineInfo] = useState(null);
+  const [autoReconnectCountdown, setAutoReconnectCountdown] = useState(null);
+  const [isAutoReconnecting, setIsAutoReconnecting] = useState(false);
   const [hoverBtn, setHoverBtn] = useState(null); // {y, price}
   const [isHoveringBtn, setIsHoveringBtn] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);   // {x, y, price, nearAlerts:[]}
@@ -270,6 +279,7 @@ export default function ChartPanel({
   const [zoomMenuOpen, setZoomMenuOpen] = useState(false);
   const [spawnY, setSpawnY] = useState(null); // mouse Y for layer ghost line
   const dragStateRef = useRef(null);
+  const staleStreakRef = useRef(0); // Tracks consecutive stale/offline occurrences to suppress false alarms
 
   const [chartReady, setChartReady] = useState(false);
   const [isScrolledLeft, setIsScrolledLeft] = useState(false);
@@ -474,12 +484,13 @@ export default function ChartPanel({
           secondsVisible: false, 
           borderColor: settings.linesColor,
           tickMarkFormatter: (time, tickMarkType) => {
-            const d = new Date(time * 1000);
-            const day = String(d.getUTCDate()).padStart(2, "0");
-            const month = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-            const year = d.getUTCFullYear();
-            const hh = String(d.getUTCHours()).padStart(2, "0");
-            const mm = String(d.getUTCMinutes()).padStart(2, "0");
+            const eet = getEetTime(time);
+            const dateStr = getTradingDateString(time);
+            const [year, monthNum, day] = dateStr ? dateStr.split("-") : ["", "", ""];
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const month = monthNames[parseInt(monthNum, 10) - 1] || monthNum;
+            const hh = String(eet.h).padStart(2, "0");
+            const mm = String(eet.m).padStart(2, "0");
 
             switch (tickMarkType) {
               case 0: return `${year}`;
@@ -495,13 +506,11 @@ export default function ChartPanel({
         localization: {
           dateFormat: "yyyy-MM-dd",
           timeFormatter: (time) => {
-            const d = new Date(time * 1000);
-            const y = d.getUTCFullYear();
-            const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-            const day = String(d.getUTCDate()).padStart(2, "0");
-            const hh = String(d.getUTCHours()).padStart(2, "0");
-            const mm = String(d.getUTCMinutes()).padStart(2, "0");
-            return `${y}-${m}-${day} ${hh}:${mm} EET`;
+            const eet = getEetTime(time);
+            const dateStr = getTradingDateString(time);
+            const hh = String(eet.h).padStart(2, "0");
+            const mm = String(eet.m).padStart(2, "0");
+            return `${dateStr} ${hh}:${mm} EET`;
           },
         },
         rightPriceScale: { 
@@ -522,6 +531,7 @@ export default function ChartPanel({
         borderVisible: settings.borderVisible,
         priceFormat: {
           type: "custom",
+          minMove: Math.pow(10, -(digits || 5)),
           formatter: (price) => {
             if (price == null || !Number.isFinite(price)) return "";
             const abs = Math.abs(price);
@@ -674,7 +684,7 @@ export default function ChartPanel({
     }
   }, [symbol, tf]);
 
-  const loadBars = useCallback(async (key, genId, isSilent = false) => {
+  const loadBars = useCallback(async (key, genId, isSilent = false, forceRefresh = false) => {
     const [sym, curTf] = key.split(":");
     try {
       // Wait for seriesRef if chart is mounting
@@ -684,16 +694,27 @@ export default function ChartPanel({
       }
       if (fetchGenerationRef.current !== genId) return;
 
-      let count = 600;
-      if (["M1", "M5", "M15"].includes(curTf)) count = 800;
-      else if (["H1", "H4", "D1"].includes(curTf)) count = 600;
+      const cached = barsCache.current.get(key);
+      const hasExistingBars = Array.isArray(cached?.bars) && cached.bars.length > 0;
+
+      // Smart bar counts:
+      // - Silent background gap-heal / refresh: only 80 bars needed! (Transfers in ~10ms)
+      // - Initial fresh load: 300 bars for LTF (M1-M15), 200 bars for HTF (H1-D1)
+      let count = 300;
+      if (isSilent && hasExistingBars && !forceRefresh) {
+        count = 80;
+      } else if (["M1", "M5", "M15"].includes(curTf)) {
+        count = 300;
+      } else if (["H1", "H4", "D1"].includes(curTf)) {
+        count = 200;
+      }
 
       // Robust retry: allows mobile connections and sleeping tabs to wake up smoothly
       let data = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         if (fetchGenerationRef.current !== genId) return;
         try {
-          const res = await fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=${curTf}&count=${count}`, { cache: "no-store" });
+          const res = await fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=${curTf}&count=${count}${forceRefresh ? "&refresh=1" : ""}`, { cache: "no-store" });
           if (res.ok) {
             data = await res.json();
             if (data?.ok && Array.isArray(data.bars) && data.bars.length > 0) break;
@@ -706,18 +727,26 @@ export default function ChartPanel({
 
       if (fetchGenerationRef.current !== genId) return;
 
-      const cached = barsCache.current.get(key);
       if (!data?.ok || !data.bars?.length) {
         if (cached?.bars?.length) {
           applyBars(cached.bars, false, key);
-          setBridgeOfflineInfo({ message: data?.message || "Bridge offline", time: cached.at });
+          const hasActiveTicks = lastClientActiveRef.current && (Date.now() - lastClientActiveRef.current < 25_000);
+          staleStreakRef.current += 1;
+          // Suppress false popup if ticks are active or on first transient failure
+          if (staleStreakRef.current >= 2 && !hasActiveTicks) {
+            setBridgeOfflineInfo({ message: data?.message || "Bridge offline", time: cached.at });
+          } else {
+            setTimeout(() => {
+              if (fetchGenerationRef.current === genId) loadBars(key, genId, true, true);
+            }, 1500);
+          }
           setError(null);
           setLoading(false);
         } else if (!isSilent) {
           if (retryCountRef.current < 3) {
             retryCountRef.current += 1;
             retryTimerRef.current = setTimeout(() => {
-              if (fetchGenerationRef.current === genId) loadBars(key, genId, false);
+              if (fetchGenerationRef.current === genId) loadBars(key, genId, false, forceRefresh);
             }, 2000);
           } else {
             setError(data?.message || data?.error || `No data for ${sym}`);
@@ -727,30 +756,60 @@ export default function ChartPanel({
         return;
       }
 
-      let bars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
-      bars = bars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
-      bars = normalizeCandles(bars, curTf);
+      let newBars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+      newBars = newBars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+      newBars = normalizeCandles(newBars, curTf);
       if (fetchGenerationRef.current !== genId) return;
 
-      barsCache.current.set(key, { at: Date.now(), bars });
+      // Seamless delta stitching: merge delta bars with existing historical bars
+      let finalBars = newBars;
+      if (hasExistingBars && count < 200) {
+        const timeMap = new Map();
+        for (const b of cached.bars) timeMap.set(b.time, b);
+        for (const b of newBars) timeMap.set(b.time, b);
+        finalBars = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
+      }
+
+      barsCache.current.set(key, { at: Date.now(), bars: finalBars });
       lastSyncTimeRef.current = Date.now();
       lastClientActiveRef.current = Date.now();
       retryCountRef.current = 0;
 
-      try {
-        const slimCache = Array.from(barsCache.current.entries()).reduce((acc, [k, v]) => {
-          acc[k] = { at: v.at, bars: v.bars.slice(-800) };
-          return acc;
-        }, {});
-        localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
-      } catch (e) {}
+      // Throttled persistence: keep only 8 recent symbols with 250 bars each
+      if (typeof window !== "undefined") {
+        clearTimeout(window._tsCacheSaveTimer);
+        window._tsCacheSaveTimer = setTimeout(() => {
+          try {
+            const entries = Array.from(barsCache.current.entries())
+              .sort((a, b) => (b[1]?.at || 0) - (a[1]?.at || 0))
+              .slice(0, 8);
+            const slimCache = {};
+            for (const [k, v] of entries) {
+              slimCache[k] = { at: v.at, bars: (v.bars || []).slice(-250) };
+            }
+            localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
+          } catch (_) {}
+        }, 3000);
+      }
 
-      applyBars(bars, isSilent, key);
+      applyBars(finalBars, isSilent, key);
       setError(null);
       if (data?.stale || data?.offline) {
-        setBridgeOfflineInfo({ message: data?.error || "Bridge offline (serving cached bars)", time: cached?.at });
+        const hasActiveTicks = lastClientActiveRef.current && (Date.now() - lastClientActiveRef.current < 25_000);
+        staleStreakRef.current += 1;
+        // Suppress false popup if live ticks are actively streaming or if this is just a single transient hitch
+        if (staleStreakRef.current >= 2 && !hasActiveTicks) {
+          setBridgeOfflineInfo({ message: data?.error || "Bridge offline (serving cached bars)", time: cached?.at });
+        } else {
+          setTimeout(() => {
+            if (fetchGenerationRef.current === genId) loadBars(key, genId, true, true);
+          }, 1500);
+        }
       } else {
+        staleStreakRef.current = 0;
         setBridgeOfflineInfo(null);
+        setAutoReconnectCountdown(null);
+        setIsAutoReconnecting(false);
       }
     } catch (err) {
       if (fetchGenerationRef.current !== genId) return;
@@ -758,7 +817,15 @@ export default function ChartPanel({
       if (!isSilent) {
         if (cached?.bars?.length) {
           applyBars(cached.bars, false, key);
-          setBridgeOfflineInfo({ message: err.message || "Connection error", time: cached.at });
+          const hasActiveTicks = lastClientActiveRef.current && (Date.now() - lastClientActiveRef.current < 25_000);
+          staleStreakRef.current += 1;
+          if (staleStreakRef.current >= 2 && !hasActiveTicks) {
+            setBridgeOfflineInfo({ message: err.message || "Connection error", time: cached.at });
+          } else {
+            setTimeout(() => {
+              if (fetchGenerationRef.current === genId) loadBars(key, genId, true, true);
+            }, 1500);
+          }
           setError(null);
           setLoading(false);
         } else if (retryCountRef.current < 3) {
@@ -787,25 +854,45 @@ export default function ChartPanel({
     }
 
     const cached = barsCache.current.get(key);
-    if (cached?.bars?.length) {
+    const cacheAge = cached?.at ? Date.now() - cached.at : Infinity;
+    const hasBars = Array.isArray(cached?.bars) && cached.bars.length > 0;
+
+    // Cache Freshness Tiers:
+    // 1. FRESH (< 60s): 0ms INSTANT SWITCH. Cached bars are fresh; live ticks update the current candle.
+    //    Zero network requests!
+    if (hasBars && cacheAge < 60_000) {
       applyBars(cached.bars, false, key);
-    } else {
-      // ZERO cross-symbol/tf candle bleed: Wipe immediately and show clean loading spinner
-      lastBarRef.current = null;
-      barsRef.current = [];
-      setLoading(true);
+      setLoading(false);
       setError(null);
-      if (seriesRef.current) seriesRef.current.setData([]);
-      if (patternsRef.current) patternsRef.current.setDrawings([]);
-      if (drawingManagerRef.current) {
-        drawingManagerRef.current.list = (drawingManagerRef.current.list || []).filter(
-          (d) => !String(d.id).startsWith("auto_")
-        );
-        drawingManagerRef.current.redraw();
-      }
+      return;
     }
 
-    loadBars(key, currentGen, false);
+    // 2. USABLE (< 30m): 0ms INSTANT SWITCH with SILENT BACKGROUND REFRESH.
+    //    Render cached candles immediately so user never sees a spinner or blank screen.
+    //    Then silently fetch fresh delta in background without resetting zoom.
+    if (hasBars && cacheAge < 30 * 60_000) {
+      applyBars(cached.bars, false, key);
+      setLoading(false);
+      setError(null);
+      loadBars(key, currentGen, true, false);
+      return;
+    }
+
+    // 3. COLD CACHE: clear stale candles from prior symbol, show clean spinner, and load initial bars
+    lastBarRef.current = null;
+    barsRef.current = [];
+    setLoading(true);
+    setError(null);
+    if (seriesRef.current) seriesRef.current.setData([]);
+    if (patternsRef.current) patternsRef.current.setDrawings([]);
+    if (drawingManagerRef.current) {
+      drawingManagerRef.current.list = (drawingManagerRef.current.list || []).filter(
+        (d) => !String(d.id).startsWith("auto_")
+      );
+      drawingManagerRef.current.redraw();
+    }
+
+    loadBars(key, currentGen, false, false);
 
     return () => {
       fetchGenerationRef.current += 1;
@@ -821,16 +908,16 @@ export default function ChartPanel({
     const onMappingUpdated = () => {
       fetchGenerationRef.current += 1;
       const key = `${symbol}:${tf}`;
-      loadBars(key, fetchGenerationRef.current, false);
+      loadBars(key, fetchGenerationRef.current, false, true);
     };
     window.addEventListener("ts_symbol_mapping_updated", onMappingUpdated);
     return () => window.removeEventListener("ts_symbol_mapping_updated", onMappingUpdated);
   }, [symbol, tf, loadBars]);
 
-  const reconcileBackgroundGaps = useCallback(() => {
+  const reconcileBackgroundGaps = useCallback((forceRefresh = false) => {
     const key = `${symbol}:${tf}`;
     if (activeFetchKeyRef.current !== key) return;
-    loadBars(key, fetchGenerationRef.current, true);
+    loadBars(key, fetchGenerationRef.current, true, forceRefresh);
   }, [symbol, tf, loadBars]);
 
   // Automatic gap-healing when switching back to tab, focusing window, or unlocking screen
@@ -838,8 +925,8 @@ export default function ChartPanel({
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
         const elapsedClientSec = (Date.now() - lastClientActiveRef.current) / 1000;
-        // If tab was inactive, sleeping, or away for >= 10s: silent gap-healing re-sync!
-        if (elapsedClientSec >= 10) {
+        // Only trigger gap-healing if user was away for at least 60s
+        if (elapsedClientSec >= 60) {
           reconcileBackgroundGaps();
         }
       }
@@ -854,22 +941,29 @@ export default function ChartPanel({
   }, [reconcileBackgroundGaps]);
 
   // Continuous background candle alignment loop:
-  // While the user leaves the tab open for a while and does other work,
-  // silently reconcile bars every 30s so candle gaps can NEVER form or stay on screen!
+  // Dynamically scaled by timeframe so we don't hammer the API when candles haven't even changed!
   useEffect(() => {
+    const tfSec = TF_SEC[tf] || 300;
+    // Scale interval with timeframe:
+    // M1: 90s (1.5m) | M5: 180s (3m) | M15: 360s (6m) | H1+: 600s (10m)
+    const intervalMs = Math.max(90_000, Math.min(tfSec * 600, 600_000));
+
     const timer = setInterval(() => {
       const now = Date.now();
-      if (document.visibilityState === "visible" && (now - lastSyncTimeRef.current >= 30_000)) {
+      const timeSinceLastSync = now - lastSyncTimeRef.current;
+      const isVisible = document.visibilityState === "visible";
+      if (isVisible && timeSinceLastSync >= intervalMs) {
         reconcileBackgroundGaps();
       }
-    }, 10_000);
+    }, 15_000);
+
     return () => clearInterval(timer);
-  }, [reconcileBackgroundGaps]);
+  }, [tf, reconcileBackgroundGaps]);
 
   // Reconnection listener: when WebSocket reconnects or network comes online
   useEffect(() => {
     const onReconnect = () => {
-      reconcileBackgroundGaps();
+      reconcileBackgroundGaps(true);
     };
     window.addEventListener("ts_ws_reconnected", onReconnect);
     window.addEventListener("online", onReconnect);
@@ -878,6 +972,54 @@ export default function ChartPanel({
       window.removeEventListener("online", onReconnect);
     };
   }, [reconcileBackgroundGaps]);
+
+  // Auto-reconnect watchdog: When MT5 bridge is offline or showing stale data,
+  // automatically retry connection every 3 seconds in the background so the user
+  // never has to manually click "Reconnect". As soon as fresh bars arrive,
+  // the popup automatically dismisses itself and refreshes live!
+  const autoReconnectTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!bridgeOfflineInfo) {
+      if (autoReconnectTimerRef.current) {
+        clearInterval(autoReconnectTimerRef.current);
+        autoReconnectTimerRef.current = null;
+      }
+      setAutoReconnectCountdown(null);
+      setIsAutoReconnecting(false);
+      return;
+    }
+
+    let secondsLeft = 3;
+    setAutoReconnectCountdown(secondsLeft);
+
+    autoReconnectTimerRef.current = setInterval(async () => {
+      secondsLeft -= 1;
+      if (secondsLeft > 0) {
+        setAutoReconnectCountdown(secondsLeft);
+      } else {
+        setAutoReconnectCountdown(0);
+        setIsAutoReconnecting(true);
+        const key = `${symbol}:${tf}`;
+        try {
+          await loadBars(key, fetchGenerationRef.current, true, true);
+        } catch (e) {
+          // ignore background errors; watchdog retries
+        } finally {
+          setIsAutoReconnecting(false);
+          secondsLeft = 3;
+          setAutoReconnectCountdown(secondsLeft);
+        }
+      }
+    }, 1000);
+
+    return () => {
+      if (autoReconnectTimerRef.current) {
+        clearInterval(autoReconnectTimerRef.current);
+        autoReconnectTimerRef.current = null;
+      }
+    };
+  }, [bridgeOfflineInfo, symbol, tf, loadBars]);
 
   // ---------- axis label resolution ----------
   useEffect(() => {
@@ -893,9 +1035,24 @@ export default function ChartPanel({
     lastClientActiveRef.current = Date.now();
     const price = tick.bid || tick.ask;
     if (!price) return;
+
+    // Real-time heal: if live ticks are actively flowing, dismiss stale banner and reset streak
+    staleStreakRef.current = 0;
+    if (bridgeOfflineInfo) {
+      setBridgeOfflineInfo(null);
+      setAutoReconnectCountdown(null);
+      setIsAutoReconnecting(false);
+    }
     const sec = TF_SEC[tf] || 300;
     const rawTime = tick.time != null && tick.time > 0 ? tick.time : null;
-    const tickSec = rawTime ? (rawTime > 1e11 ? Math.floor(rawTime / 1000) : rawTime) : entry.bar.time;
+    let tickSec = rawTime ? (rawTime > 1e11 ? Math.floor(rawTime / 1000) : rawTime) : entry.bar.time;
+    // Ultra-defensive guard: if incoming tick has un-normalized broker naive time (+2h or +3h ahead of last bar), normalize to UTC
+    if (tickSec && entry.bar && tickSec - entry.bar.time > 6500 && tickSec - entry.bar.time < 12000) {
+      const offsetSec = getEetOffsetSec(tickSec);
+      if (Math.abs(tickSec - offsetSec - entry.bar.time) < Math.max(sec * 10, 7200)) {
+        tickSec -= offsetSec;
+      }
+    }
     const barTime = Math.floor(tickSec / sec) * sec;
     const last = entry.bar;
     const isNewBar = barTime > last.time;
@@ -904,15 +1061,13 @@ export default function ChartPanel({
       ? (gap >= 86400 && gap <= 86400 * 1.5)
       : (Math.abs(gap - sec) <= 2);
 
-    // If a new candle arrives but intermediate candles are missing (e.g. background tab / mobile lock):
-    // Do NOT push a skipped bar that creates a visual hole/gap on the chart!
-    // Trigger an immediate background re-sync to fetch and stitch the complete sequence cleanly.
+    // If a new candle arrives across a gap (e.g. background tab / session break / weekend):
+    // Trigger background reconciliation to fetch intermediate bars, BUT never block the active candle!
     if (isNewBar && !isNextConsecutive) {
       const now = Date.now();
       if (now - lastSyncTimeRef.current > 2000) {
         reconcileBackgroundGaps();
       }
-      return;
     }
 
     const nextBar = isNewBar
@@ -1022,7 +1177,78 @@ export default function ChartPanel({
     }
 
     closedList.sort((a, b) => (b.time || 0) - (a.time || 0));
-    const chartTrades = [...activeList, ...closedList.slice(0, 50).map((item) => item.trade)];
+
+    // Deduplicate sibling legs (e.g. grouped legs with same groupId or symbol/dir/entry/sl)
+    const deduplicateTrades = (list) => {
+      const seen = new Set();
+      const result = [];
+      for (const t of list) {
+        if (!t) continue;
+        const entryKey = Number(t.entryPrice ?? t.levelDetails?.entry ?? 0).toFixed(5);
+        const slKey = Number(t.initialSlPrice ?? t.slPrice ?? t.levelDetails?.sl ?? 0).toFixed(5);
+        const key = t.groupId || `${t.symbol}_${t.dir}_${entryKey}_${slKey}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push(t);
+        }
+      }
+      return result;
+    };
+
+    const deduplicatedStagedList = deduplicateTrades(stagedList);
+    const deduplicatedActiveList = deduplicateTrades(activeList);
+    const liveAndStagedTrades = [...deduplicatedActiveList, ...deduplicatedStagedList];
+
+    // Check if a raw radar trade idea has been superseded by an active or staged trade setup
+    const isRadarPairCovered = (pair) => {
+      if (!pair) return true;
+      const pricing = resolveRadarTradeIdeaPricing(pair);
+      if (!pricing.hasSetup) return true;
+
+      const pSym = String(pair.symbol || pair.tradeableSymbol || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const pDir = pricing.dir;
+      const pEntry = pricing.entry;
+      const pModel = String(pair.entryModel?.id || pair.stagedLevel?.modelId || pair.modelId || "").toLowerCase();
+      const pHorizon = String(pair.horizon || pair.scenario?.id || "").toLowerCase();
+
+      return liveAndStagedTrades.some((t) => {
+        if (!t) return false;
+        const tSym = String(t.canonicalSymbol || t.symbol || t.tradeableSymbol || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (tSym !== pSym) return false;
+
+        const tDir = t.dir === -1 || String(t.direction || t.dirLabel).toLowerCase() === "sell" ? -1 : 1;
+        if (pDir !== 0 && tDir !== 0 && pDir !== tDir) return false;
+
+        // 1. Direct ID / Key matching
+        if (t.radarKey && pair.radarKey && t.radarKey === pair.radarKey) return true;
+        if (t.ideaId && pair.ideaId && t.ideaId === pair.ideaId) return true;
+        if (t.thesisId && pair.thesisId && t.thesisId === pair.thesisId) return true;
+        if (t.fingerprint && pair.fingerprint && t.fingerprint === pair.fingerprint) return true;
+
+        // 2. Horizon matching
+        const tHorizon = String(t.horizon || t.scenario?.id || "").toLowerCase();
+        const horizonMatch = !pHorizon || !tHorizon || pHorizon === tHorizon;
+
+        // 3. Model matching
+        const tModel = String(t.modelId || t.entryModel?.id || "").toLowerCase();
+        const modelMatch = !pModel || !tModel || pModel === tModel;
+
+        // 4. Entry proximity match (within 2% price distance on same symbol & dir)
+        const tEntry = Number(t.entryPrice ?? t.stagedPrice ?? t.levelDetails?.entry ?? 0);
+        if (pEntry && tEntry > 0) {
+          const diffPct = Math.abs(pEntry - tEntry) / tEntry;
+          if (diffPct < 0.02) return true;
+        }
+
+        // 5. If same symbol, same direction and matching horizon: suppress raw radar idea
+        if (horizonMatch) return true;
+
+        // 6. Generic symbol + direction guard: suppress raw radar idea if trade is already staged/active in this direction
+        return true;
+      });
+    };
+
+    const chartTrades = [...deduplicatedActiveList, ...closedList.slice(0, 50).map((item) => item.trade)];
 
     const autoDrawings = isEnabled
       ? chartTrades
@@ -1031,13 +1257,14 @@ export default function ChartPanel({
       : [];
 
     const stagedDrawings = isStagedEnabled
-      ? stagedList
+      ? deduplicatedStagedList
           .flatMap((t, idx) => tradeToStagedPositionDrawings(t, barsRef.current, tfSec, idx))
           .filter((d) => d && !isDismissed(d.id))
       : [];
 
     const radarDrawings = isRadarEnabled
       ? symRadarPairs
+          .filter((p) => !isRadarPairCovered(p))
           .flatMap((p, idx) => pairToRadarTradeIdeaDrawings(p, barsRef.current, tfSec, idx))
           .filter((d) => d && !isDismissed(d.id))
       : [];
@@ -1617,31 +1844,61 @@ export default function ChartPanel({
         <div
           style={{
             position: "absolute",
-            top: 42,
+            top: 38,
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 15,
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            gap: 8,
-            padding: "4px 12px",
-            background: "rgba(234, 88, 12, 0.18)",
-            border: "1px solid rgba(234, 88, 12, 0.45)",
-            borderRadius: 6,
+            gap: 6,
+            padding: "2px 8px",
+            background: "rgba(234, 88, 12, 0.16)",
+            border: "1px solid rgba(234, 88, 12, 0.35)",
+            borderRadius: 9999,
             backdropFilter: "blur(6px)",
             color: "#fb923c",
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 600,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            lineHeight: 1,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+            pointerEvents: "auto",
+            userSelect: "none",
           }}
         >
-          <span>⚠ MT5 Bridge Offline — Viewing Cached Candles ({bridgeOfflineInfo.time ? new Date(bridgeOfflineInfo.time).toLocaleTimeString() : "Stale"})</span>
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: isAutoReconnecting ? "#22c55e" : "#fb923c",
+              animation: "pulse 1.2s infinite",
+              flexShrink: 0,
+            }}
+          />
+          <span>
+            {isAutoReconnecting
+              ? "Connecting..."
+              : `MT5 Stale (${autoReconnectCountdown ?? 3}s)`}
+          </span>
           <button
             className="ghost"
-            style={{ fontSize: 10, padding: "2px 6px", height: "auto", border: "1px solid rgba(234, 88, 12, 0.5)", borderRadius: 4 }}
-            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false)}
+            disabled={isAutoReconnecting}
+            style={{
+              fontSize: 9,
+              padding: "1px 5px",
+              height: 16,
+              minHeight: 16,
+              lineHeight: "14px",
+              border: "1px solid rgba(234, 88, 12, 0.45)",
+              borderRadius: 3,
+              opacity: isAutoReconnecting ? 0.5 : 0.9,
+              cursor: isAutoReconnecting ? "wait" : "pointer",
+              color: "#fdba74",
+            }}
+            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true)}
+            title="Reconnect immediately"
           >
-            Reconnect
+            Retry
           </button>
         </div>
       )}

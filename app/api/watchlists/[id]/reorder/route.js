@@ -1,4 +1,4 @@
-import { getCols, allWatchlists } from "@/lib/mongo";
+import { getCols, allWatchlists, invalidateWatchlistsCache } from "@/lib/mongo";
 import { broadcast } from "@/lib/realtime";
 import { json, oid } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
@@ -17,6 +17,14 @@ export async function POST(req, { params }) {
 
   const { watchlistsCol } = await getCols();
   await watchlistsCol.updateOne({ _id }, { $set: { symbols } });
+
+  invalidateWatchlistsCache();
+  if (typeof globalThis._tsInvalidateAutonomousRouteCache === "function") {
+    try { globalThis._tsInvalidateAutonomousRouteCache(); } catch {}
+  }
+
   broadcast({ type: "watchlists_changed" });
-  return json({ ok: true, watchlists: await allWatchlists() });
+  broadcast({ type: "autonomous_changed" });
+
+  return json({ ok: true, watchlists: await allWatchlists(true) });
 }

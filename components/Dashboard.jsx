@@ -852,7 +852,10 @@ export default function Dashboard() {
           });
         }
         if (msg.type === "alerts_changed") loadAlerts();
-        if (msg.type === "watchlists_changed") loadWatchlists();
+        if (msg.type === "watchlists_changed") {
+          loadWatchlists();
+          loadAutonomousTrades();
+        }
         if (msg.type === "autonomous_changed") loadAutonomousTrades();
         if (msg.type === "alert_triggered") {
           loadAlerts();
@@ -955,7 +958,12 @@ export default function Dashboard() {
   };
 
   const toggleFullscreen = (id) => {
-    if (fullScreenPaneId) {
+    const isDocFs = Boolean(
+      typeof document !== "undefined" &&
+      (document.fullscreenElement || document.webkitFullscreenElement)
+    );
+
+    if (fullScreenPaneId || isDocFs) {
       if (preFullScreenPanes) {
         const currentFsPane = panes.find(p => p.id === fullScreenPaneId);
         if (currentFsPane) {
@@ -967,7 +975,7 @@ export default function Dashboard() {
       setFullScreenPaneId(null);
       setPreFullScreenPanes(null);
       try {
-        if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (isDocFs) {
           if (document.exitFullscreen) document.exitFullscreen();
           else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
         }
@@ -978,7 +986,8 @@ export default function Dashboard() {
       setActivePaneId(id);
       try {
         const el = document.getElementById(`pane-${id}`);
-        if (el && (typeof window !== "undefined" && (window.innerWidth <= 768 || panes.length === 1))) {
+        // If single chart mode or mobile: trigger HTML5 browser fullscreen
+        if (el && (typeof window !== "undefined" && (window.innerWidth <= 768 || panes.length === 1 || layout === "1"))) {
           if (el.requestFullscreen) el.requestFullscreen();
           else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
         }
@@ -989,7 +998,7 @@ export default function Dashboard() {
   useEffect(() => {
     const handleFsChange = () => {
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        if (fullScreenPaneId && (typeof window !== "undefined" && (window.innerWidth <= 768 || panes.length === 1))) {
+        if (fullScreenPaneId && (typeof window !== "undefined" && (window.innerWidth <= 768 || panes.length === 1 || layout === "1"))) {
           setFullScreenPaneId(null);
           setPreFullScreenPanes(null);
         }
@@ -1001,7 +1010,38 @@ export default function Dashboard() {
       document.removeEventListener("fullscreenchange", handleFsChange);
       document.removeEventListener("webkitfullscreenchange", handleFsChange);
     };
-  }, [fullScreenPaneId, panes.length]);
+  }, [fullScreenPaneId, panes.length, layout]);
+
+  // Click tracker for Triple-Click fullscreen gesture (replaces accidental double-click)
+  const clickTrackerRef = useRef({ lastTime: 0, count: 0, paneId: null });
+
+  const handlePaneClick = (e, paneId) => {
+    // If the click originated inside an active popup, modal dialog, or overlay backdrop, ignore it completely
+    if (e?.target?.closest && e.target.closest('.modal-backdrop, .modal-dialog, .drawing-settings-overlay, .drawing-settings-dialog, [role="dialog"], .portal-root')) {
+      return;
+    }
+
+    setActivePaneId(paneId);
+
+    // Triple-click detection:
+    // Requires 3 consecutive clicks within 500ms on the same pane, or DOM e.detail === 3.
+    // Double click (count === 2 or e.detail === 2) does NOT trigger fullscreen.
+    const now = Date.now();
+    const isConsecutive = (now - clickTrackerRef.current.lastTime < 500) && (clickTrackerRef.current.paneId === paneId);
+
+    if (isConsecutive) {
+      clickTrackerRef.current.count += 1;
+    } else {
+      clickTrackerRef.current.count = 1;
+      clickTrackerRef.current.paneId = paneId;
+    }
+    clickTrackerRef.current.lastTime = now;
+
+    if (e.detail === 3 || clickTrackerRef.current.count === 3) {
+      clickTrackerRef.current.count = 0; // reset
+      toggleFullscreen(paneId);
+    }
+  };
 
   const changeLayout = (newLayout) => {
     const required = LAYOUT_CONFIG[newLayout]?.count || 1;
@@ -1336,13 +1376,20 @@ export default function Dashboard() {
 
   const addSymbolToList = useCallback(async (listId, sym) => {
     const data = await api(`/api/watchlists/${listId}/symbols`, { method: "POST", body: JSON.stringify({ symbol: sym }) });
-    if (data.ok) { setWatchlists(data.watchlists); showToast(`Added ${sym}`); }
-  }, [showToast]);
+    if (data.ok) {
+      setWatchlists(data.watchlists);
+      showToast(`Added ${sym}`);
+      loadAutonomousTrades();
+    }
+  }, [showToast, loadAutonomousTrades]);
 
   const removeSymbolFromList = useCallback(async (listId, sym) => {
     const data = await api(`/api/watchlists/${listId}/symbols/${encodeURIComponent(sym)}`, { method: "DELETE" });
-    if (data.ok) setWatchlists(data.watchlists);
-  }, []);
+    if (data.ok) {
+      setWatchlists(data.watchlists);
+      loadAutonomousTrades();
+    }
+  }, [loadAutonomousTrades]);
 
   const reorderWatchlist = useCallback(async (listId, newSymbols) => {
     setWatchlists((prev) =>
@@ -1377,12 +1424,14 @@ export default function Dashboard() {
 
       // If user presses a letter without modifiers, open symbol search
       if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
         setPalette({ type: "symbol", mode: "switch", query: e.key });
         return;
       }
 
       // If user presses a number or comma without modifiers, open timeframe search
       if (/^[0-9,]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
         setPalette({ type: "timeframe", query: e.key === "," ? "" : e.key });
         return;
       }
@@ -1573,8 +1622,7 @@ export default function Dashboard() {
                   <div 
                     id={`pane-${pane.id}`}
                     key={pane.id} 
-                    onClick={() => setActivePaneId(pane.id)}
-                    onDoubleClick={() => toggleFullscreen(pane.id)}
+                    onClick={(e) => handlePaneClick(e, pane.id)}
                     style={{
                       position: "relative",
                       display: isHiddenByFullscreen ? "none" : "flex",
@@ -1642,8 +1690,8 @@ export default function Dashboard() {
                       </div>
                     ) : (
                       <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 6, alignItems: "center" }}>
-                        {(panes.length > 1 || fullScreenPaneId || isMobile) && (
-                          <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title="Fullscreen" style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                        {(panes.length > 1 || fullScreenPaneId || isMobile || layout === "1") && (
+                          <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title={fullScreenPaneId ? "Exit Fullscreen (or triple-click)" : "Fullscreen (or triple-click)"} style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
                             {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                           </button>
                         )}

@@ -25,6 +25,8 @@ import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES } from "..
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
 import { syncMT5HistoryToJournalThrottled, isTradeSpaceTrade, JOURNAL_START_BROKER_SEC } from "../../../lib/journal/store.js";
+import { getMainWatchlistSymbols, canonOf } from "../../../lib/autonomous/watchlist.js";
+import { allWatchlists } from "../../../lib/mongo.js";
 
 const g = globalThis;
 
@@ -44,6 +46,7 @@ export function invalidateAutonomousRouteCache() {
   cachedResponsePayload = null;
   cachedResponseAt = 0;
 }
+g._tsInvalidateAutonomousRouteCache = invalidateAutonomousRouteCache;
 
 export async function GET() {
   const now = Date.now();
@@ -82,7 +85,7 @@ export async function GET() {
 
       // Fetch independent data sources concurrently (with 1500ms safety timeout on remote broker bridge)
       // Only query latest_autonomous_scan if leaderboard is not already hydrated in memory
-      const [config, metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan] = await Promise.all([
+      const [config, metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan, mainWatchlistSymbols, userWatchlists] = await Promise.all([
         getConfig(),
         getMetrics(),
         Promise.race([
@@ -117,7 +120,14 @@ export async function GET() {
         !g._tsAutonomousLeaderboard && controlCol
           ? controlCol.findOne({ _id: "latest_autonomous_scan" }, { projection: { "leaderboard.rankedPairs.snapshot": 0, "leaderboard.rankedPairs.ranges": 0 } }).catch(() => null)
           : Promise.resolve(null),
+        getMainWatchlistSymbols(true).catch(() => []),
+        allWatchlists(true).catch(() => []),
       ]);
+
+      const allWatchlistSymbols = Array.from(new Set([
+        ...(Array.isArray(mainWatchlistSymbols) ? mainWatchlistSymbols : []),
+        ...((Array.isArray(userWatchlists) ? userWatchlists : []).flatMap((w) => w?.symbols || [])),
+      ])).filter(Boolean);
 
       const currentTimeSlot = getCurrentTimeSlot(new Date(), config);
 
@@ -150,29 +160,77 @@ export async function GET() {
         g._tsAutonomousLeaderboard = persistedScan.leaderboard;
       }
       let leaderboard = g._tsAutonomousLeaderboard || null;
-      if (leaderboard) {
-        // Strip raw candle snapshot bars per pair and duplicate primeSetups array
-        const sanitizedRanked = (leaderboard.rankedPairs || []).map((pair) => {
-          const { snapshot, ...rest } = pair;
-          return rest;
-        });
+      if (!leaderboard) {
         leaderboard = {
-          ...leaderboard,
-          rankedPairs: sanitizedRanked,
+          rankedPairs: [],
           primeSetups: [],
+          scannedAt: null,
+          summary: { total: 0, prime: 0, watching: 0, blocked: 0 },
         };
       }
 
-      // Check if scan is stale beyond the configured cycle period
+      const mainSymbolsList = Array.isArray(mainWatchlistSymbols) ? mainWatchlistSymbols : [];
+      const mainSymbolSet = new Set(mainSymbolsList.map((s) => canonOf(s)));
+
+      // Sanitize rankedPairs and ensure isInMainWatchlist flag is synchronized with live watchlist
+      let sanitizedRanked = (leaderboard.rankedPairs || []).map((pair) => {
+        const { snapshot, ...rest } = pair;
+        const c = canonOf(rest.symbol || rest.tradeableSymbol);
+        const inMain = mainSymbolSet.has(c);
+        return {
+          ...rest,
+          isInMainWatchlist: inMain,
+          isTradeable: inMain,
+        };
+      });
+
+      // Detect any main watchlist symbols that are missing from current rankedPairs
+      const existingSymbols = new Set(sanitizedRanked.map((p) => canonOf(p.symbol || p.tradeableSymbol)));
+      const missingMainSymbols = mainSymbolsList.filter((s) => !existingSymbols.has(canonOf(s)));
+
+      if (missingMainSymbols.length > 0) {
+        for (const s of missingMainSymbols) {
+          sanitizedRanked.push({
+            radarKey: `${s}:day:scanning`,
+            symbol: s,
+            tradeableSymbol: s,
+            isInMainWatchlist: true,
+            isTradeable: true,
+            permitted: false,
+            dir: 0,
+            dirLabel: "NEUTRAL",
+            status: "SCANNING",
+            statusReason: "Scanning order flow & SMC structure...",
+            opportunityScore: 0,
+            rawScore: 0,
+            brain: {},
+            stagedLevel: null,
+            horizon: "day",
+            horizonBadge: "4H-15M",
+            horizonLabel: "Day (4H-15M)",
+            scenario: { id: "day", label: "Day (4H-15M)", badge: "4H-15M" },
+            vetoes: [{ code: "SCANNING", reason: "Analyzing multi-timeframe order flow" }],
+          });
+        }
+      }
+
+      leaderboard = {
+        ...leaderboard,
+        rankedPairs: sanitizedRanked,
+        primeSetups: [],
+      };
+
+      // Check if scan is stale or missing watchlist symbols
       const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
       const scanIntervalMs = Number(config?.scanIntervalMs || 180000);
       const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
+      const hasMissingSymbols = missingMainSymbols.length > 0;
 
-      // If scan is stale and engine is not already scanning, trigger background scan without blocking page load (throttled to max 1 attempt per 60s)
+      // If scan is stale or missing watchlist symbols, trigger scan immediately
       const scanNow = Date.now();
-      if (isScanStale && !g._tsAutonomousScanning && config?.enabled && (scanNow - lastBackgroundScanTriggerAt > 60000)) {
+      if ((isScanStale || hasMissingSymbols) && !g._tsAutonomousScanning && (config?.enabled || hasMissingSymbols) && (scanNow - lastBackgroundScanTriggerAt > (hasMissingSymbols ? 10000 : 60000))) {
         lastBackgroundScanTriggerAt = scanNow;
-        runAutonomousScan("interval").catch(() => {});
+        runAutonomousScan(hasMissingSymbols ? "watchlist_symbol_added" : "interval").catch(() => {});
       }
 
       const events = [...rawOpenTrades.filter(isTradeSpaceTrade), ...cleanRecentClosed].flatMap((trade) =>
@@ -198,6 +256,9 @@ export async function GET() {
         allTimeSlots: getAllTimeSlots(config),
         allSymbolProfiles: SYMBOL_SESSION_PROFILES,
         allEntryModels: ENTRY_MODEL_DEFINITIONS,
+        mainWatchlistSymbols: Array.isArray(mainWatchlistSymbols) ? mainWatchlistSymbols : [],
+        allWatchlistSymbols: allWatchlistSymbols || [],
+        universe: allWatchlistSymbols.length ? allWatchlistSymbols : (config.universe || []),
         logs,
         events,
         executionDiagnostics: {

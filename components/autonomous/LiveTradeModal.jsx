@@ -118,11 +118,16 @@ export default function LiveTradeModal({
         justifyContent: "center",
         padding: "clamp(8px, 2.5vw, 18px)",
       }}
+      className="modal-backdrop"
       onClick={onClose}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
       <div
         role="dialog"
         aria-modal="true"
+        className="modal-dialog"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--panel)",
           border: "1px solid var(--border-hi)",
@@ -194,7 +199,7 @@ export default function LiveTradeModal({
                     letterSpacing: "0.03em",
                   }}
                 >
-                  {isProp ? "🛡️ TRADEPROP (Safe)" : "🏛️ TRADEDEFAULT (Milestone)"}
+                  {isProp ? "🛡️ TRADEPROP (Safe)" : "🏛️ TRADE (Standard)"}
                 </span>
                 <span
                   style={{

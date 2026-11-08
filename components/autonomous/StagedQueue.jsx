@@ -77,83 +77,42 @@ export function groupStagedTrades(trades = []) {
   const unified = [];
 
   for (const [key, items] of groups.entries()) {
-    const defaultLegRaw = items.find((t) => t.legId === "default" || t.managementLogic === "milestone_50");
     const propLegRaw = items.find((t) => t.legId === "prop_firm" || t.managementLogic === "prop_firm_safe");
-
-    const base = defaultLegRaw || propLegRaw || items[0];
+    const base = propLegRaw || items[0];
     const level = base.levelDetails || base.stagedLevel || {};
     const dir = Number(base.dir || 1);
     const entry = Number(base.entryPrice ?? level.entry);
     const sl = Number(base.initialSlPrice ?? base.slPrice ?? level.sl);
     const riskDist = Math.abs(entry - sl) || 0.001;
 
-    // Full target resolution (matching Market Radar full structural TP)
-    const fullTp = Number(defaultLegRaw?.tpPrice ?? base.fullTp ?? level.fullTp ?? level.tp ?? base.tpPrice);
-    const fullRR = Number(defaultLegRaw?.targetRR ?? base.fullRR ?? level.fullRR ?? level.rr ?? (riskDist > 0 ? Math.abs(fullTp - entry) / riskDist : 3.0));
+    // Prop Target resolution (Standardized Prop-Firm Safe 1.5R–3.0R)
+    const propTarget = base.propTarget || level.propTarget;
+    const propRR = Number(base.targetRR ?? base.propRR ?? propTarget?.targetRR ?? 2.0);
+    const propTp = Number(base.tpPrice ?? base.propTp ?? propTarget?.tpPrice ?? (entry + dir * (riskDist * propRR)));
 
-    // 50% Milestone resolution
-    const halfTarget = defaultLegRaw?.halfTarget || base.halfTarget || level.halfTarget;
-    const halfRR = halfTarget?.halfRR != null ? Number(halfTarget.halfRR) : Number((fullRR * 0.5).toFixed(2));
-    const halfPrice = halfTarget?.price != null ? Number(halfTarget.price) : Number((entry + dir * Math.abs(fullTp - entry) * 0.5).toFixed(5));
-
-    // Prop Target resolution
-    const propTarget = propLegRaw?.propTarget || base.propTarget || level.propTarget;
-    const propRR = Number(propLegRaw?.targetRR ?? base.propRR ?? propTarget?.targetRR ?? 2.0);
-    const propTp = Number(propLegRaw?.tpPrice ?? base.propTp ?? propTarget?.tpPrice ?? (entry + dir * (riskDist * propRR)));
-
-    // Reconstruct defaultLeg if missing
-    const defaultLeg = defaultLegRaw || {
-      ...base,
-      _id: `${base._id}_def_synth`,
-      legId: "default",
-      legLabel: "Default (50% Milestone + Runner)",
-      managementLogic: "milestone_50",
-      entryPrice: entry,
-      slPrice: sl,
-      tpPrice: fullTp,
-      targetRR: fullRR,
-      halfTarget: { halfRR, price: halfPrice },
-      isSynthesized: true,
-    };
-
-    // Reconstruct propLeg if missing
-    const propLeg = propLegRaw || {
-      ...base,
-      _id: `${base._id}_prop_synth`,
-      legId: "prop_firm",
-      legLabel: "Prop-Firm Safe (1.5R–2.5R)",
-      managementLogic: "prop_firm_safe",
-      entryPrice: entry,
-      slPrice: sl,
-      tpPrice: propTp,
-      targetRR: propRR,
-      propTarget,
-      targetLandmark: propLegRaw?.targetLandmark || base.targetLandmark || propTarget?.source,
-      isSynthesized: true,
-    };
-
-    const primaryTrade = defaultLegRaw || base;
     const armed = items.some((t) => t.status === "armed");
     const confirming = items.some((t) => t.status === "confirming");
-    const status = armed ? "armed" : confirming ? "confirming" : primaryTrade.status;
+    const status = armed ? "armed" : confirming ? "confirming" : base.status;
 
     unified.push({
-      ...primaryTrade,
+      ...base,
       groupKey: key,
-      isDualLeg: true,
+      isDualLeg: false,
       status,
-      primaryTrade,
+      primaryTrade: base,
       tradeIds: items.map((t) => t._id),
-      primaryId: primaryTrade._id,
-      defaultLeg,
-      propLeg,
-      fullTp,
-      fullRR,
-      halfPrice,
-      halfRR,
+      primaryId: base._id,
+      defaultLeg: null,
+      propLeg: base,
+      fullTp: propTp,
+      fullRR: propRR,
+      halfPrice: null,
+      halfRR: null,
       propTp,
       propRR,
-      legs: [defaultLeg, propLeg],
+      targetRR: propRR,
+      tpPrice: propTp,
+      legs: [base],
     });
   }
 
@@ -210,7 +169,7 @@ export default function StagedQueue({
     setEditingId(null);
     const isProp = trade.managementLogic === "prop_firm_safe";
     const initialRR = Number(trade.targetRR ?? level.rr ?? (isProp ? 2.0 : 2.2));
-    setEditRR(isProp ? Math.min(2.5, Math.max(1.5, initialRR)) : Math.max(0.5, initialRR));
+    setEditRR(isProp ? Math.min(3.0, Math.max(1.5, initialRR)) : Math.max(0.5, initialRR));
     setEditTp(trade.tpPrice ?? level.tp ?? "");
   };
 
@@ -229,7 +188,7 @@ export default function StagedQueue({
       const tpToUse = overrideTp != null ? overrideTp : editTp;
 
       const clampedRR = isProp
-        ? Math.min(2.5, Math.max(1.5, Number(rrToUse) || 2.0))
+        ? Math.min(3.0, Math.max(1.5, Number(rrToUse) || 2.0))
         : Math.max(0.5, Number(rrToUse) || 2.0);
       const parsedTp = tpToUse ? Number(tpToUse) : undefined;
 
@@ -621,11 +580,11 @@ export default function StagedQueue({
                   </div>
                 </div>
 
-                {/* 3. 4-Column Setup Geometry Strip */}
+                {/* 3. 3-Column Setup Geometry Strip */}
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(4, 1fr)",
+                    gridTemplateColumns: "repeat(3, 1fr)",
                     gap: 6,
                     background: "var(--panel)",
                     padding: "6px 8px",
@@ -645,99 +604,57 @@ export default function StagedQueue({
                     <div style={{ fontWeight: 700, color: "var(--red)" }}>{formatPrice(slVal)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: 8.5 }}>50% LEVEL</div>
-                    <div style={{ fontWeight: 700, color: "#f59e0b" }}>{formatPrice(setup.halfPrice)}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "var(--muted)", fontSize: 8.5 }}>FULL TP</div>
-                    <div style={{ fontWeight: 700, color: "var(--green)" }}>{formatPrice(setup.fullTp)}</div>
+                    <div style={{ color: "var(--muted)", fontSize: 8.5 }}>TARGET (PROP TP)</div>
+                    <div style={{ fontWeight: 700, color: "#06b6d4" }}>{formatPrice(setup.propTp || trade.tpPrice)}</div>
                   </div>
                 </div>
 
-                {/* 4. Dual Management Pathways Preview Strip */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {/* Pathway A: Default Milestone (50%) & Full Runner */}
-                  <div
-                    style={{
-                      background: "rgba(56, 189, 248, 0.04)",
-                      border: "1px solid rgba(56, 189, 248, 0.22)",
-                      borderRadius: 6,
-                      padding: "6px 8px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      fontSize: 10,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
-                      <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        <Target size={11} /> PATH A · DEFAULT (50% + RUNNER)
+                {/* 4. Prop-Firm Safe Management Strip */}
+                <div
+                  style={{
+                    background: "rgba(168, 85, 247, 0.04)",
+                    border: "1px solid rgba(168, 85, 247, 0.22)",
+                    borderRadius: 6,
+                    padding: "6px 8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    fontSize: 10,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+                    <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Shield size={11} /> PROP-FIRM SAFE (1.5R–3.0R BRACKET)
+                    </span>
+                    {(trade.magicNumber || routingProp?.magicNumber) && (
+                      <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700, fontSize: 8.5 }}>
+                        ⚡ MT5 #{trade.magicNumber || routingProp?.magicNumber}
                       </span>
-                      {(defaultLeg?.magicNumber || routingDefault?.magicNumber) && (
-                        <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: 8.5 }}>
-                          ⚡ MT5 #{defaultLeg?.magicNumber || routingDefault?.magicNumber}
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--panel)", padding: "3px 6px", borderRadius: 4 }}>
-                      <span style={{ color: "var(--muted)", fontSize: 9 }}>
-                        50%: <strong style={{ color: "#f59e0b" }}>{formatPrice(setup.halfPrice)}</strong> ({Number(setup.halfRR || 2.2).toFixed(1)}R)
-                      </span>
-                      <span style={{ color: "var(--muted)", fontSize: 9 }}>
-                        Full TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)}</strong> ({Number(setup.fullRR || 4.5).toFixed(1)}R)
-                      </span>
-                    </div>
-
-                    {defaultLeg?.coveredRR && (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 8.5 }}>
-                        <span>🛡️ Net Covered: <strong style={{ color: "var(--accent)" }}>{defaultLeg.coveredRR}R</strong></span>
-                        <span>drag -{defaultLeg.frictionDragR ?? "0.00"}R</span>
-                      </div>
                     )}
                   </div>
 
-                  {/* Pathway B: Prop-Firm Safe Target */}
-                  <div
-                    style={{
-                      background: "rgba(168, 85, 247, 0.04)",
-                      border: "1px solid rgba(168, 85, 247, 0.22)",
-                      borderRadius: 6,
-                      padding: "6px 8px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      fontSize: 10,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
-                      <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        <Shield size={11} /> PATH B · PROP-FIRM SAFE
-                      </span>
-                      {(propLeg?.magicNumber || routingProp?.magicNumber) && (
-                        <span style={{ color: "var(--purple, #c084fc)", fontWeight: 700, fontSize: 8.5 }}>
-                          ⚡ MT5 #{propLeg?.magicNumber || routingProp?.magicNumber}
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--panel)", padding: "3px 6px", borderRadius: 4 }}>
-                      <span style={{ color: "var(--muted)", fontSize: 9 }}>
-                        Prop Target: <strong style={{ color: "#06b6d4" }}>{formatPrice(setup.propTp)}</strong> ({Number(setup.propRR || 2.0).toFixed(1)}R)
-                      </span>
-                      <span style={{ fontSize: 8.5, color: "var(--purple, #c084fc)", fontWeight: 700, background: "rgba(168, 85, 247, 0.15)", padding: "1px 5px", borderRadius: 3 }}>
-                        100% Exit
-                      </span>
-                    </div>
-
-                    {(propLeg?.targetLandmark || propLeg?.propTarget?.source) && (
-                      <div style={{ color: "var(--purple, #c084fc)", fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        🎯 Landmark: {propLeg?.targetLandmark || propLeg?.propTarget?.source}
-                      </div>
-                    )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--panel)", padding: "3px 6px", borderRadius: 4 }}>
+                    <span style={{ color: "var(--muted)", fontSize: 9 }}>
+                      Target: <strong style={{ color: "#06b6d4" }}>{formatPrice(setup.propTp || trade.tpPrice)}</strong> ({Number(setup.propRR || trade.targetRR || 2.0).toFixed(1)}R)
+                    </span>
+                    <span style={{ fontSize: 8.5, color: "var(--purple, #c084fc)", fontWeight: 700, background: "rgba(168, 85, 247, 0.15)", padding: "1px 5px", borderRadius: 3 }}>
+                      100% Exit at Target
+                    </span>
                   </div>
+
+                  {(trade.coveredRR || routingProp?.coveredRR) && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)", fontSize: 8.5 }}>
+                      <span>🛡️ Net Covered: <strong style={{ color: "var(--purple, #c084fc)" }}>{trade.coveredRR || routingProp?.coveredRR}R</strong></span>
+                      <span>drag -{trade.frictionDragR || routingProp?.frictionDragR || "0.00"}R</span>
+                    </div>
+                  )}
+
+                  {(trade.targetLandmark || trade.propTarget?.source) && (
+                    <div style={{ color: "var(--purple, #c084fc)", fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      🎯 Landmark: {trade.targetLandmark || trade.propTarget?.source}
+                    </div>
+                  )}
                 </div>
 
                 {/* 5. Card Footer: Inspect Chart CTA & Execution Actions */}
@@ -786,7 +703,7 @@ export default function StagedQueue({
                         }}
                       >
                         <Check size={12} />
-                        <span>{isApproving ? "Approving..." : setup.isDualLeg ? "Approve Dual" : "Approve"}</span>
+                        <span>{isApproving ? "Approving..." : "Approve"}</span>
                       </button>
                     )}
 
@@ -800,7 +717,7 @@ export default function StagedQueue({
                         color: "var(--muted)",
                         fontSize: 11,
                       }}
-                      title={setup.isDualLeg ? "Dismiss dual setup" : "Dismiss setup"}
+                      title="Dismiss setup"
                     >
                       <X size={12} />
                     </button>

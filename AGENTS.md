@@ -50,6 +50,19 @@ Any agent that creates a new file, script, or directory MUST invoke the `/repo_o
 ### 1.6 — NPM Scripts (NON-NEGOTIABLE)
 Do NOT execute `npm run build` or `npm run dev` autonomously. The user handles builds and dev servers themselves. Assume hot-reload is already active.
 
+### 1.7 — Unified Timezone Protocol (NON-NEGOTIABLE)
+All agents operating in TradeSpace must follow the **Two Immutable Time Laws**:
+1. **Data Layer (Storage, Ticks, Bars, Feeds)**: Strictly pure **UTC Epoch Instants** (`time` in seconds, `timestampSemantics: "UTC_INSTANT"`). Never store, emit, or expect timestamps in broker or local time.
+2. **Trading & Session Logic (Sessions, Killzones, Daily Boundaries)**: Strictly **Europe/Athens (`EET/EEST = UTC+2 in winter / UTC+3 in summer`)**.
+   Why Europe/Athens? Because midnight (00:00:00) Europe/Athens exactly aligns with 5:00 PM New York (the global Forex/Futures market close) across all 52 weeks of the year, preventing Sunday candles and preserving DST synchronization.
+3. **STRICT PROHIBITIONS (Instant Disqualification)**:
+   - NEVER do `time % 86400` or `time % DAY` to determine hours or days.
+   - NEVER call `date.getHours()` or `date.getUTCHours()` to classify trading sessions or killzones.
+   - NEVER hardcode static UTC offsets (e.g. `+2` or `+3`) without dynamic DST awareness.
+4. **Mandatory Imports**:
+   Always import time and session utilities from `lib/time.js`:
+   `import { getEetTime, getTradingDayKey, sessionOf, isKillzone, toUtcSec } from "@/lib/time";`
+
 ---
 
 ## How Agents Are Invoked

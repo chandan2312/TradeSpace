@@ -64,20 +64,26 @@ export default function AlertDialog({ symbol, draft, marketPrice, onCancel, onSa
 
   return (
     <div
+      className="modal-backdrop"
       style={{
         position: "fixed", inset: 0, zIndex: 9999,
         background: "rgba(0,0,0,.55)", backdropFilter: "blur(3px)",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
       onMouseDown={onCancel}
     >
       <div
+        className="modal-dialog"
         style={{
           width: "min(440px, 92vw)", background: "var(--panel)",
           border: "1px solid var(--border-hi)", borderRadius: 12,
           boxShadow: "0 20px 60px rgba(0,0,0,.6)", overflow: "hidden",
           maxHeight: "90vh", display: "flex", flexDirection: "column"
         }}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKey}
       >

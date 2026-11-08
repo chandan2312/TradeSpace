@@ -18,7 +18,13 @@ export default function TimeframePalette({ initialQuery = "", onClose, onPick })
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+      const len = inputRef.current.value.length;
+      inputRef.current.setSelectionRange(len, len);
+    }
+  }, []);
 
   const items = TFS.filter(t => 
     !q || 

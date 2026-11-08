@@ -186,11 +186,11 @@ export default function AutonomousDashboard() {
                 }
               }
               setTicks((prev) => ({ ...prev, ...batch }));
-            } else if (m.type === "autonomous_changed") {
+            } else if (m.type === "autonomous_changed" || m.type === "watchlists_changed" || m.type === "radar_updated") {
               clearTimeout(debounceTimerRef.current);
               debounceTimerRef.current = setTimeout(() => {
                 loadState(false);
-              }, 500);
+              }, 300);
             }
           } catch {}
         };
@@ -810,7 +810,7 @@ export default function AutonomousDashboard() {
             allTimeSlots={data?.allTimeSlots}
             allSymbolProfiles={data?.allSymbolProfiles}
             allEntryModels={data?.allEntryModels}
-            universe={config.universe || data?.universe || []}
+            universe={data?.allWatchlistSymbols || data?.mainWatchlistSymbols || config.universe || data?.universe || []}
             onSaveConfig={handleSaveConfig}
             onClose={closeSettings}
           />

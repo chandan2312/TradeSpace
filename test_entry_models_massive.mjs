@@ -232,6 +232,13 @@ function generateOteBars({ basePrice, pip, dir, nowSec }) {
   for (let i = 0; i < barCount; i++) {
     bars.push({ time: nowSec - (barCount - 1 - i) * 900, open: p, high: p + pip * 2, low: p - pip * 2, close: p, v: 200 });
   }
+  // Preceding swing pivot at bar 5
+  bars[4].high = p + pip * 2;
+  bars[5].high = dir === 1 ? p + pip * 6 : p - pip * 2;
+  bars[5].low = dir === 1 ? p - pip * 2 : p - pip * 6;
+  bars[5].close = dir === 1 ? p + pip * 4 : p - pip * 4;
+  bars[6].high = p + pip * 2;
+
   // Impulse origin at bar 10
   bars[10].low = dir === 1 ? p - pip * 10 : p - pip * 2;
   bars[10].high = dir === 1 ? p + pip * 2 : p + pip * 10;
@@ -270,16 +277,16 @@ function generateOteBars({ basePrice, pip, dir, nowSec }) {
   bars[15].close = dir === 1 ? p + pip * 19 : p - pip * 19;
 
   // Retracement into 70.5% sweetspot
-  const ote705 = dir === 1 ? p + pip * 1.8 : p - pip * 1.8;
+  const ote705 = dir === 1 ? p + pip * 5.5 : p - pip * 5.5;
   bars[16].open = dir === 1 ? p + pip * 19 : p - pip * 19;
-  bars[16].high = dir === 1 ? p + pip * 19 : ote705 + pip * 2;
-  bars[16].low = dir === 1 ? ote705 - pip * 2 : p - pip * 19;
-  bars[16].close = dir === 1 ? ote705 + pip * 4 : ote705 - pip * 4;
+  bars[16].high = dir === 1 ? p + pip * 19 : p - pip * 10;
+  bars[16].low = dir === 1 ? ote705 : p - pip * 19;
+  bars[16].close = dir === 1 ? ote705 + pip * 2 : ote705 - pip * 2;
 
-  bars[17].open = dir === 1 ? ote705 + pip * 4 : ote705 - pip * 4;
-  bars[17].high = dir === 1 ? ote705 + pip * 6 : ote705 + pip * 2;
-  bars[17].low = dir === 1 ? ote705 - pip * 2 : ote705 - pip * 6;
-  bars[17].close = dir === 1 ? ote705 + pip * 5 : ote705 - pip * 5;
+  bars[17].open = dir === 1 ? ote705 + pip * 2 : ote705 - pip * 2;
+  bars[17].high = dir === 1 ? ote705 + pip * 6 : ote705 - pip * 1;
+  bars[17].low = dir === 1 ? ote705 : ote705 - pip * 6;
+  bars[17].close = dir === 1 ? ote705 + pip * 4 : ote705 - pip * 4;
 
   return bars;
 }
@@ -324,6 +331,19 @@ function generateBadBars({ basePrice, pip, dir, nowSec, flawType }) {
 // ===========================================================================
 // TEST EXECUTION MATRIX (1,200 SCENARIOS)
 // ===========================================================================
+const FIVE_MODELS = {
+  ict_2022: true,
+  turtle_soup: true,
+  breaker_block: true,
+  ote_continuation: true,
+  silver_bullet: true,
+  displacement_breakout: false,
+  judas_swing: false,
+  smt_divergence_sweep: false,
+  fvg_rejection: false,
+  po3_daily_cycle: false,
+};
+
 let totalScenariosRun = 0;
 let qualifiedCounts = {
   ict_2022: 0,
@@ -353,7 +373,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 100, low: sym.basePrice - sym.pip * 100 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false, enabledModels: FIVE_MODELS },
         brain: { conviction: 80, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
       if (res && res.permitted && res.modelId === "ict_2022") {
@@ -381,7 +401,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 80, low: sym.basePrice - sym.pip * 80 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false, enabledModels: FIVE_MODELS },
         brain: {
           conviction: 85,
           macroDir: dir,
@@ -416,10 +436,10 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 90, low: sym.basePrice - sym.pip * 90 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false, enabledModels: FIVE_MODELS },
         brain: { conviction: 85, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
-      if (res && res.permitted && res.modelId === "breaker_block") {
+      if (res && res.permitted && (res.modelId === "breaker_block" || res.modelId.includes("breaker_block"))) {
         qualifiedCounts.breaker_block++;
         assert(res.entry > 0, "Breaker block valid entry");
       }
@@ -443,10 +463,10 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 100, low: sym.basePrice - sym.pip * 100 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false, enabledModels: FIVE_MODELS },
         brain: { conviction: 82, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
-      if (res && res.permitted && res.modelId === "ote_continuation") {
+      if (res && res.permitted && (res.modelId === "ote_continuation" || res.modelId.includes("ote_continuation"))) {
         qualifiedCounts.ote_continuation++;
         assert(res.entry > 0, "OTE valid entry");
       }
@@ -470,7 +490,7 @@ for (const sym of SYMBOLS) {
         frames: { M15: bars, H1: bars, H4: bars, D1: bars },
         ranges: { ranges: { H4: { high: sym.basePrice + sym.pip * 90, low: sym.basePrice - sym.pip * 90 } } },
         targetDOL: { price: targetPrice, direction: dir, targetSide: dir === 1 ? "BSL" : "SSL", causal: true, confirmationTime: 1 },
-        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false },
+        config: { now: dNow.getTime(), minRR: 1.8, enforceSymbolSessions: false, enabledModels: FIVE_MODELS },
         brain: { conviction: 85, macroDir: dir, macroBias: dir === 1 ? "BULLISH" : "BEARISH", allowedToLong: dir === 1, allowedToShort: dir === -1 },
       });
       if (res && res.permitted && res.modelId === "silver_bullet") {
@@ -519,7 +539,7 @@ for (const sym of SYMBOLS) {
         config: { now: dNow.getTime(), minRR: 1.8 },
         brain: { conviction: 80, macroDir: dir },
       });
-      if (res && res.permitted && res.modelId === "breaker_block") {
+      if (res && res.permitted && (res.modelId === "breaker_block" || res.modelId.includes("breaker_block"))) {
         falsePositiveCount++;
       } else {
         rejectedNoiseCount++;

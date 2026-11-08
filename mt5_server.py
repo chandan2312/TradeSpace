@@ -462,8 +462,8 @@ def handle_rates(payload):
     except Exception:
         pass
 
-    # Try fetching with progressive backoff retry to allow MT5 to download historical candles from the broker
-    delays = [0.15, 0.25, 0.5, 0.75, 1.0]
+    # Fast backoff retry allowing MT5 to fetch fresh candles from broker without stalling HTTP threads
+    delays = [0.05, 0.1, 0.2, 0.3]
     for attempt_idx in range(len(delays)):
         for req_count in (count, max(20, count // 2) if count > 50 else count):
             for attempt in (
@@ -982,7 +982,10 @@ def handle_cancel(payload):
     if not ticket or orders is None:
         return {"ok": False, "status": "order-unavailable", "message": "Pending order lookup failed"}
     if not orders:
-        return {"ok": False, "ambiguous": True, "status": "reconciliation-required", "message": "Order absent; may have filled"}
+        positions = mt5.positions_get(ticket=ticket)
+        if positions:
+            return {"ok": False, "status": "already-filled", "message": "Order absent from pending; active as position", "positionTicket": ticket}
+        return {"ok": True, "status": "cancelled", "message": "Order confirmed absent from broker pending orders", "orderTicket": ticket}
     result = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": ticket})
     failure = send_result(result, [mt5.TRADE_RETCODE_DONE], "cancel-failed")
     return failure or {"ok": True, "status": "cancelled", "orderTicket": ticket}

@@ -204,27 +204,6 @@ export default function ClosedHistory({ closedTrades = [] }) {
             <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>({countsByStrategy.all})</span>
           </button>
           <button
-            onClick={() => setStrategyFilter("default")}
-            title="TradeDefault (50% Milestone)"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "4px 9px",
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 6,
-              border: "1px solid",
-              borderColor: strategyFilter === "default" ? "rgba(56, 189, 248, 0.5)" : "transparent",
-              background: strategyFilter === "default" ? "rgba(56, 189, 248, 0.15)" : "transparent",
-              color: strategyFilter === "default" ? "#38bdf8" : "var(--muted)",
-              cursor: "pointer",
-            }}
-          >
-            🏛️ TradeDefault
-            <span style={{ fontSize: 10, fontFamily: "monospace", opacity: 0.85 }}>({countsByStrategy.def})</span>
-          </button>
-          <button
             onClick={() => setStrategyFilter("prop")}
             title="TradeProp (Prop-Firm Safe)"
             style={{

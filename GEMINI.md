@@ -12,5 +12,6 @@ Project defaults for Claude / Gemini Code in this repo.
 2. **Codebase Exploration**: Use `mcp_graphify_query_graph` or other graph tools as your primary discovery mechanism before falling back to grep/glob.
 3. **Task Completion**: At the end of every significant task, the Knowledge Manager agent MUST update the project state KIs.
 4. **Execution**: You must behave as the invoked agent. You take on their persona, skills, and restrictions as defined in their workflow markdown files inside `.agents/workflows/`.
+5. **Unified Timezone Protocol**: All timestamps across feeds and storage are UTC epoch instants. All trading sessions, killzones, and daily candle boundaries are Europe/Athens (`EET/EEST = UTC+2/UTC+3`). Never perform naive modulo arithmetic (`time % 86400`) or call `date.getUTCHours()` for sessions; always import from `lib/time.js`.
 
 Read `AGENTS.md` before executing tasks!

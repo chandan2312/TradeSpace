@@ -65,7 +65,12 @@ export default function MiniDrawingToolbar({ api }) {
     updateSelected({ style: tmpl.style });
     try {
       const saved = JSON.parse(localStorage.getItem("ts_tool_last_style") || "{}");
-      saved[toolKind] = { ...(saved[toolKind] || {}), ...tmpl.style };
+      const cleanTmplStyle = { ...tmpl.style };
+      delete cleanTmplStyle.stopLevel;
+      delete cleanTmplStyle.profitLevel;
+      delete cleanTmplStyle.targetPrice;
+      delete cleanTmplStyle.stopPrice;
+      saved[toolKind] = { ...(saved[toolKind] || {}), ...cleanTmplStyle };
       localStorage.setItem("ts_tool_last_style", JSON.stringify(saved));
     } catch {}
     setTemplateOpen(false);
@@ -101,7 +106,12 @@ export default function MiniDrawingToolbar({ api }) {
       if (def) {
         updateSelected({ style: def });
         const saved = JSON.parse(localStorage.getItem("ts_tool_last_style") || "{}");
-        saved[toolKind] = { ...(saved[toolKind] || {}), ...def };
+        const cleanDef = { ...def };
+        delete cleanDef.stopLevel;
+        delete cleanDef.profitLevel;
+        delete cleanDef.targetPrice;
+        delete cleanDef.stopPrice;
+        saved[toolKind] = { ...(saved[toolKind] || {}), ...cleanDef };
         localStorage.setItem("ts_tool_last_style", JSON.stringify(saved));
       }
     } catch {}
@@ -425,7 +435,7 @@ export default function MiniDrawingToolbar({ api }) {
             onTouchStart={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); set({ style: s.v }); }}
+            onClick={(e) => { e.stopPropagation(); set({ lineStyle: s.v === "dotted" ? 1 : s.v === "dashed" ? 2 : 0 }); }}
             title={s.v}
             className={selected.lineStyleName === s.v ? "primary" : "ghost"}
             style={{ padding: "2px 5px", fontSize: 12, minWidth: 22, cursor: "pointer", borderRadius: 4 }}

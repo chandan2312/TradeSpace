@@ -83,7 +83,12 @@ export default function DrawingSettings({ api }) {
     // regardless of whether updateSelected's selectedId path resolves in time.
     try {
       const saved = JSON.parse(localStorage.getItem("ts_tool_last_style") || "{}");
-      saved[toolKind] = { ...(saved[toolKind] || {}), ...tmpl.style };
+      const cleanTmplStyle = { ...tmpl.style };
+      delete cleanTmplStyle.stopLevel;
+      delete cleanTmplStyle.profitLevel;
+      delete cleanTmplStyle.targetPrice;
+      delete cleanTmplStyle.stopPrice;
+      saved[toolKind] = { ...(saved[toolKind] || {}), ...cleanTmplStyle };
       localStorage.setItem("ts_tool_last_style", JSON.stringify(saved));
     } catch {}
     setTemplateMenuOpen(false);
@@ -161,33 +166,97 @@ export default function DrawingSettings({ api }) {
   // Opacity slider with % display
   const OpacitySlider = ({ value, onChange, label: sliderLabel }) => {
     // value is 0–100 transparency (0=opaque, 100=transparent) — convert to opacity %
-    const opacityPct = 100 - (value ?? 80);
+    const opacityPct = Math.max(0, Math.min(100, Math.round(100 - (value ?? 80))));
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div 
+        style={{ display: "flex", alignItems: "center", gap: 8 }}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         {sliderLabel && <span style={{ fontSize: 11, color: "var(--muted)" }}>{sliderLabel}</span>}
         <input
-          type="range" min={0} max={100} step={5}
+          type="range"
+          min={0}
+          max={100}
+          step={1}
           value={opacityPct}
-          onChange={(e) => onChange(100 - Number(e.target.value))}
-          style={{ width: 90 }}
+          onChange={(e) => {
+            const nextPct = Number(e.target.value);
+            onChange(100 - nextPct);
+          }}
+          className="tradespace-slider"
+          style={{
+            width: 100,
+            background: `linear-gradient(to right, var(--accent, #2962ff) 0%, var(--accent, #2962ff) ${opacityPct}%, var(--border, rgba(128,128,128,0.3)) ${opacityPct}%, var(--border, rgba(128,128,128,0.3)) 100%)`,
+          }}
+          title={`Opacity: ${opacityPct}%`}
         />
-        <span style={{ fontSize: 11, minWidth: 30, textAlign: "right" }}>{opacityPct}%</span>
+        <span 
+          className="num" 
+          style={{ 
+            fontSize: 11, 
+            minWidth: 32, 
+            textAlign: "right", 
+            color: "var(--text)", 
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums" 
+          }}
+        >
+          {opacityPct}%
+        </span>
       </div>
     );
   };
 
   return (
     <div
+      className="drawing-settings-overlay modal-backdrop"
+      onClick={(e) => {
+        e.stopPropagation();
+        setSettingsOpen(false);
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
       style={{
-        position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        zIndex: 100000, width: "95vw", maxWidth: 480, maxHeight: "88vh",
-        background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10,
-        boxShadow: "0 12px 40px rgba(0,0,0,.75)", display: "flex", flexDirection: "column",
-        overflow: "hidden", color: "var(--text)",
+        position: "fixed",
+        inset: 0,
+        zIndex: 100000,
+        background: "rgba(0, 0, 0, 0.45)",
+        backdropFilter: "blur(2px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px",
       }}
     >
+      <div
+        className="drawing-settings-dialog modal-dialog"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
+        style={{
+          position: "relative",
+          width: "95vw",
+          maxWidth: 480,
+          maxHeight: "88vh",
+          background: "var(--panel)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          boxShadow: "0 16px 48px rgba(0,0,0,.75)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          color: "var(--text)",
+        }}
+      >
       {/* ── Modal Header ── */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -655,10 +724,19 @@ export default function DrawingSettings({ api }) {
                   const isShort = toolKind === "short-position" || selected.rrSide === "short" || style.rrSide === "short";
                   const dir = isShort ? -1 : 1;
                   const entryPrice = selected.points?.[0]?.price ?? selected.entry?.price ?? 0;
-                  const currentStopLevel = style.stopLevel ?? (selected.points?.[1] ? Math.abs(selected.points[1].price - entryPrice) : (selected.stop ? Math.abs(entryPrice - selected.stop) : 10));
-                  const currentProfitLevel = style.profitLevel ?? (selected.points?.[1] ? Math.abs(selected.points[1].price - entryPrice) : (selected.target ? Math.abs(selected.target - entryPrice) : 20));
-                  const currentStopPrice = selected.stop ?? Number((entryPrice - dir * currentStopLevel).toFixed(4));
-                  const currentTpPrice = selected.target ?? Number((entryPrice + dir * currentProfitLevel).toFixed(4));
+                  const prec = entryPrice >= 1000 ? 2 : entryPrice >= 100 ? 3 : entryPrice >= 1 ? 4 : 5;
+                  const defaultStop = entryPrice > 0 ? entryPrice * 0.003 : 10;
+                  const defaultProfit = entryPrice > 0 ? entryPrice * 0.006 : 20;
+
+                  const currentStopLevel = (style.stopLevel > 0 && Number.isFinite(style.stopLevel))
+                    ? style.stopLevel
+                    : (selected.stop ? Math.abs(entryPrice - selected.stop) : defaultStop);
+                  const currentProfitLevel = (style.profitLevel > 0 && Number.isFinite(style.profitLevel))
+                    ? style.profitLevel
+                    : (selected.target ? Math.abs(selected.target - entryPrice) : defaultProfit);
+
+                  const currentStopPrice = selected.stop ?? Number((entryPrice - dir * currentStopLevel).toFixed(prec));
+                  const currentTpPrice = selected.target ?? Number((entryPrice + dir * currentProfitLevel).toFixed(prec));
                   const currentRR = currentStopLevel > 0 ? Math.round((currentProfitLevel / currentStopLevel) * 100) / 100 : (selected.ratio ? Number(selected.ratio) : 2.0);
 
                   return (
@@ -675,8 +753,8 @@ export default function DrawingSettings({ api }) {
                           value={currentRR}
                           onChange={(e) => {
                             const newRR = Math.max(0.1, Number(e.target.value) || 0.1);
-                            const newProfitLevel = newRR * (currentStopLevel || 1);
-                            const newTargetPrice = Number((entryPrice + dir * newProfitLevel).toFixed(4));
+                            const newProfitLevel = newRR * (currentStopLevel || defaultStop);
+                            const newTargetPrice = Number((entryPrice + dir * newProfitLevel).toFixed(prec));
                             set({
                               style: { ...style, profitLevel: newProfitLevel },
                               target: newTargetPrice,
@@ -694,10 +772,10 @@ export default function DrawingSettings({ api }) {
                           value={currentTpPrice}
                           onChange={(e) => {
                             const newTp = Number(e.target.value) || 0;
-                            const profitDist = Math.abs(newTp - entryPrice);
-                            const stopDist = currentStopLevel || 1;
+                            const profitDist = Math.max(entryPrice * 0.00001, Math.abs(newTp - entryPrice));
+                            const stopDist = currentStopLevel || defaultStop;
                             const calculatedRR = Math.max(0.1, Math.round((profitDist / stopDist) * 100) / 100);
-                            const finalTp = Number(newTp.toFixed(4));
+                            const finalTp = Number(newTp.toFixed(prec));
                             set({
                               style: { ...style, profitLevel: profitDist },
                               target: finalTp,
@@ -715,11 +793,11 @@ export default function DrawingSettings({ api }) {
                           value={currentStopPrice}
                           onChange={(e) => {
                             const newSl = Number(e.target.value) || 0;
-                            const newStopDist = Math.max(0.0001, Math.abs(entryPrice - newSl));
+                            const newStopDist = Math.max(entryPrice * 0.00001, Math.abs(entryPrice - newSl));
                             const newRR = Math.max(0.1, Math.round((currentProfitLevel / newStopDist) * 100) / 100);
                             set({
                               style: { ...style, stopLevel: newStopDist, profitLevel: currentProfitLevel },
-                              stop: newSl,
+                              stop: Number(newSl.toFixed(prec)),
                               ratio: newRR,
                             });
                           }}
@@ -735,8 +813,8 @@ export default function DrawingSettings({ api }) {
                           onChange={(e) => {
                             const newEntry = Number(e.target.value) || 0;
                             const newPoints = selected.points ? [{ ...selected.points[0], price: newEntry }, ...(selected.points.slice(1))] : null;
-                            const newTarget = Number((newEntry + dir * currentProfitLevel).toFixed(4));
-                            const newStop = Number((newEntry - dir * currentStopLevel).toFixed(4));
+                            const newTarget = Number((newEntry + dir * currentProfitLevel).toFixed(prec));
+                            const newStop = Number((newEntry - dir * currentStopLevel).toFixed(prec));
                             set({
                               ...(newPoints ? { points: newPoints } : {}),
                               ...(selected.entry ? { entry: { ...selected.entry, price: newEntry } } : {}),
@@ -943,6 +1021,10 @@ export default function DrawingSettings({ api }) {
         {/* Save Template Prompt Modal */}
         {saveTemplateModalOpen && (
           <div
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
               zIndex: 100005, background: "var(--panel)", border: "1px solid var(--border)",
@@ -990,6 +1072,7 @@ export default function DrawingSettings({ api }) {
             Ok
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

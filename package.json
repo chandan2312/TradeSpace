@@ -4,7 +4,7 @@
   "description": "MT5 live charts with TradingView-style alerts -> Telegram",
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development node --max-old-space-size=2048 server.js",
+    "dev": "cross-env NODE_ENV=development node --max-old-space-size=2048 server.js",
     "build": "next build",
     "start": "node --max-old-space-size=2048 server.js"
   },
@@ -25,5 +25,8 @@
   },
   "engines": {
     "node": ">=18.17"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0"
   }
 }

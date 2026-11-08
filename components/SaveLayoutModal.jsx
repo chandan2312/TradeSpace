@@ -14,12 +14,25 @@ export default function SaveLayoutModal({ onCancel, onSave }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
-      background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex",
-      alignItems: "center", justifyContent: "center"
-    }}>
-      <form onSubmit={handleSubmit} style={{
+    <div 
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+        background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex",
+        alignItems: "center", justifyContent: "center"
+      }}
+    >
+      <form 
+        className="modal-dialog"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onSubmit={handleSubmit} style={{
         background: "var(--panel)", padding: 24, borderRadius: 8, width: 340,
         boxShadow: "0 8px 32px rgba(0,0,0,0.5)", border: "1px solid var(--border)"
       }}>

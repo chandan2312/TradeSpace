@@ -1,4 +1,4 @@
-import { getCols, allWatchlists } from "@/lib/mongo";
+import { getCols, allWatchlists, invalidateWatchlistsCache } from "@/lib/mongo";
 import { broadcast } from "@/lib/realtime";
 import { json } from "@/lib/http";
 
@@ -14,6 +14,12 @@ export async function POST(req) {
 
   const { watchlistsCol } = await getCols();
   await watchlistsCol.insertOne({ name, symbols: [], createdAt: new Date() });
+
+  invalidateWatchlistsCache();
+  if (typeof globalThis._tsInvalidateAutonomousRouteCache === "function") {
+    try { globalThis._tsInvalidateAutonomousRouteCache(); } catch {}
+  }
+
   broadcast({ type: "watchlists_changed" });
-  return json({ ok: true, watchlists: await allWatchlists() });
+  return json({ ok: true, watchlists: await allWatchlists(true) });
 }

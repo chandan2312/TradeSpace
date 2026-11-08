@@ -1,7 +1,8 @@
-import { getCols, allWatchlists } from "@/lib/mongo";
+import { getCols, allWatchlists, invalidateWatchlistsCache } from "@/lib/mongo";
 import { broadcast } from "@/lib/realtime";
 import { json, oid } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
+import { runAutonomousScan } from "@/lib/autonomous/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,19 @@ export async function POST(req, { params }) {
 
   const { watchlistsCol } = await getCols();
   await watchlistsCol.updateOne({ _id }, { $addToSet: { symbols: canonicalSymbol } });
+
+  invalidateWatchlistsCache();
+  if (typeof globalThis._tsInvalidateAutonomousRouteCache === "function") {
+    try { globalThis._tsInvalidateAutonomousRouteCache(); } catch {}
+  }
+
   broadcast({ type: "watchlists_changed" });
-  return json({ ok: true, watchlists: await allWatchlists() });
+  broadcast({ type: "autonomous_changed" });
+
+  // Trigger non-blocking autonomous scan sweep for newly added symbol
+  runAutonomousScan("watchlist_symbol_added").catch((err) => {
+    console.warn("[watchlist symbol added scan error]", err?.message || err);
+  });
+
+  return json({ ok: true, watchlists: await allWatchlists(true) });
 }

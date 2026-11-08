@@ -81,6 +81,7 @@ export default function AutonomousLiveHUD({
   const [auxAllTimeSlots, setAuxAllTimeSlots] = useState([]);
   const [auxAllSymbolProfiles, setAuxAllSymbolProfiles] = useState({});
   const [auxAllEntryModels, setAuxAllEntryModels] = useState({});
+  const [auxUniverse, setAuxUniverse] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const fetchAuxState = useCallback(async () => {
@@ -97,6 +98,11 @@ export default function AutonomousLiveHUD({
         if (Array.isArray(data.allTimeSlots)) setAuxAllTimeSlots(data.allTimeSlots);
         if (data.allSymbolProfiles) setAuxAllSymbolProfiles(data.allSymbolProfiles);
         if (data.allEntryModels) setAuxAllEntryModels(data.allEntryModels);
+        if (Array.isArray(data.allWatchlistSymbols)) {
+          setAuxUniverse(data.allWatchlistSymbols);
+        } else if (Array.isArray(data.universe)) {
+          setAuxUniverse(data.universe);
+        }
         if (Array.isArray(data.leaderboard?.rankedPairs)) {
           setAuxRadarPairs(data.leaderboard.rankedPairs);
         }
@@ -1909,7 +1915,7 @@ export default function AutonomousLiveHUD({
               allTimeSlots={auxAllTimeSlots}
               allSymbolProfiles={auxAllSymbolProfiles}
               allEntryModels={auxAllEntryModels}
-              universe={auxConfig.universe || []}
+              universe={auxUniverse.length > 0 ? auxUniverse : (auxConfig.universe || [])}
               onSaveConfig={handleSaveConfig}
               onClose={() => setSettingsOpen(false)}
             />

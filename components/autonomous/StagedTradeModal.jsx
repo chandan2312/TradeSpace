@@ -100,11 +100,16 @@ export default function StagedTradeModal({
         justifyContent: "center",
         padding: "clamp(8px, 2.5vw, 18px)",
       }}
+      className="modal-backdrop"
       onClick={onClose}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
       <div
         role="dialog"
         aria-modal="true"
+        className="modal-dialog"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--panel)",
           border: "1px solid var(--border-hi)",
@@ -150,7 +155,7 @@ export default function StagedTradeModal({
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>
-                  {trade.symbol} · {isDual ? "Dual-Leg Execution Setup" : "Setup Details"}
+                  {trade.symbol} · {isDual ? "Dual-Leg Execution Setup" : "TradeProp Execution Setup"}
                 </h2>
                 <span
                   style={{
@@ -167,7 +172,24 @@ export default function StagedTradeModal({
                 >
                   {trade.dir === 1 ? "BUY SETUP ▲" : "SELL SETUP ▼"}
                 </span>
-                {isDual && (
+                {!isDual ? (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: "rgba(168, 85, 247, 0.18)",
+                      color: "var(--purple, #c084fc)",
+                      border: "1px solid rgba(168, 85, 247, 0.3)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <Shield size={11} /> TRADEPROP (Safe 1.5R–3.0R)
+                  </span>
+                ) : (
                   <span
                     style={{
                       fontSize: 10,
@@ -441,7 +463,7 @@ export default function StagedTradeModal({
                     <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(168, 85, 247, 0.2)", color: "var(--purple, #c084fc)" }}>
                       PATHWAY B · PROP-FIRM SAFE
                     </span>
-                    <strong style={{ fontSize: 13 }}>Protected Fixed Bracket (1.5R–2.5R)</strong>
+                    <strong style={{ fontSize: 13 }}>Protected Fixed Bracket (1.5R–3.0R)</strong>
                   </div>
                   <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--purple, #c084fc)" }}>
                     Alloc: {propLeg.lotSize ? `${propLeg.lotSize} lots` : "1.0%"} · Target: {propLeg.targetRR || 2.0}R

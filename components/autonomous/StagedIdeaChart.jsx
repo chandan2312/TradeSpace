@@ -644,16 +644,12 @@ export default function StagedIdeaChart({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 10, height: 10, background: "rgba(250, 204, 21, 0.3)", border: "1px solid #facc15", borderRadius: 2 }} />
-            <span>Full TP (TradeDefault Target)</span>
+            <span style={{ width: 10, height: 10, background: "rgba(6, 182, 212, 0.3)", border: "1px solid #22d3ee", borderRadius: 2 }} />
+            <span style={{ color: "#22d3ee" }}>Target (Take Profit 1.5R–3.0R)</span>
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 14, height: 2, borderTop: "2px dashed #06b6d4" }} />
-            <span style={{ color: "#06b6d4" }}>Prop-Firm Target Line</span>
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 14, height: 2, borderTop: "2px dotted #f59e0b" }} />
-            <span style={{ color: "#f59e0b" }}>50% Milestone Level Line</span>
+            <span style={{ width: 10, height: 10, background: "rgba(251, 113, 133, 0.3)", border: "1px solid #fb7185", borderRadius: 2 }} />
+            <span style={{ color: "#fb7185" }}>Stop Loss (Invalidation)</span>
           </span>
         </div>
 

@@ -184,13 +184,13 @@ export default function TopBar({
             borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 4,
             boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 110, width: 220
           }}>
-            <button className="dropdown-btn" onClick={() => { onOpenStrength(); setToolsMenuOpen(false); }}>
+            <button className="dropdown-btn" onClick={() => { onOpenStrength?.(); setToolsMenuOpen(false); }}>
               <Activity size={14} /> Currency Strength Meter
             </button>
-            <button className="dropdown-btn" onClick={() => { onOpenCorrelated(); setToolsMenuOpen(false); }}>
+            <button className="dropdown-btn" onClick={() => { onOpenCorrelated?.(); setToolsMenuOpen(false); }}>
               <LayoutGrid size={14} /> Correlated Pairs
             </button>
-            <button className="dropdown-btn" onClick={() => { onOpenMarketBias(); setToolsMenuOpen(false); }}>
+            <button className="dropdown-btn" onClick={() => { onOpenMarketBias?.(); setToolsMenuOpen(false); }}>
               <Activity size={14} /> Master Market Bias
             </button>
             <Link href="/autonomous" className="dropdown-btn" onClick={() => setToolsMenuOpen(false)}>
@@ -202,7 +202,7 @@ export default function TopBar({
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             <button 
               className="dropdown-btn" 
-              onClick={() => { onToggleBias(); setToolsMenuOpen(false); }}
+              onClick={() => { onToggleBias?.(); setToolsMenuOpen(false); }}
               style={{ color: biasEnabled ? "var(--green)" : "var(--muted)", fontWeight: 600 }}
             >
               <Power size={14} style={{ color: biasEnabled ? "var(--green)" : "var(--muted)" }} /> Bias Engine: {biasEnabled ? "ON" : "OFF"}
@@ -346,7 +346,7 @@ export default function TopBar({
           <LayoutGrid size={14} />
         </button>
         {layout === "1" && (
-          <button className="ghost" onClick={onOpenLoop} title="Start Slideshow Loop" aria-label="Start Slideshow Loop" style={{ padding: "4px 8px", display: "flex", alignItems: "center", fontSize: 12, flexShrink: 0 }}>
+          <button className="ghost" onClick={() => onOpenLoop?.()} title="Start Slideshow Loop" aria-label="Start Slideshow Loop" style={{ padding: "4px 8px", display: "flex", alignItems: "center", fontSize: 12, flexShrink: 0 }}>
             <Repeat size={14} />
           </button>
         )}
@@ -638,7 +638,7 @@ export default function TopBar({
         {layout === "1" && (
           <button 
             className="ghost" 
-            onClick={onOpenPip} 
+            onClick={() => onOpenPip?.()} 
             title={isPipActive ? "Floating Window Active" : "Pop out chart to floating window (PiP)"} 
             aria-label="Picture in Picture"
             style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", color: isPipActive ? "var(--brand)" : "inherit", flexShrink: 0 }}
@@ -646,7 +646,7 @@ export default function TopBar({
             <ExternalLink size={14} />
           </button>
         )}
-        <button className="ghost" onClick={onOpenAlerts} title="View Alerts" aria-label="View Alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        <button className="ghost" onClick={() => onOpenAlerts?.()} title="View Alerts" aria-label="View Alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
           <Bell size={14} />
           {activeAlertCount > 0 && (
             <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--accent)", color: "#fff", fontWeight: 700 }}>
@@ -654,7 +654,7 @@ export default function TopBar({
             </span>
           )}
         </button>
-        <button onClick={onAddAlert} title="Create alert at market price" aria-label="Create Alert" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", flexShrink: 0 }}>
+        <button onClick={() => onAddAlert?.()} title="Create alert at market price" aria-label="Create Alert" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", flexShrink: 0 }}>
           <BellPlus size={14} />
         </button>
         <button className="ghost hide-mobile" onClick={() => setWatchlistOpen(!watchlistOpen)} title={watchlistOpen ? "Hide Watchlist" : "Show Watchlist"} aria-label="Toggle Watchlist" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", flexShrink: 0 }}>
@@ -907,7 +907,7 @@ export default function TopBar({
               <button className={watchlistOpen ? "primary" : "ghost"} onClick={() => setWatchlistOpen(!watchlistOpen)} title="Watchlist" style={{ padding: "4px 8px", borderRadius: 4 }}>
                 <Sidebar size={14} />
               </button>
-              <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenAlerts(); }} title="Alerts" style={{ padding: "4px 8px", borderRadius: 4 }}>
+              <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenAlerts?.(); }} title="Alerts" style={{ padding: "4px 8px", borderRadius: 4 }}>
                 <Bell size={14} />
               </button>
               <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenSettings?.("Broker Mapping"); }} title="Broker Mapping & Settings" style={{ padding: "4px 8px", borderRadius: 4 }}>

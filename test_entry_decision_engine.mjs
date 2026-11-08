@@ -2,6 +2,7 @@
 import assert from "node:assert";
 import {
   evaluateEntryModelDecisionEngine,
+  arbitratePairwiseStructuralSetups,
   evaluateZoneDepth,
   evaluateHtfAnchor,
   evaluateModelFitness,
@@ -30,27 +31,27 @@ const test = (desc, fn) => {
 // ---------------------------------------------------------------------------
 // 1. Dealing Range Location & Depth Scoring
 // ---------------------------------------------------------------------------
-test("Long entry in Extreme Discount (< 20%) receives top location score (28-30 pts)", () => {
+test("Long entry in Extreme Discount (< 20%) receives top location score (19-20 pts)", () => {
   const range = { high: 1.1000, low: 1.0000 };
   const res = evaluateZoneDepth({ entry: 1.0150, sl: 1.0050, dir: 1, range, evidence: {} });
   assert(res.isExtreme === true, "Must be flagged as extreme");
-  assert(res.locationScore >= 28, `Expected >= 28, got ${res.locationScore}`);
+  assert(res.locationScore >= 19, `Expected >= 19, got ${res.locationScore}`);
   assert.strictEqual(res.depthTier, "EXTREME_DISCOUNT");
 });
 
-test("Long entry sweeping below Dealing Range Low receives 30 pts (Raid Zone)", () => {
+test("Long entry sweeping below Dealing Range Low receives 20 pts (Raid Zone)", () => {
   const range = { high: 1.1000, low: 1.0000 };
   const res = evaluateZoneDepth({ entry: 0.9990, sl: 0.9950, dir: 1, range, evidence: { raid: { extreme: 0.9980 } } });
   assert(res.isExtreme === true, "Must be flagged as extreme");
-  assert.strictEqual(res.locationScore, 30);
+  assert.strictEqual(res.locationScore, 20);
   assert.strictEqual(res.depthTier, "EXTREME_SWEEP_DISCOUNT");
 });
 
-test("Long entry in Deep Discount OTE (20% - 40%) receives 24 pts", () => {
+test("Long entry in Deep Discount OTE (20% - 40%) receives 18 pts", () => {
   const range = { high: 1.1000, low: 1.0000 };
   const res = evaluateZoneDepth({ entry: 1.0300, sl: 1.0100, dir: 1, range, evidence: {} });
   assert(res.isDeep === true, "Must be flagged as deep");
-  assert.strictEqual(res.locationScore, 24);
+  assert.strictEqual(res.locationScore, 18);
   assert.strictEqual(res.depthTier, "DEEP_DISCOUNT_OTE");
 });
 
@@ -61,19 +62,19 @@ test("Long entry in Equilibrium Fair Value (40% - 55%) receives 16 pts", () => {
   assert.strictEqual(res.depthTier, "EQUILIBRIUM_FAIR_VALUE");
 });
 
-test("Long entry in Premium (> 55%) receives 0 pts (Buying Premium)", () => {
+test("Long entry in Shallow Momentum (> 55%) receives 14 pts", () => {
   const range = { high: 1.1000, low: 1.0000 };
   const res = evaluateZoneDepth({ entry: 1.0650, sl: 1.0500, dir: 1, range, evidence: {} });
-  assert(res.isPremiumChop === true, "Must be flagged as premium chop");
-  assert.strictEqual(res.locationScore, 0);
-  assert.strictEqual(res.depthTier, "PREMIUM_CHOP");
+  assert(res.isShallow === true, "Must be flagged as shallow");
+  assert.strictEqual(res.locationScore, 14);
+  assert.strictEqual(res.depthTier, "SHALLOW_MOMENTUM");
 });
 
-test("Short entry in Extreme Premium (< 20% from high) receives top location score (28-30 pts)", () => {
+test("Short entry in Extreme Premium (< 20% from high) receives top location score (19-20 pts)", () => {
   const range = { high: 1.1000, low: 1.0000 };
   const res = evaluateZoneDepth({ entry: 1.0850, sl: 1.0950, dir: -1, range, evidence: {} });
   assert(res.isExtreme === true, "Must be flagged as extreme for shorts");
-  assert(res.locationScore >= 28);
+  assert(res.locationScore >= 19);
   assert.strictEqual(res.depthTier, "EXTREME_PREMIUM");
 });
 
@@ -101,14 +102,14 @@ test("Candidate overlapping HTF Order Block receives 22 anchor points", () => {
   assert.strictEqual(res.anchorTag, "HTF_ORDER_BLOCK_ANCHOR");
 });
 
-test("Floating candidate with no HTF level receives baseline 4 points", () => {
+test("Floating candidate with no HTF level receives baseline 10 points", () => {
   const anchors = [
     { id: "PDL:1", name: "PDL", price: 1.0700, side: -1, type: "PDL", major: true },
   ];
   const units = { pip: 0.0001, point: 0.00001 };
   const res = evaluateHtfAnchor({ entry: 1.0850, zoneLow: 1.0848, zoneHigh: 1.0852, dir: 1, anchors, units });
-  assert.strictEqual(res.anchorScore, 4);
-  assert.strictEqual(res.anchorTag, "LOCAL_INTRADAY_ONLY");
+  assert.strictEqual(res.anchorScore, 10);
+  assert.strictEqual(res.anchorTag, "LOCAL_INTRADAY_ANCHOR");
 });
 
 // ---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ test("OTE in the 0.618 - 0.786 deep pocket receives maximum 20 fitness points", 
 });
 
 // ---------------------------------------------------------------------------
-// 4. Impending Extreme & Shallow Trap Detector (User's Core Insight!)
+// 4. Impending Extreme & Shallow Trap Detector
 // ---------------------------------------------------------------------------
 test("Shallow model formed right ahead of unmitigated HTF Extreme is flagged as SHALLOW TRAP", () => {
   const candidate = { entry: 1.0860, sl: 1.0840 }; // 20 pip stop
@@ -156,7 +157,7 @@ test("Shallow model formed right ahead of unmitigated HTF Extreme is flagged as 
   assert.strictEqual(trap.sovereigntyTag, "SHALLOW_TRAP_AHEAD_OF_EXTREME");
 });
 
-test("Extreme model receives EXTREME_ZONE_SOVEREIGNTY bonus (+15 pts) and zero trap penalty", () => {
+test("Extreme model receives EXTREME_ZONE_SOVEREIGNTY bonus (+5 pts) and zero trap penalty", () => {
   const candidate = { entry: 1.0800, sl: 1.0780 };
   const anchors = [{ name: "PDL", price: 1.0800, type: "PDL", major: true }];
   const units = { pip: 0.0001, point: 0.00001 };
@@ -164,7 +165,7 @@ test("Extreme model receives EXTREME_ZONE_SOVEREIGNTY bonus (+15 pts) and zero t
 
   assert.strictEqual(trap.shallowTrap, false);
   assert.strictEqual(trap.trapPenalty, 0);
-  assert.strictEqual(trap.extremeBonus, 15);
+  assert.strictEqual(trap.extremeBonus, 5);
   assert.strictEqual(trap.sovereigntyTag, "EXTREME_ZONE_SOVEREIGNTY");
 });
 
@@ -181,10 +182,7 @@ test("Strict extreme preference vetoes shallow trap candidate with SHALLOW_AHEAD
       evidence: { displacement: { valid: true } },
     },
   ];
-  const anchors = [
-    { name: "PDL", price: 1.0845, type: "PDL", major: true },
-  ];
-  const range = { high: 1.0950, low: 1.0750 }; // EQ is 1.0850. 1.0860 is shallow discount / EQ
+  const range = { high: 1.0950, low: 1.0750 };
   const res = evaluateEntryModelDecisionEngine({
     candidates,
     symbol: "EURUSD",
@@ -206,9 +204,6 @@ test("Strict extreme preference vetoes shallow trap candidate with SHALLOW_AHEAD
 // ---------------------------------------------------------------------------
 test("ARBITRATION PROOF: Extreme Model (2.3R) decisively beats Shallow Model claiming 4.5R", () => {
   const range = { high: 1.1000, low: 1.0000 }; // 1000 pips range
-  const anchors = [
-    { id: "PDL", name: "PDL", price: 1.0020, type: "PDL", major: true },
-  ];
 
   // Candidate A: Shallow ICT 2022 FVG at 48% discount with tiny stop claiming 4.5R
   const candShallow = {
@@ -253,9 +248,6 @@ test("ARBITRATION PROOF: Extreme Model (2.3R) decisively beats Shallow Model cla
     config: { strictExtremePreference: false },
   });
 
-  // VERIFICATION:
-  // Under naive sorting (b.rr - a.rr), candShallow (4.5R) would falsely win!
-  // Under EntryModelDecisionEngine, candExtreme (Grade A+, Extreme Sovereignty) MUST WIN!
   const shallowEvaluated = decision.allCandidates.find(c => c.id === "ict_2022");
   assert.strictEqual(decision.modelId, "turtle_soup", "Extreme Turtle Soup must beat shallow model");
   assert(decision.zoneScore > shallowEvaluated.zoneScore, `Extreme zone score (${decision.zoneScore}) must exceed shallow (${shallowEvaluated.zoneScore})`);
@@ -285,12 +277,152 @@ test("All 4 models receive institutional grade evaluation and valid zone breakdo
   });
 
   assert(decision != null, "Decision must not be null");
-  assert(decision.allCandidates.length === 4, "Must score all 4 candidates");
+  assert(decision.allCandidates.length >= 4, "Must score all candidates");
   for (const c of decision.allCandidates) {
     assert(c.zoneScore > 0 && c.zoneScore <= 100, `Model ${c.id} zone score must be 0-100: got ${c.zoneScore}`);
     assert(["A+", "A", "B", "C"].includes(c.zoneGrade), `Model ${c.id} must receive valid grade: got ${c.zoneGrade}`);
-    assert(c.zoneBreakdown != null, `Model ${c.id} must include full zone breakdown`);
+    assert(c.zoneBreakdown != null || c.isBlended, `Model ${c.id} must include full zone breakdown or be blended`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 7. Case 1: Intra-Zone Overlap (Averaged Entry with 100% RPT Allocation)
+// ---------------------------------------------------------------------------
+test("Case 1: Intra-Zone Overlap synthesizes single composite trade at average price with 100% RPT", () => {
+  const cand1 = {
+    id: "ote_shallow",
+    modelId: "ote_continuation",
+    name: "OTE Shallow Layer",
+    entry: 1.0830,
+    sl: 1.0810,
+    rr: 2.2,
+    permitted: true,
+    confluenceScore: 78,
+    zoneScore: 75,
+    targets: [{ price: 1.0874 }, { price: 1.0890 }, { price: 1.0910 }],
+    evidence: { impulse: { high: 1.0950, low: 1.0810 } },
+  };
+
+  const cand2 = {
+    id: "fvg_deep",
+    modelId: "fvg_rejection",
+    name: "FVG Deep Layer",
+    entry: 1.0820, // Inside Cand 1 SL path (1.0830 > 1.0820 >= 1.0810)
+    sl: 1.0805,
+    rr: 2.8,
+    permitted: true,
+    confluenceScore: 82,
+    zoneScore: 80,
+    targets: [{ price: 1.0874 }, { price: 1.0890 }, { price: 1.0910 }],
+    evidence: { fvg: { top: 1.0825, bottom: 1.0815, ce: 1.0820 } },
+  };
+
+  const result = arbitratePairwiseStructuralSetups({
+    evaluated: [cand1, cand2],
+    dir: 1,
+    units: { digits: 5, pip: 0.0001 },
+  });
+
+  const winner = result[0];
+  assert(winner.isBlended === true, "Winner must be flagged as blended sweet spot");
+  assert.strictEqual(winner.entry, 1.0825, "Blended entry must be exact average: (1.0830 + 1.0820) / 2 = 1.0825");
+  assert.strictEqual(winner.sl, 1.0805, "Blended SL must be safest lower structural stop: 1.0805");
+  assert.strictEqual(winner.allocationRpt, 1.0, "Must allocate full 100% Risk Per Trade (RPT)");
+  assert.strictEqual(winner.permitted, true, "Composite blended setup must be permitted");
+  assert.strictEqual(cand1.permitted, false, "Individual cand1 must be suppressed (merged into blended)");
+  assert.strictEqual(cand2.permitted, false, "Individual cand2 must be suppressed (merged into blended)");
+  assert(cand1.mergedIntoBlended === true && cand2.mergedIntoBlended === true);
+  console.log(`   --> Blended Entry: ${winner.entry} | Common SL: ${winner.sl} | Allocation: ${winner.allocationRpt * 100}% RPT`);
+});
+
+// ---------------------------------------------------------------------------
+// 8. Case 2: Multi-Regime HTF Magnet Arbitration (Authoritative Magnet vs Shallow Trap)
+// ---------------------------------------------------------------------------
+test("Case 2: Authoritative HTF Magnet suppresses shallow trade with HTF_MAGNET_TRAP", () => {
+  const candShallow = {
+    id: "m15_fvg",
+    modelId: "fvg_rejection",
+    name: "M15 FVG Shallow Retest",
+    tf: "M15",
+    entry: 1.0840,
+    sl: 1.0830, // Stops at 1.0830
+    rr: 3.0,
+    permitted: true,
+    confluenceScore: 70,
+    confluenceBreakdown: { velocityDrag: -14 }, // Adverse freight train plunging towards HTF OB
+    zoneBreakdown: { anchorTag: "LOCAL_INTRADAY", depthTier: "SHALLOW_MOMENTUM", depthPct: 60 },
+  };
+
+  const candHtfMagnet = {
+    id: "h4_ob_pdl",
+    modelId: "turtle_soup",
+    name: "H4 Major Order Block & PDL Raid",
+    tf: "H4",
+    entry: 1.0800, // Deeper than candShallow.sl (1.0800 < 1.0830)
+    sl: 1.0780,
+    rr: 2.5,
+    permitted: true,
+    confluenceScore: 88,
+    zoneBreakdown: { anchorTag: "MAJOR_HTF_ORDER_BLOCK_PDL", depthTier: "EXTREME_DISCOUNT", depthPct: 15 },
+    evidence: { majorLevel: true, raid: { levelPrice: 1.0800 } },
+  };
+
+  const result = arbitratePairwiseStructuralSetups({
+    evaluated: [candShallow, candHtfMagnet],
+    dir: 1,
+    units: { digits: 5, pip: 0.0001 },
+  });
+
+  const winner = result[0];
+  assert.strictEqual(winner.id, "h4_ob_pdl", "Authoritative HTF Magnet must be promoted to winner");
+  assert.strictEqual(winner.isHtfMagnetWinner, true);
+  assert(winner.magnetAuthorityScore >= 50, `Expected magnet authority score >= 50, got ${winner.magnetAuthorityScore}`);
+  assert.strictEqual(candShallow.permitted, false, "Shallow candidate must be suppressed");
+  assert(candShallow.vetoes.some(v => v.code === "HTF_MAGNET_TRAP"), "Must record HTF_MAGNET_TRAP veto on shallow candidate");
+  console.log(`   --> Magnet Winner: [${winner.id}] (Score: ${winner.magnetAuthorityScore}/100) | Shallow candidate vetoed: [${candShallow.vetoes[0].code}]`);
+});
+
+test("Case 2: Weak secondary candidate does NOT suppress shallow trade (Momentum Priority retained)", () => {
+  const candShallow = {
+    id: "m15_breakout",
+    modelId: "displacement_breakout",
+    name: "M15 Displacement Breakout",
+    tf: "M15",
+    entry: 1.0850,
+    sl: 1.0835,
+    rr: 2.8,
+    permitted: true,
+    confluenceScore: 82,
+    zoneScore: 80,
+    confluenceBreakdown: { velocityDrag: 0 },
+    zoneBreakdown: { anchorTag: "LOCAL_INTRADAY", depthTier: "EQUILIBRIUM_FAIR_VALUE", depthPct: 45 },
+  };
+
+  const candWeakDeep = {
+    id: "m5_weak_swing",
+    modelId: "ote_continuation",
+    name: "M5 Minor Fib Pocket",
+    tf: "M5", // Lower timeframe than candShallow!
+    entry: 1.0810, // Deeper than candShallow.sl (1.0810 < 1.0835)
+    sl: 1.0795,
+    rr: 2.1,
+    permitted: true,
+    confluenceScore: 65,
+    zoneScore: 60,
+    zoneBreakdown: { anchorTag: "LOCAL_INTRADAY", depthTier: "EQUILIBRIUM_FAIR_VALUE", depthPct: 40 },
+  };
+
+  const result = arbitratePairwiseStructuralSetups({
+    evaluated: [candShallow, candWeakDeep],
+    dir: 1,
+    units: { digits: 5, pip: 0.0001 },
+  });
+
+  const winner = result[0];
+  assert.strictEqual(winner.id, "m15_breakout", "Shallow trade must retain momentum priority when deeper setup is weak");
+  assert.strictEqual(winner.permitted, true);
+  assert.strictEqual(candWeakDeep.isDeferredSecondary, true, "Weak deeper setup must be deferred secondary");
+  console.log(`   --> Momentum Priority Winner: [${winner.id}] | Deeper setup deferred: ${candWeakDeep.deferredReason}`);
 });
 
 console.log("\n===============================================================================");

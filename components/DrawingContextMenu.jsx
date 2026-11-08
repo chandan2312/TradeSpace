@@ -50,6 +50,13 @@ export default function DrawingContextMenu({ api }) {
     );
   };
 
+  const clampedX = typeof window !== "undefined"
+    ? Math.max(10, Math.min(ctxMenu.x, window.innerWidth - 200))
+    : ctxMenu.x;
+  const clampedY = typeof window !== "undefined"
+    ? Math.max(10, Math.min(ctxMenu.y, window.innerHeight - 300))
+    : ctxMenu.y;
+
   return (
     <div
       ref={menuRef}
@@ -57,7 +64,7 @@ export default function DrawingContextMenu({ api }) {
       onPointerDown={stop}
       onTouchStart={stop}
       style={{
-        position: "absolute", left: ctxMenu.x, top: ctxMenu.y, zIndex: 50, minWidth: 180,
+        position: "absolute", left: clampedX, top: clampedY, zIndex: 50, minWidth: 180,
         background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,
         boxShadow: "0 8px 28px rgba(0,0,0,.6)", overflow: "hidden",
       }}

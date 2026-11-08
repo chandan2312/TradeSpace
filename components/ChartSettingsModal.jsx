@@ -119,13 +119,26 @@ export default function ChartSettingsModal({ onClose, initialTab = "Symbol" }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
-      padding: isMobile ? "8px" : "16px"
-    }}>
-      <div style={{
+    <div 
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
+        padding: isMobile ? "8px" : "16px"
+      }}
+    >
+      <div 
+        className="modal-dialog"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        style={{
         background: "var(--panel)",
         width: isMobile ? "100%" : 780,
         maxWidth: isMobile ? "100%" : "95vw",

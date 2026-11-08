@@ -150,6 +150,9 @@ export default function CorrelatedPairsModal({
 
   return (
     <div
+      className="modal-backdrop"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
         background: "var(--bg)",
@@ -363,8 +366,6 @@ export default function CorrelatedPairsModal({
               return (
                 <div 
                   key={sym}
-                  onDoubleClick={() => setFullScreenSym(fullScreenSym === sym ? null : sym)}
-                  title="Double click to toggle fullscreen"
                   style={{ 
                     border: "1px solid var(--border)", borderRadius: 8, 
                     display: "flex", flexDirection: "column", overflow: "hidden",

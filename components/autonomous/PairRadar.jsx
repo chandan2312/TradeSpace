@@ -179,12 +179,13 @@ export default function PairRadar({
         return (
           status === "PRIME_QUALIFIED" ||
           status.startsWith("WATCHING") ||
+          status.startsWith("SCANNING") ||
           (pair.brain?.conviction || 0) >= 75 ||
           (pair.opportunityScore || 0) >= 60 ||
           (pair.rawScore || pair.stagedLevel?.confluenceScore || 0) >= 70
         );
       }
-      if (statusFilter === "prime") return status === "PRIME_QUALIFIED";
+      if (statusFilter === "prime") return status === "PRIME_QUALIFIED" || status.startsWith("SCANNING");
       if (statusFilter === "watching") return status.startsWith("WATCHING");
       if (statusFilter === "watchlist") return Boolean(pair.isInMainWatchlist);
       if (statusFilter === "starred") return whitelistSet.has(pair.symbol);

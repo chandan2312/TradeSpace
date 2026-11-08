@@ -126,7 +126,9 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
         justifyContent: "center",
         padding: "min(4vw, 16px)",
       }}
+      className="modal-backdrop"
       onClick={onClose}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
       <div
         ref={dialogRef}
@@ -134,6 +136,9 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
         aria-modal="true"
         aria-labelledby="brain-inspector-title"
         tabIndex={-1}
+        className="modal-dialog"
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
         style={{
           background: "var(--panel)",
           border: "1px solid var(--border)",
