@@ -41,6 +41,11 @@ export default function ConfluenceBreakdown({ breakdown, score, compact = false 
     return typeof val === "number" && val < 0;
   });
 
+  if (typeof breakdown?.trapPenalty === "number" && breakdown.trapPenalty !== 0) {
+    const penaltyVal = breakdown.trapPenalty > 0 ? -breakdown.trapPenalty : breakdown.trapPenalty;
+    activeNegativeFactors.push(["trapPenalty", "Trap penalty / shallow hazard", penaltyVal]);
+  }
+
   return (
     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
       {/* Header with Net Score + Positive/Negative Breakdown */}
@@ -96,8 +101,8 @@ export default function ConfluenceBreakdown({ breakdown, score, compact = false 
         </div>
         {activeNegativeFactors.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {activeNegativeFactors.map(([key, label]) => {
-              const val = breakdown[key];
+            {activeNegativeFactors.map(([key, label, customVal]) => {
+              const val = customVal ?? breakdown[key];
               return (
                 <div
                   key={key}

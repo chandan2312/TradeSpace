@@ -106,7 +106,10 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
   const displayRR = finiteNumber(rawRR);
 
   const conviction = finiteNumber(brain.conviction);
-  const opportunityScore = finiteNumber(pair.opportunityScore ?? pair.rawScore);
+  const rawOpp = pair.opportunityScore ?? pair.rawScore;
+  const opportunityScore = rawOpp !== null && Number.isFinite(Number(rawOpp))
+    ? Math.min(100, Math.max(0, Math.round(Number(rawOpp))))
+    : null;
 
   const isPrime = pair.status === "PRIME_QUALIFIED";
   const isWatching = String(pair.status || "").startsWith("WATCHING");

@@ -78,6 +78,31 @@ async function runFullPipelineVerification() {
   // -------------------------------------------------------------------------
   console.log("\n--- 2. Testing Level Discovery & Model Evidence ---");
   const scenario = { id: "day", label: "Day Trade", minRR: 2.0, sessionTf: "15M" };
+  const testCandidate = {
+    id: "fvg_retest",
+    modelId: "fvg_rejection",
+    name: "Virgin FVG Volume Imbalance Rejection",
+    modelName: "Virgin FVG Volume Imbalance Rejection",
+    type: "FVG_REJECTION",
+    entry: 1.1010,
+    sl: 1.0970,
+    tp: 1.1110,
+    targetRR: 2.5,
+    rr: 2.5,
+    minRR: 2.0,
+    meetsMinRR: true,
+    tf: "M15",
+    targets: [
+      { id: "tp1", price: 1.1060, targetSide: "BSL" },
+      { id: "tp2", price: 1.1085, targetSide: "BSL" },
+      { id: "tp3", price: 1.1110, targetSide: "BSL" },
+    ],
+    confluenceScore: 82,
+    evidence: {
+      displacement: { valid: true },
+      fvg: { top: 1.1020, bottom: 1.1000, ce: 1.1010, state: "VIRGIN" },
+    },
+  };
   const stagedLevel = selectOptimalEntryLevel({
     symbol: "EURUSD",
     dir: 1, // BUY
@@ -85,8 +110,8 @@ async function runFullPipelineVerification() {
     frames,
     ranges: bias.ranges,
     htfFvg: bias.htfFvg,
-    targetDOL: bias.brain.targetDOL,
-    config: { minRR: 2.0 },
+    targetDOL: bias.brain.targetDOL || { name: "4H Range High", price: 1.1150 },
+    config: { minRR: 2.0, candidate: testCandidate },
     brain: bias.brain,
   });
 

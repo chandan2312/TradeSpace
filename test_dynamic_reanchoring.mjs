@@ -69,6 +69,47 @@ async function runTests() {
 
   const gathered = new Map([["EURUSD", mockFrames]]);
 
+  const mockCandidate = {
+    id: "fvg_retest",
+    modelId: "fvg_rejection",
+    name: "Virgin FVG Volume Imbalance Rejection",
+    modelName: "Virgin FVG Volume Imbalance Rejection",
+    type: "FVG_REJECTION",
+    entry: 1.1010,
+    sl: 1.0970,
+    tp: 1.1110,
+    targetRR: 2.5,
+    rr: 2.5,
+    minRR: 1.8,
+    meetsMinRR: true,
+    tf: "M15",
+    targets: [
+      { id: "tp1", price: 1.1060, targetSide: "BSL" },
+      { id: "tp2", price: 1.1085, targetSide: "BSL" },
+      { id: "tp3", price: 1.1110, targetSide: "BSL" },
+    ],
+    confluenceScore: 82,
+    evidence: {
+      displacement: { valid: true },
+      fvg: { top: 1.1020, bottom: 1.1000, ce: 1.1010, state: "VIRGIN" },
+    },
+  };
+
+  const mockBias = {
+    brain: {
+      macroDir: 1,
+      macroBias: "BULLISH",
+      macroCompass: "BULLISH",
+      action: "READY_TO_BUY",
+      verdict: "BULLISH_EXPANSION",
+      conviction: 85,
+      horizons: { DAY: { macroCompass: "BULLISH" } },
+      dealingRange: { high: 1.1200, low: 1.0800 },
+      targetDOL: { name: "4H Range High", price: 1.1200 },
+    },
+    ranges: { H4: { high: 1.1200, low: 1.0800 } },
+  };
+
   // =========================================================================
   // TEST 1: Two-Way Team Harmonization between Brain and Entry Model
   // =========================================================================
@@ -77,6 +118,8 @@ async function runTests() {
     minConviction: 50,
     minRunwayPct: 10,
     minRR: 1.8,
+    candidate: mockCandidate,
+    computeBias: () => mockBias,
   }, nowMs, SCENARIOS.DAY);
 
   assert.ok(evalResult.brain, "Brain should be evaluated");
@@ -133,6 +176,8 @@ async function runTests() {
     mainWatchlistSymbols: ["EURUSD"],
     frames: { EURUSD: mockFrames },
     minRR: 1.8,
+    candidate: mockCandidate,
+    computeBias: () => mockBias,
   }, new Date(nowMs));
 
   const dolChangedVeto = revalResult.vetoes?.find(v => v.code === "DOL_CHANGED");

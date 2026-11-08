@@ -328,6 +328,65 @@ export default function StagedQueue({
             const slVal = Number(trade.initialSlPrice ?? trade.slPrice ?? level.sl);
             const dist = Math.abs(entryVal - slVal);
             const confluence = trade.confluenceScore ?? level.confluenceScore ?? 85;
+            const breakdown =
+              trade.confluenceBreakdown ||
+              level.confluenceBreakdown ||
+              trade.evidence?.confluenceBreakdown ||
+              level.evidence?.confluenceBreakdown ||
+              {};
+            const stagedPosScore =
+              trade.positiveScore ??
+              level.positiveScore ??
+              breakdown.positiveScore ??
+              (confluence > 0 ? confluence : 0);
+            const stagedNegScore =
+              trade.negativeScore ??
+              level.negativeScore ??
+              (typeof breakdown.negativeScore === "number"
+                ? breakdown.negativeScore
+                : typeof breakdown.netScore === "number" && typeof breakdown.positiveScore === "number"
+                ? breakdown.netScore - breakdown.positiveScore
+                : 0);
+
+            const isBlended = Boolean(trade.isBlended || level.isBlended);
+            const topContenders = Array.isArray(trade.topContenders)
+              ? trade.topContenders
+              : Array.isArray(level.topContenders)
+              ? level.topContenders
+              : [];
+
+            const activeNegativeTags = [];
+            if (typeof breakdown.velocityDrag === "number" && breakdown.velocityDrag < 0) {
+              activeNegativeTags.push({ label: "Velocity Drag", val: breakdown.velocityDrag });
+            }
+            if (typeof breakdown.macroHeadwind === "number" && breakdown.macroHeadwind < 0) {
+              activeNegativeTags.push({ label: "Macro Headwind", val: breakdown.macroHeadwind });
+            }
+            if (typeof breakdown.opposingFriction === "number" && breakdown.opposingFriction < 0) {
+              activeNegativeTags.push({ label: "Opposing Wall", val: breakdown.opposingFriction });
+            }
+            if (typeof breakdown.timingLull === "number" && breakdown.timingLull < 0) {
+              activeNegativeTags.push({ label: "Timing Lull", val: breakdown.timingLull });
+            }
+            if (typeof breakdown.staleAge === "number" && breakdown.staleAge < 0) {
+              activeNegativeTags.push({ label: "Stale Age", val: breakdown.staleAge });
+            }
+            if (typeof breakdown.runwayExhaustion === "number" && breakdown.runwayExhaustion < 0) {
+              activeNegativeTags.push({ label: "Runway Exhausted", val: breakdown.runwayExhaustion });
+            }
+            if (typeof breakdown.spreadDrag === "number" && breakdown.spreadDrag < 0) {
+              activeNegativeTags.push({ label: "Spread Drag", val: breakdown.spreadDrag });
+            }
+            if (typeof level?.zoneBreakdown?.trapPenalty === "number" && level.zoneBreakdown.trapPenalty > 0) {
+              activeNegativeTags.push({ label: "Trap Penalty", val: -level.zoneBreakdown.trapPenalty });
+            }
+            if (activeNegativeTags.length === 0 && Array.isArray(trade.negativeTags || level.negativeTags)) {
+              const rawTags = trade.negativeTags || level.negativeTags;
+              rawTags.forEach((t) => {
+                activeNegativeTags.push({ label: String(t).replace(/_/g, " "), val: "" });
+              });
+            }
+
             const routingDefault = defaultLeg ? (defaultLeg.copierRouting || resolveCopierRouting(defaultLeg)) : null;
             const routingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
             const isApproving = setup.tradeIds?.some((id) => pendingAction === id) || pendingAction === setup._id;
@@ -487,6 +546,25 @@ export default function StagedQueue({
                         <Zap size={9} /> DYNAMIC RE-ANCHORED
                       </span>
                     )}
+                    {isBlended && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: 3,
+                          background: "rgba(168, 85, 247, 0.15)",
+                          color: "var(--purple, #c084fc)",
+                          border: "1px solid rgba(168, 85, 247, 0.35)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 3,
+                        }}
+                        title="Blended Sweet Spot: Merged FVG + Order Block zone (100% RPT allocation)"
+                      >
+                        💎 BLENDED SWEET SPOT
+                      </span>
+                    )}
                   </div>
 
                   {/* Status Badge */}
@@ -540,22 +618,45 @@ export default function StagedQueue({
                       alignItems: "center",
                       justifyContent: "space-between",
                       fontSize: 11,
+                      flexWrap: "wrap",
+                      gap: 4,
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ color: "var(--muted)", fontSize: 10, fontWeight: 600 }}>Model:</span>
                       <ModelBadge item={trade} size="xs" showName={true} />
                     </div>
-                    <span
-                      style={{
-                        fontFamily: "monospace",
-                        fontWeight: 800,
-                        color: scoreColor,
-                        fontSize: 10.5,
-                      }}
-                    >
-                      Confluence: {confluence}/100
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "monospace", fontSize: 10.5 }}>
+                      <span
+                        style={{
+                          fontWeight: 800,
+                          color: scoreColor,
+                        }}
+                      >
+                        Net: {confluence}/100
+                      </span>
+                      <span style={{ color: "var(--green)", fontWeight: 700, fontSize: 9.5 }}>
+                        +{stagedPosScore} Pos
+                      </span>
+                      {stagedNegScore < 0 ? (
+                        <span
+                          style={{
+                            color: "var(--red)",
+                            fontWeight: 700,
+                            fontSize: 9.5,
+                            background: "rgba(239, 68, 68, 0.12)",
+                            padding: "0 4px",
+                            borderRadius: 3,
+                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                          }}
+                          title={`Negative deductions: ${stagedNegScore} pts`}
+                        >
+                          {stagedNegScore} Neg
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--muted)", fontSize: 9, opacity: 0.65 }}>0 Drag</span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Visual Confluence Bar */}
@@ -578,6 +679,43 @@ export default function StagedQueue({
                       }}
                     />
                   </div>
+
+                  {/* Active Negative Friction Chips */}
+                  {activeNegativeTags.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 2 }}>
+                      {activeNegativeTags.map((item, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            fontSize: 8.5,
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            background: "rgba(239, 68, 68, 0.12)",
+                            border: "1px solid rgba(239, 68, 68, 0.28)",
+                            color: "var(--red)",
+                            padding: "1px 5px",
+                            borderRadius: 3,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 3,
+                          }}
+                          title={`Negative factor deduction: ${item.val} pts`}
+                        >
+                          <span style={{ fontSize: 8 }}>⚠️</span>
+                          {item.val !== "" && <span>{item.val}</span>}
+                          <span style={{ color: "var(--fg)", opacity: 0.85 }}>{item.label}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Dynamic Arbiter summary if multiple models evaluated */}
+                  {topContenders.length > 1 && (
+                    <div style={{ fontSize: 8.5, color: "var(--muted)", fontFamily: "monospace", display: "flex", alignItems: "center", gap: 4 }}>
+                      <span>⚖️ Arbiter:</span>
+                      <span>Top setup ranked from {topContenders.length} candidates</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. 3-Column Setup Geometry Strip */}

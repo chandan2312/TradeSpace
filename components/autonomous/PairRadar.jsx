@@ -762,11 +762,70 @@ export default function PairRadar({
               (isWatching ? "Scanning Retracement (FVG / OTE)" : "Structure Shift");
 
             // Opportunity score calculation & rank styling
-            const effectiveScore =
-              pair.rawScore ??
-              level?.confluenceScore ??
-              pair.opportunityScore ??
-              0;
+            const effectiveScore = Math.min(
+              100,
+              Math.max(
+                0,
+                Math.round(
+                  pair.opportunityScore ??
+                  level?.netCompositeScore ??
+                  level?.confluenceScore ??
+                  pair.rawScore ??
+                  0
+                )
+              )
+            );
+
+            // Confluence & Negative Friction breakdown extraction
+            const breakdown =
+              pair.confluenceBreakdown ||
+              level?.confluenceBreakdown ||
+              pair.entryModel?.confluenceBreakdown ||
+              {};
+            const posScore =
+              breakdown.positiveScore ??
+              level?.positiveScore ??
+              (effectiveScore > 0 ? effectiveScore : 0);
+            const negScore =
+              breakdown.negativeScore ??
+              level?.negativeScore ??
+              (typeof breakdown.negativeScore === "number"
+                ? breakdown.negativeScore
+                : typeof breakdown.netScore === "number" && typeof breakdown.positiveScore === "number"
+                ? breakdown.netScore - breakdown.positiveScore
+                : 0);
+
+            const activeNegativeTags = [];
+            if (typeof breakdown.velocityDrag === "number" && breakdown.velocityDrag < 0) {
+              activeNegativeTags.push({ label: "Velocity Drag", val: breakdown.velocityDrag });
+            }
+            if (typeof breakdown.macroHeadwind === "number" && breakdown.macroHeadwind < 0) {
+              activeNegativeTags.push({ label: "Macro Headwind", val: breakdown.macroHeadwind });
+            }
+            if (typeof breakdown.opposingFriction === "number" && breakdown.opposingFriction < 0) {
+              activeNegativeTags.push({ label: "Opposing Wall", val: breakdown.opposingFriction });
+            }
+            if (typeof breakdown.timingLull === "number" && breakdown.timingLull < 0) {
+              activeNegativeTags.push({ label: "Timing Lull", val: breakdown.timingLull });
+            }
+            if (typeof breakdown.staleAge === "number" && breakdown.staleAge < 0) {
+              activeNegativeTags.push({ label: "Stale Age", val: breakdown.staleAge });
+            }
+            if (typeof breakdown.runwayExhaustion === "number" && breakdown.runwayExhaustion < 0) {
+              activeNegativeTags.push({ label: "Runway Exhausted", val: breakdown.runwayExhaustion });
+            }
+            if (typeof breakdown.spreadDrag === "number" && breakdown.spreadDrag < 0) {
+              activeNegativeTags.push({ label: "Spread Drag", val: breakdown.spreadDrag });
+            }
+            if (typeof level?.zoneBreakdown?.trapPenalty === "number" && level.zoneBreakdown.trapPenalty > 0) {
+              activeNegativeTags.push({ label: "Trap Penalty", val: -level.zoneBreakdown.trapPenalty });
+            }
+            if (activeNegativeTags.length === 0 && Array.isArray(pair.negativeTags || level?.negativeTags)) {
+              const rawTags = pair.negativeTags || level?.negativeTags;
+              rawTags.forEach((t) => {
+                activeNegativeTags.push({ label: String(t).replace(/_/g, " "), val: "" });
+              });
+            }
 
             const scoreColor =
               effectiveScore >= 80
@@ -1068,6 +1127,103 @@ export default function PairRadar({
                       />
                     </div>
                   </div>
+
+                  {/* Confluence & Negative Friction Breakdown Sub-row */}
+                  <div
+                    style={{
+                      gridColumn: "1 / -1",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 4,
+                      paddingTop: 4,
+                      borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                      fontSize: 9,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ color: "var(--muted)", fontSize: 8.5 }}>Score Split:</span>
+                      <span style={{ color: "var(--green)", fontWeight: 700 }}>+{posScore} Pos</span>
+                      {negScore < 0 ? (
+                        <span
+                          style={{
+                            color: "var(--red)",
+                            fontWeight: 700,
+                            background: "rgba(239, 68, 68, 0.12)",
+                            padding: "0 4px",
+                            borderRadius: 3,
+                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                          }}
+                          title={`Adverse friction & structural risk deductions: ${negScore} pts`}
+                        >
+                          {negScore} Neg
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--muted)", opacity: 0.65 }}>0 Drag</span>
+                      )}
+                    </div>
+
+                    {(level?.isBlended || pair.isBlended) && (
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                          color: "var(--purple, #c084fc)",
+                          background: "rgba(168, 85, 247, 0.12)",
+                          padding: "1px 4px",
+                          borderRadius: 3,
+                          border: "1px solid rgba(168, 85, 247, 0.3)",
+                        }}
+                        title="Blended Sweet Spot: Merged FVG + Order Block zone"
+                      >
+                        💎 Blended Sweet Spot
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Active Negative Friction Deductions */}
+                  {activeNegativeTags.length > 0 && (
+                    <div
+                      style={{
+                        gridColumn: "1 / -1",
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 3,
+                        paddingTop: 2,
+                      }}
+                    >
+                      {activeNegativeTags.slice(0, 3).map((item, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            fontSize: 8.5,
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            background: "rgba(239, 68, 68, 0.12)",
+                            border: "1px solid rgba(239, 68, 68, 0.28)",
+                            color: "var(--red)",
+                            padding: "1px 5px",
+                            borderRadius: 3,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 3,
+                          }}
+                          title={`Negative factor deduction: ${item.val} pts`}
+                        >
+                          <span style={{ fontSize: 8 }}>⚠️</span>
+                          {item.val !== "" && <span>{item.val}</span>}
+                          <span style={{ color: "var(--fg)", opacity: 0.85 }}>{item.label}</span>
+                        </span>
+                      ))}
+                      {activeNegativeTags.length > 3 && (
+                        <span style={{ fontSize: 8.5, color: "var(--red)", opacity: 0.8, alignSelf: "center" }}>
+                          +{activeNegativeTags.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. Setup Price Geometry Grid (The Core Trade Idea Data) */}

@@ -86,6 +86,27 @@ export default function StagedTradeModal({
   const modalRoutingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
   const modalRouting = trade.copierRouting || resolveCopierRouting(trade);
 
+  const modalConfluence = trade.confluenceScore ?? level.confluenceScore ?? 85;
+  const modalBreakdown =
+    trade.confluenceBreakdown ||
+    level.confluenceBreakdown ||
+    trade.evidence?.confluenceBreakdown ||
+    level.evidence?.confluenceBreakdown ||
+    {};
+  const modalPosScore =
+    trade.positiveScore ??
+    level.positiveScore ??
+    modalBreakdown.positiveScore ??
+    (modalConfluence > 0 ? modalConfluence : 0);
+  const modalNegScore =
+    trade.negativeScore ??
+    level.negativeScore ??
+    (typeof modalBreakdown.negativeScore === "number"
+      ? modalBreakdown.negativeScore
+      : typeof modalBreakdown.netScore === "number" && typeof modalBreakdown.positiveScore === "number"
+      ? modalBreakdown.netScore - modalBreakdown.positiveScore
+      : 0);
+
   return (
     <div
       style={{
@@ -236,6 +257,43 @@ export default function StagedTradeModal({
                 <span>Timeframe: <strong style={{ color: "var(--fg)" }}>{trade.tf || "15M"}</strong></span>
                 <span>·</span>
                 <span>Thesis: <strong style={{ color: "var(--fg)" }}>{trade.thesisId || brain.thesisId || "Confirmed"}</strong></span>
+                <span>·</span>
+                <span>Confluence: <strong style={{ color: "var(--accent)", fontFamily: "monospace" }}>{modalConfluence}/100</strong></span>
+                <span style={{ color: "var(--green)", fontWeight: 700, fontFamily: "monospace" }}>+{modalPosScore} Pos</span>
+                {modalNegScore < 0 ? (
+                  <span
+                    style={{
+                      color: "var(--red)",
+                      fontWeight: 700,
+                      fontFamily: "monospace",
+                      background: "rgba(239, 68, 68, 0.12)",
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                    }}
+                    title={`Adverse friction deduction: ${modalNegScore} pts`}
+                  >
+                    {modalNegScore} Neg
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--muted)", fontSize: 9.5, opacity: 0.7 }}>0 Drag</span>
+                )}
+                {(trade.isBlended || level.isBlended) && (
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      fontWeight: 800,
+                      color: "var(--purple, #c084fc)",
+                      background: "rgba(168, 85, 247, 0.15)",
+                      padding: "1px 6px",
+                      borderRadius: 3,
+                      border: "1px solid rgba(168, 85, 247, 0.3)",
+                    }}
+                    title="Blended Sweet Spot: Merged FVG + Order Block zone"
+                  >
+                    💎 BLENDED SWEET SPOT
+                  </span>
+                )}
               </div>
             </div>
 
@@ -499,20 +557,23 @@ export default function StagedTradeModal({
         {/* TAB 3: CONFLUENCE & EVIDENCE */}
         {(modalTab === "confluence" || modalTab === "all") && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {level.confluenceBreakdown && (
+            {(trade.confluenceBreakdown || level.confluenceBreakdown || trade.evidence?.confluenceBreakdown || level.evidence?.confluenceBreakdown) && (
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4 }}>
-                  Confluence Breakdown (Score: {level.confluenceScore ?? trade.confluenceScore ?? 85}/100)
+                  Confluence Breakdown (Score: {modalConfluence}/100)
                 </div>
-                <ConfluenceBreakdown breakdown={level.confluenceBreakdown} />
+                <ConfluenceBreakdown
+                  breakdown={modalBreakdown}
+                  score={modalConfluence}
+                />
               </div>
             )}
-            {level.evidence && (
+            {(trade.evidence || level.evidence) && (
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4 }}>
                   Model Evidence & Structural Formations
                 </div>
-                <EvidenceDetails evidence={level.evidence} />
+                <EvidenceDetails evidence={trade.evidence || level.evidence} />
               </div>
             )}
           </div>

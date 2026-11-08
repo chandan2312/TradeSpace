@@ -1588,6 +1588,25 @@ export default function AutonomousLiveHUD({
                     const level = trade.levelDetails || trade.stagedLevel || {};
                     const isApproving = loadingAction === (setup.primaryId || setup._id);
                     const confluence = level.confluenceScore ?? trade.confluenceScore ?? 85;
+                    const hudBreakdown =
+                      trade.confluenceBreakdown ||
+                      level.confluenceBreakdown ||
+                      trade.evidence?.confluenceBreakdown ||
+                      level.evidence?.confluenceBreakdown ||
+                      {};
+                    const hudPosScore =
+                      trade.positiveScore ??
+                      level.positiveScore ??
+                      hudBreakdown.positiveScore ??
+                      (confluence > 0 ? confluence : 0);
+                    const hudNegScore =
+                      trade.negativeScore ??
+                      level.negativeScore ??
+                      (typeof hudBreakdown.negativeScore === "number"
+                        ? hudBreakdown.negativeScore
+                        : typeof hudBreakdown.netScore === "number" && typeof hudBreakdown.positiveScore === "number"
+                        ? hudBreakdown.netScore - hudBreakdown.positiveScore
+                        : 0);
                     const isDual = setup.isDualLeg;
                     const defaultLeg = setup.defaultLeg;
                     const propLeg = setup.propLeg;
@@ -1657,16 +1676,34 @@ export default function AutonomousLiveHUD({
                             <ModelBadge item={setup} size="xs" />
                           </div>
 
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: "var(--accent)",
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            Score: {confluence}/100
-                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: "monospace" }}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "var(--accent)",
+                              }}
+                            >
+                              Score: {confluence}/100
+                            </span>
+                            <span style={{ fontSize: 9.5, color: "var(--green)", fontWeight: 700 }}>
+                              +{hudPosScore} Pos
+                            </span>
+                            {hudNegScore < 0 && (
+                              <span
+                                style={{
+                                  fontSize: 9.5,
+                                  color: "var(--red)",
+                                  fontWeight: 700,
+                                  background: "rgba(239, 68, 68, 0.12)",
+                                  padding: "0 3px",
+                                  borderRadius: 3,
+                                }}
+                              >
+                                {hudNegScore} Neg
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
