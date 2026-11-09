@@ -218,12 +218,6 @@ export default function StagedQueue({
         if (prev._id === tradeToEdit._id) {
           return { ...prev, targetRR: clampedRR, tpPrice: parsedTp };
         }
-        if (prev.defaultLeg && prev.defaultLeg._id === tradeToEdit._id) {
-          return {
-            ...prev,
-            defaultLeg: { ...prev.defaultLeg, targetRR: clampedRR, tpPrice: parsedTp },
-          };
-        }
         if (prev.propLeg && prev.propLeg._id === tradeToEdit._id) {
           return {
             ...prev,
@@ -322,8 +316,7 @@ export default function StagedQueue({
           {unifiedSetups.map((setup) => {
             const trade = setup.primaryTrade || setup;
             const level = trade.levelDetails || trade.stagedLevel || {};
-            const defaultLeg = setup.defaultLeg;
-            const propLeg = setup.propLeg;
+            const propLeg = setup.propLeg || trade;
             const armed = setup.status === "armed";
             const confirming = setup.status === "confirming";
             const vetoes = trade.vetoes || level.vetoes;
@@ -479,7 +472,6 @@ export default function StagedQueue({
               }
             }
 
-            const routingDefault = defaultLeg ? (defaultLeg.copierRouting || resolveCopierRouting(defaultLeg)) : null;
             const routingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
             const isApproving = setup.tradeIds?.some((id) => pendingAction === id) || pendingAction === setup._id;
 
@@ -583,43 +575,19 @@ export default function StagedQueue({
                       {trade.scenario?.badge || trade.tf || "15M"}
                     </span>
                     <ModelBadge item={trade} size="sm" />
-                    {setup.isDualLeg ? (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 800,
-                          padding: "2px 6px",
-                          borderRadius: 3,
-                          background: "rgba(168, 85, 247, 0.15)",
-                          color: "var(--purple, #c084fc)",
-                          border: "1px solid rgba(168, 85, 247, 0.3)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        <Layers size={10} /> DUAL EXECUTION (50% + PROP)
-                      </span>
-                    ) : trade.managementLogic && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          background:
-                            trade.managementLogic === "prop_firm_safe"
-                              ? "rgba(168, 85, 247, 0.18)"
-                              : "rgba(56, 189, 248, 0.18)",
-                          color:
-                            trade.managementLogic === "prop_firm_safe"
-                              ? "var(--purple, #c084fc)"
-                              : "var(--accent)",
-                        }}
-                      >
-                        {trade.managementLogic === "prop_firm_safe" ? "PROP SAFE" : "DEFAULT (50%)"}
-                      </span>
-                    )}
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: 3,
+                        background: "rgba(168, 85, 247, 0.18)",
+                        color: "var(--purple, #c084fc)",
+                        border: "1px solid rgba(168, 85, 247, 0.3)",
+                      }}
+                    >
+                      PROP SAFE (1.5R–3.0R)
+                    </span>
                     {(trade.lastRefinedAt || trade.events?.some((e) => e.type === "STAGED_REFINED")) && (
                       <span
                         style={{

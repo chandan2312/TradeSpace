@@ -34,7 +34,8 @@ const isPropTrade = (t) =>
   Boolean(
     t.isPropFirm ||
     t.managementLogic === "prop_firm_safe" ||
-    t.legId === "prop_firm"
+    t.legId === "prop_firm" ||
+    (!t.managementLogic && t.legId !== "default")
   );
 
 // Helper: Resolve linked sibling from active trade list (without merging them)

@@ -1615,9 +1615,7 @@ export default function AutonomousLiveHUD({
                         : typeof hudBreakdown.netScore === "number" && typeof hudBreakdown.positiveScore === "number"
                         ? hudBreakdown.netScore - hudBreakdown.positiveScore
                         : 0);
-                    const isDual = setup.isDualLeg;
-                    const defaultLeg = setup.defaultLeg;
-                    const propLeg = setup.propLeg;
+                    const propLeg = setup.propLeg || setup;
 
                     return (
                       <div
@@ -1747,8 +1745,8 @@ export default function AutonomousLiveHUD({
                             <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>
                               PROP-FIRM SAFE (1.5R–3.0R)
                             </span>
-                            {(setup.magicNumber || propLeg?.magicNumber || propLeg?.routing?.magicNumber || defaultLeg?.magicNumber) && (
-                              <span style={{ color: "var(--purple, #c084fc)", fontSize: 9 }}>⚡ MT5 #{setup.magicNumber || propLeg?.magicNumber || propLeg?.routing?.magicNumber || defaultLeg?.magicNumber}</span>
+                            {(setup.magicNumber || propLeg?.magicNumber || propLeg?.routing?.magicNumber) && (
+                              <span style={{ color: "var(--purple, #c084fc)", fontSize: 9 }}>⚡ MT5 #{setup.magicNumber || propLeg?.magicNumber || propLeg?.routing?.magicNumber}</span>
                             )}
                           </div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

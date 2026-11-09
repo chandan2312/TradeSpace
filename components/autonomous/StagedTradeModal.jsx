@@ -407,133 +407,93 @@ export default function StagedTradeModal({
           </div>
         )}
 
-        {/* TAB 2: DUAL TARGETS & MODIFIERS */}
+        {/* TAB 2: TARGET & RISK MANAGEMENT */}
         {(modalTab === "targets" || modalTab === "all") && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6 }}>
-              <Layers size={14} /> Dual Management Pipelines (Default + Prop-Firm)
+            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--purple, #c084fc)", display: "flex", alignItems: "center", gap: 6 }}>
+              <Shield size={14} /> Prop-Firm Safe Execution Pipeline (1.5R–3.0R Bracket)
             </div>
 
-            {/* Leg A: Default Milestone Pathway */}
-            {defaultLeg && (
-              <div
-                style={{
-                  background: "var(--panel-2)",
-                  border: "1px solid rgba(56, 189, 248, 0.3)",
-                  borderRadius: 10,
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(56, 189, 248, 0.2)", color: "var(--accent)" }}>
-                      PATHWAY A · DEFAULT LEG
-                    </span>
-                    <strong style={{ fontSize: 13 }}>50% Milestone + Full Runner</strong>
-                    {defaultLeg.isPaper && (
-                      <span style={{ fontSize: 10, color: "var(--muted)", background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: 4 }}>
-                        Paper Shadow
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--accent)" }}>
-                    Alloc: {defaultLeg.lotSize ? `${defaultLeg.lotSize} lots` : "1.0%"} · Target: {defaultLeg.targetRR || 4.5}R
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 8,
-                    background: "rgba(0, 0, 0, 0.2)",
-                    padding: 8,
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  <div>
-                    <span style={{ color: "var(--muted)" }}>50% Target: </span>
-                    <strong style={{ color: "#f59e0b" }}>{formatPrice(setup.halfPrice)} ({Number(setup.halfRR || 2.2).toFixed(1)}R)</strong>
-                    <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2 }}>
-                      • Books 40% position quantity<br />
-                      • Moves Stop-Loss to Breakeven<br />
-                      • Triggers Redecision Engine
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--muted)" }}>Full Runner: </span>
-                    <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)} ({Number(setup.fullRR || 4.5).toFixed(1)}R)</strong>
-                    <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2 }}>
-                      • Runs 60% to Draw on Liquidity<br />
-                      • Dynamic trailing stop active
-                    </div>
-                  </div>
-                </div>
-
-                {defaultLeg.targets?.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", marginBottom: 4 }}>
-                      Default Leg Target Ladder
-                    </div>
-                    <TargetLadder targets={defaultLeg.targets} entryPrice={entryVal} slPrice={slVal} dir={trade.dir} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Leg B: Prop-Firm Safe Pathway */}
-            {propLeg && (
-              <div
-                style={{
-                  background: "var(--panel-2)",
-                  border: "1px solid rgba(168, 85, 247, 0.3)",
-                  borderRadius: 10,
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(168, 85, 247, 0.2)", color: "var(--purple, #c084fc)" }}>
-                      PATHWAY B · PROP-FIRM SAFE
-                    </span>
-                    <strong style={{ fontSize: 13 }}>Protected Fixed Bracket (1.5R–3.0R)</strong>
-                  </div>
-                  <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--purple, #c084fc)" }}>
-                    Alloc: {propLeg.lotSize ? `${propLeg.lotSize} lots` : "1.0%"} · Target: {propLeg.targetRR || 2.0}R
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: "rgba(0, 0, 0, 0.2)",
-                    padding: 8,
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontFamily: "monospace",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <span style={{ color: "var(--muted)" }}>Target Price: </span>
-                    <strong style={{ color: "var(--purple, #c084fc)" }}>{formatPrice(setup.propTp)}</strong>
-                    <span style={{ color: "var(--muted)", marginLeft: 6 }}>({Number(setup.propRR || 2.0).toFixed(1)}R)</span>
-                  </div>
-                  <span style={{ fontSize: 10, color: "var(--muted)" }}>
-                    100% Exit at Landmark Target
+            <div
+              style={{
+                background: "var(--panel-2)",
+                border: "1px solid rgba(168, 85, 247, 0.3)",
+                borderRadius: 10,
+                padding: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(168, 85, 247, 0.2)", color: "var(--purple, #c084fc)" }}>
+                    INSTITUTIONAL BRACKET
                   </span>
+                  <strong style={{ fontSize: 13 }}>Prop-Firm Safe Model</strong>
+                  {(trade.isPaper || propLeg?.isPaper) && (
+                    <span style={{ fontSize: 10, color: "var(--muted)", background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: 4 }}>
+                      Paper Shadow
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--purple, #c084fc)" }}>
+                  Target: {formatPrice(setup.propTp || trade.tpPrice)} ({Number(setup.propRR || trade.targetRR || 2.0).toFixed(1)}R)
                 </div>
               </div>
-            )}
+
+              {/* 3-Stage Execution Milestones */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 8,
+                  background: "rgba(0, 0, 0, 0.2)",
+                  padding: 8,
+                  borderRadius: 6,
+                  fontSize: 10.5,
+                  fontFamily: "monospace",
+                }}
+              >
+                <div>
+                  <div style={{ color: "var(--muted)", fontSize: 9.5 }}>STAGE 1 (+1.0R)</div>
+                  <strong style={{ color: "#38bdf8" }}>Reduce Risk by 50%</strong>
+                  <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>
+                    Moves SL to -0.5R when profit reaches +1.0R
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: "var(--muted)", fontSize: 9.5 }}>STAGE 2 (+1.5R)</div>
+                  <strong style={{ color: "#f59e0b" }}>Lock Breakeven (0.0R)</strong>
+                  <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>
+                    Moves SL to Breakeven when profit reaches +1.5R
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: "var(--muted)", fontSize: 9.5 }}>STAGE 3 (TARGET)</div>
+                  <strong style={{ color: "var(--green)" }}>100% Exit at Landmark</strong>
+                  <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>
+                    Full exit at {formatPrice(setup.propTp || trade.tpPrice)} ({Number(setup.propRR || trade.targetRR || 2.0).toFixed(1)}R)
+                  </div>
+                </div>
+              </div>
+
+              {(trade.targetLandmark || trade.propTarget?.source) && (
+                <div style={{ fontSize: 11, color: "var(--purple, #c084fc)", background: "rgba(168, 85, 247, 0.08)", padding: "6px 8px", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>🎯 Landmark Target: <strong>{trade.targetLandmark || trade.propTarget?.source}</strong></span>
+                  {trade.propTarget?.tf && <span style={{ fontSize: 10, opacity: 0.8 }}>Timeframe: {trade.propTarget.tf}</span>}
+                </div>
+              )}
+
+              {trade.targets?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", marginBottom: 4 }}>
+                    Target Exit Geometry
+                  </div>
+                  <TargetLadder targets={trade.targets} entryPrice={entryVal} slPrice={slVal} dir={trade.dir} />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -649,7 +609,7 @@ export default function StagedTradeModal({
                 maxHeight: 200,
               }}
             >
-              {JSON.stringify({ id: trade._id, symbol: trade.symbol, dir: trade.dir, entry: entryVal, sl: slVal, halfPrice: setup.halfPrice, propTp: setup.propTp, fullTp: setup.fullTp, model: trade.modelId, vetoes }, null, 2)}
+              {JSON.stringify({ id: trade._id, symbol: trade.symbol, dir: trade.dir, entry: entryVal, sl: slVal, tp: setup.propTp || trade.tpPrice, targetRR: setup.propRR || trade.targetRR, model: trade.modelId, vetoes }, null, 2)}
             </pre>
           </div>
         )}
@@ -681,7 +641,7 @@ export default function StagedTradeModal({
                 border: "1px solid rgba(239, 68, 68, 0.3)",
               }}
             >
-              <X size={13} /> {isDual ? "Dismiss Dual Setup" : "Dismiss Setup"}
+              <X size={13} /> Dismiss Setup
             </button>
           )}
 
@@ -715,7 +675,7 @@ export default function StagedTradeModal({
                   cursor: hasVeto ? "not-allowed" : "pointer",
                 }}
               >
-                <Check size={14} /> {isDual ? "Approve & Arm Dual Execution" : "Approve & Arm Execution"}
+                <Check size={14} /> Approve & Arm Execution
               </button>
             )}
           </div>
