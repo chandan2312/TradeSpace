@@ -25,9 +25,11 @@ import {
   formatUsd,
   formatR,
   tradeRiskTelemetry,
+  calculateSlDistance,
 } from "./TradeTelemetry";
 import { resolveCopierRouting } from "../../lib/autonomous/magicEncoder";
 import { calculateEffectiveGroupRisk } from "../../lib/autonomous/risk";
+import SessionLedDot from "./SessionLedDot";
 import ModelBadge from "./ModelBadge";
 
 const actionStyle = {
@@ -70,9 +72,7 @@ export default function StagedTradeModal({
   if (!setup) return null;
 
   const trade = setup.primaryTrade || setup;
-  const isDual = setup.isDualLeg;
-  const defaultLeg = setup.defaultLeg;
-  const propLeg = setup.propLeg;
+  const propLeg = setup.propLeg || trade;
   const level = trade.levelDetails || trade.stagedLevel || {};
   const brain = trade.brainSnapshot || trade.brain || {};
   const armed = setup.status === "armed";
@@ -82,8 +82,6 @@ export default function StagedTradeModal({
   const entryVal = Number(trade.entryPrice ?? level.entry);
   const slVal = Number(trade.initialSlPrice ?? trade.slPrice ?? level.sl);
   const dist = Math.abs(entryVal - slVal);
-  const modalRoutingDefault = defaultLeg ? (defaultLeg.copierRouting || resolveCopierRouting(defaultLeg)) : null;
-  const modalRoutingProp = propLeg ? (propLeg.copierRouting || resolveCopierRouting(propLeg)) : null;
   const modalRouting = trade.copierRouting || resolveCopierRouting(trade);
 
   const modalConfluence = trade.confluenceScore ?? level.confluenceScore ?? 85;
@@ -176,8 +174,9 @@ export default function StagedTradeModal({
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>
-                  {trade.symbol} · {isDual ? "Dual-Leg Execution Setup" : "TradeProp Execution Setup"}
+                  {trade.symbol} · TradeProp Execution Setup
                 </h2>
+                <SessionLedDot symbol={trade.symbol} size={8} />
                 <span
                   style={{
                     fontSize: 11,
@@ -193,41 +192,22 @@ export default function StagedTradeModal({
                 >
                   {trade.dir === 1 ? "BUY SETUP ▲" : "SELL SETUP ▼"}
                 </span>
-                {!isDual ? (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 800,
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      background: "rgba(168, 85, 247, 0.18)",
-                      color: "var(--purple, #c084fc)",
-                      border: "1px solid rgba(168, 85, 247, 0.3)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <Shield size={11} /> TRADEPROP (Safe 1.5R–3.0R)
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 800,
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      background: "rgba(168, 85, 247, 0.18)",
-                      color: "var(--purple, #c084fc)",
-                      border: "1px solid rgba(168, 85, 247, 0.3)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <Layers size={11} /> DUAL EXECUTION (50% + PROP)
-                  </span>
-                )}
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    background: "rgba(168, 85, 247, 0.18)",
+                    color: "var(--purple, #c084fc)",
+                    border: "1px solid rgba(168, 85, 247, 0.3)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Shield size={11} /> PROP-FIRM SAFE (1.5R–3.0R)
+                </span>
                 <span
                   style={{
                     fontSize: 10,
@@ -331,7 +311,7 @@ export default function StagedTradeModal({
           >
             {[
               { id: "chart", label: "Chart & Overview", icon: CandlestickChart },
-              { id: "targets", label: "Dual Targets & Modifiers", icon: Target },
+              { id: "targets", label: "Target & Risk Management", icon: Target },
               { id: "confluence", label: "Confluence & Evidence", icon: Sparkles },
               { id: "gatekeeper", label: "Gatekeeper & Veto", icon: Shield },
               { id: "all", label: "All Details (Audit)", icon: Layers },
@@ -393,7 +373,10 @@ export default function StagedTradeModal({
             >
               <TelemetryValue label="Planned Entry" value={formatPrice(trade.entryPrice ?? level.entry)} />
               <TelemetryValue
-                label="Structural SL"
+                label={(() => {
+                  const slDist = calculateSlDistance(trade.entryPrice ?? level.entry, trade.initialSlPrice ?? trade.slPrice ?? level.sl, trade.symbol);
+                  return slDist?.short ? `Structural SL (${slDist.short})` : "Structural SL";
+                })()}
                 value={
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                     <span>{formatPrice(trade.initialSlPrice ?? trade.slPrice ?? level.sl)}</span>

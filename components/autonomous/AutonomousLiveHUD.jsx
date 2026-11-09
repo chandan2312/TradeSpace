@@ -35,6 +35,7 @@ import {
   formatAR,
   IRARBadge,
   finiteNumber,
+  calculateSlDistance,
 } from "./TradeTelemetry";
 import { groupStagedTrades } from "./StagedQueue";
 import JournalView from "../journal/JournalView";
@@ -44,6 +45,7 @@ import AuditLog from "./AuditLog";
 import StagedTradeModal from "./StagedTradeModal";
 import LiveTradeModal from "./LiveTradeModal";
 import ModelBadge from "./ModelBadge";
+import SessionLedDot from "./SessionLedDot";
 import ControlConsole from "./ControlConsole";
 import ExecutionDiagnostics from "./ExecutionDiagnostics";
 
@@ -72,6 +74,7 @@ export default function AutonomousLiveHUD({
   const [inspectedPair, setInspectedPair] = useState(null);
 
   const [auxRadarPairs, setAuxRadarPairs] = useState(radarPairsProp || []);
+  const [auxRadarScannedAt, setAuxRadarScannedAt] = useState(null);
   const [auxLogs, setAuxLogs] = useState(logsProp || []);
   const [auxConfig, setAuxConfig] = useState({});
   const [auxBrokerAccount, setAuxBrokerAccount] = useState(null);
@@ -105,6 +108,7 @@ export default function AutonomousLiveHUD({
         }
         if (Array.isArray(data.leaderboard?.rankedPairs)) {
           setAuxRadarPairs(data.leaderboard.rankedPairs);
+          if (data.leaderboard?.scannedAt) setAuxRadarScannedAt(data.leaderboard.scannedAt);
         }
         if (Array.isArray(data.logs)) {
           setAuxLogs(data.logs);
@@ -1217,6 +1221,7 @@ export default function AutonomousLiveHUD({
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <strong style={{ fontSize: 14 }}>{trade.symbol}</strong>
+                            <SessionLedDot symbol={trade.symbol} config={auxConfig} size={7} />
                             <span
                               style={{
                                 fontSize: 10,
@@ -1531,7 +1536,10 @@ export default function AutonomousLiveHUD({
                           }}
                         >
                           <div style={{ display: "flex", gap: 8, color: "var(--muted)", fontFamily: "monospace", flexWrap: "wrap", alignItems: "center" }}>
-                            <span>SL: {formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}</span>
+                            <span>SL: {formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}{(() => {
+                              const dist = calculateSlDistance(trade.filledPrice ?? trade.entryPrice, trade.confirmedSlPrice ?? trade.slPrice, trade.symbol);
+                              return dist?.short ? ` (${dist.short})` : "";
+                            })()}</span>
                             <span>Mark: {formatPrice(mark)}</span>
                             <span style={{ color: "var(--accent)" }}>{formatIR(telemetry.idealR)}</span>
                             <span style={{ color: (telemetry.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)", fontWeight: 700 }}>
@@ -1618,7 +1626,7 @@ export default function AutonomousLiveHUD({
                         title="Click to view staged setup popup"
                         style={{
                           background: "rgba(255, 255, 255, 0.02)",
-                          border: isDual ? "1px solid rgba(56, 189, 248, 0.25)" : "1px solid var(--border)",
+                          border: "1px solid var(--border)",
                           borderRadius: 10,
                           padding: 12,
                           display: "flex",
@@ -1632,7 +1640,7 @@ export default function AutonomousLiveHUD({
                           e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = isDual ? "rgba(56, 189, 248, 0.25)" : "var(--border)";
+                          e.currentTarget.style.borderColor = "var(--border)";
                           e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)";
                         }}
                       >
@@ -1645,6 +1653,7 @@ export default function AutonomousLiveHUD({
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <strong style={{ fontSize: 13 }}>{setup.symbol}</strong>
+                            <SessionLedDot symbol={setup.symbol} config={auxConfig} size={7} />
                             <span
                               style={{
                                 fontSize: 10,
@@ -1658,21 +1667,6 @@ export default function AutonomousLiveHUD({
                             >
                               {setup.dir === 1 ? "BUY SETUP" : "SELL SETUP"}
                             </span>
-                            {isDual && (
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  fontWeight: 800,
-                                  padding: "2px 5px",
-                                  borderRadius: 4,
-                                  background: "rgba(56, 189, 248, 0.15)",
-                                  color: "var(--accent)",
-                                  letterSpacing: 0.3,
-                                }}
-                              >
-                                DUAL LEG
-                              </span>
-                            )}
                             <ModelBadge item={setup} size="xs" />
                           </div>
 
@@ -1728,84 +1722,46 @@ export default function AutonomousLiveHUD({
                           }}
                         >
                           <span>Entry: <strong style={{ color: "var(--fg)" }}>{formatPrice(setup.entryPrice ?? level.entry)}</strong></span>
-                          <span>SL: <strong style={{ color: "var(--red)" }}>{formatPrice(setup.slPrice ?? level.sl)}</strong></span>
-                          {!isDual && (
-                            <span>TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.tpPrice ?? level.tp)}</strong></span>
-                          )}
+                          <span>SL: <strong style={{ color: "var(--red)" }}>{formatPrice(setup.slPrice ?? level.sl)}{(() => {
+                            const dist = calculateSlDistance(setup.entryPrice ?? level.entry, setup.slPrice ?? level.sl, setup.symbol);
+                            return dist?.short ? ` (${dist.short})` : "";
+                          })()}</strong></span>
+                          <span>TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.propTp || setup.tpPrice || level.tp)}</strong></span>
                         </div>
 
-                        {/* Dual Management Pathways: Default 50% Milestone + Full TP vs Prop Safe */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {/* Pathway 1: Default Milestone & Full TP */}
-                          <div
-                            style={{
-                              background: "rgba(56, 189, 248, 0.04)",
-                              border: "1px solid rgba(56, 189, 248, 0.22)",
-                              borderRadius: 6,
-                              padding: "5px 8px",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 3,
-                              fontSize: 10,
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontWeight: 800, color: "var(--accent)", fontSize: 9 }}>
-                                PATH A · DEFAULT (50% + RUNNER)
-                              </span>
-                              {(defaultLeg?.magicNumber || defaultLeg?.routing?.magicNumber) && (
-                                <span style={{ color: "var(--accent)", fontSize: 9 }}>⚡ MT5 #{defaultLeg.magicNumber || defaultLeg.routing?.magicNumber}</span>
-                              )}
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
-                                50% Level: <strong style={{ color: "var(--accent)" }}>{formatPrice(setup.halfPrice)}</strong> ({Number(setup.halfRR || 2.2).toFixed(1)}R)
-                              </span>
-                              <span style={{ fontSize: 8.5, color: "var(--accent)", fontWeight: 700 }}>Book 40% + BE</span>
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
-                                Full TP: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.fullTp)}</strong> ({Number(setup.fullRR || defaultLeg?.targetRR || 4.0).toFixed(1)}R)
-                              </span>
-                              <span style={{ fontSize: 8.5, color: "var(--green)", fontWeight: 700 }}>60% to DOL</span>
-                            </div>
-                          </div>
-
-                          {/* Pathway 2: Prop Safe */}
-                          <div
-                            style={{
-                              background: "rgba(168, 85, 247, 0.04)",
-                              border: "1px solid rgba(168, 85, 247, 0.22)",
-                              borderRadius: 6,
-                              padding: "5px 8px",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 3,
-                              fontSize: 10,
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>
-                                PATH B · PROP-FIRM SAFE
-                              </span>
-                              {(propLeg?.magicNumber || propLeg?.routing?.magicNumber) && (
-                                <span style={{ color: "var(--purple, #c084fc)", fontSize: 9 }}>⚡ MT5 #{propLeg.magicNumber || propLeg.routing?.magicNumber}</span>
-                              )}
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
-                                Target: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.propTp)}</strong> ({Number(setup.propRR || 2.0).toFixed(1)}R)
-                              </span>
-                              <span style={{ fontSize: 8.5, color: "var(--purple, #c084fc)", fontWeight: 700 }}>100% Exit</span>
-                            </div>
-                            {(propLeg?.targetLandmark || propLeg?.propTarget?.source) && (
-                              <div style={{ color: "var(--purple, #c084fc)", fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                🎯 {propLeg?.targetLandmark || propLeg?.propTarget?.source}
-                              </div>
+                        {/* Prop-Firm Safe Execution Strip */}
+                        <div
+                          style={{
+                            background: "rgba(168, 85, 247, 0.04)",
+                            border: "1px solid rgba(168, 85, 247, 0.22)",
+                            borderRadius: 6,
+                            padding: "6px 8px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 3,
+                            fontSize: 10,
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontWeight: 800, color: "var(--purple, #c084fc)", fontSize: 9 }}>
+                              PROP-FIRM SAFE (1.5R–3.0R)
+                            </span>
+                            {(setup.magicNumber || propLeg?.magicNumber || propLeg?.routing?.magicNumber || defaultLeg?.magicNumber) && (
+                              <span style={{ color: "var(--purple, #c084fc)", fontSize: 9 }}>⚡ MT5 #{setup.magicNumber || propLeg?.magicNumber || propLeg?.routing?.magicNumber || defaultLeg?.magicNumber}</span>
                             )}
                           </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: "var(--muted)", fontSize: 9.5 }}>
+                              Target: <strong style={{ color: "var(--green)" }}>{formatPrice(setup.propTp || setup.tpPrice || level.tp)}</strong> ({Number(setup.propRR || setup.targetRR || 2.0).toFixed(1)}R)
+                            </span>
+                            <span style={{ fontSize: 8.5, color: "var(--purple, #c084fc)", fontWeight: 700 }}>100% Exit at Target</span>
+                          </div>
+                          {(setup.targetLandmark || propLeg?.targetLandmark || setup.propTarget?.source || propLeg?.propTarget?.source) && (
+                            <div style={{ color: "var(--purple, #c084fc)", fontSize: 8.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              🎯 Landmark: {setup.targetLandmark || propLeg?.targetLandmark || setup.propTarget?.source || propLeg?.propTarget?.source}
+                            </div>
+                          )}
                         </div>
 
                         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 2 }}>
@@ -1868,6 +1824,8 @@ export default function AutonomousLiveHUD({
                 <PairRadar
                   pairs={effectiveRadarPairs}
                   ticks={ticks}
+                  config={auxConfig}
+                  scannedAt={auxRadarScannedAt}
                   onInspectPair={(p) => setInspectedPair(p)}
                 />
               </div>

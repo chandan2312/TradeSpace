@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, LayoutGrid, CheckSquare, Square, TrendingUp, TrendingDown, Minus, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
 import ChartPanel from "./ChartPanel";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
+import SessionLedDot from "./autonomous/SessionLedDot";
 
 // Hardcoded correlation map for major pairs & indices
 const CORRELATIONS = {
@@ -275,6 +276,7 @@ export default function CorrelatedPairsModal({
                       >
                         {selected.has(c) ? <CheckSquare size={15} color="var(--accent)" /> : <Square size={15} color="var(--muted)" />}
                         <span className="num">{c}</span>
+                        <SessionLedDot symbol={c} size={6} />
                       </div>
                     ))}
                   </div>

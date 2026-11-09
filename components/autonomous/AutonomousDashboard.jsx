@@ -778,6 +778,8 @@ export default function AutonomousDashboard() {
               onToggleWhitelist={handleToggleWhitelist}
               whitelist={config.whitelist || []}
               ticks={ticks}
+              config={config}
+              scannedAt={data?.leaderboard?.scannedAt || data?.scannedAt}
             />
           </div>
         )}

@@ -26,8 +26,10 @@ import {
   IRARBadge,
   tradeRiskTelemetry,
   markPriceFor,
+  calculateSlDistance,
 } from "./TradeTelemetry";
 import ModelBadge from "./ModelBadge";
+import SessionLedDot from "./SessionLedDot";
 
 const actionStyle = {
   padding: "6px 12px",
@@ -175,6 +177,7 @@ export default function LiveTradeModal({
                 <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>
                   {trade.symbol} · Active Position
                 </h2>
+                <SessionLedDot symbol={trade.symbol} size={8} />
                 <span
                   style={{
                     fontSize: 11,
@@ -347,7 +350,14 @@ export default function LiveTradeModal({
             >
               <TelemetryValue label="Filled Entry" value={formatPrice(entryVal)} />
               <TelemetryValue label="Live Mark" value={formatPrice(mark)} color={isProfitable ? "var(--green)" : "var(--red)"} />
-              <TelemetryValue label="Stop Loss" value={formatPrice(slVal)} color="var(--red)" />
+              <TelemetryValue
+                label={(() => {
+                  const dist = calculateSlDistance(entryVal, slVal, trade.symbol);
+                  return dist?.short ? `Stop Loss (${dist.short})` : "Stop Loss";
+                })()}
+                value={formatPrice(slVal)}
+                color="var(--red)"
+              />
               {halfPrice > 0 && <TelemetryValue label="50% Target" value={formatPrice(halfPrice)} color="#f59e0b" />}
               {propTp > 0 && <TelemetryValue label="Prop TP" value={formatPrice(propTp)} color="#06b6d4" />}
               {defaultTp > 0 && <TelemetryValue label="Full TP" value={formatPrice(defaultTp)} color="var(--green)" />}

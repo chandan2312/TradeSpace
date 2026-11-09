@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toCanonicalSymbol } from "../lib/symbols/mapping";
+import SessionLedDot from "./autonomous/SessionLedDot";
 
 // Fast, keyboard-first symbol search across the entire broker universe.
 // Two modes: "switch" (load chart) or "add" (append to active watchlist).
@@ -153,6 +154,7 @@ function Row({ idx, active, symbol, mode, onHover, onPick, onAddToList }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span className="num" style={{ fontWeight: 600, fontSize: 13 }}>{canon}</span>
+          <SessionLedDot symbol={canon} size={6} />
           {isDifferent && (
             <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "var(--muted)" }}>
               Broker: {symbol.name}

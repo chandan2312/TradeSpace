@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { RefreshCw, AlertTriangle, Maximize2, Loader2, LayoutGrid } from "lucide-react";
+import SessionLedDot from "./autonomous/SessionLedDot";
 
 // Intraday bias panel (sidebar, below the watchlist).
 // Diagrams: risk-sentiment gauge, FX currency-strength bars, per-symbol
@@ -480,12 +481,13 @@ function SymbolRow({ r, expanded, onToggle, onJump }) {
       >
         <span
           className="num"
-          style={{ fontWeight: 700, fontSize: 12, minWidth: 58 }}
+          style={{ fontWeight: 700, fontSize: 12, minWidth: 54 }}
           onClick={(e) => { e.stopPropagation(); onJump?.(r.symbol); }}
           title={`Open ${r.symbol} on the chart`}
         >
           {r.symbol}
         </span>
+        <SessionLedDot symbol={r.symbol} size={6} />
 
         <span
           title={r.setup

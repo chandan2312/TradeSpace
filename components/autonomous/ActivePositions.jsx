@@ -24,8 +24,10 @@ import {
   formatAR,
   IRARBadge,
   tradeRiskTelemetry,
+  calculateSlDistance,
 } from "./TradeTelemetry";
 import ModelBadge from "./ModelBadge";
+import SessionLedDot from "./SessionLedDot";
 
 // Helper: Determine if a trade is a Prop-Firm Safe model or Default model
 const isPropTrade = (t) =>
@@ -298,6 +300,7 @@ function StandaloneDefaultTradeCard({
           <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.01em" }}>
             {trade.symbol}
           </span>
+          <SessionLedDot symbol={trade.symbol} size={7.5} />
           <span
             style={{
               padding: "2px 8px",
@@ -398,30 +401,54 @@ function StandaloneDefaultTradeCard({
 
         {/* Right side: Live Telemetry & Dedicated Close Button */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 800,
-                color: (tel.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-              }}
-            >
-              Actual R {formatAR(tel.actualR)}
+          {trade.status === "pending" ? (
+            <div style={{ textAlign: "right" }}>
               <span
                 style={{
-                  fontSize: 11,
-                  color: "var(--muted)",
-                  fontWeight: 600,
-                  marginLeft: 6,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                  background: "rgba(245, 158, 11, 0.2)",
+                  color: "#fbbf24",
+                  border: "1px solid rgba(245, 158, 11, 0.4)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
                 }}
               >
-                ({formatIR(tel.idealR)})
+                RESTING LIMIT
               </span>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace", marginTop: 2 }}>
+                Target: 1:{targetRR.toFixed(2)}RR
+              </div>
             </div>
-            <div style={{ color: (tel.floatingUsd ?? 0) >= 0 ? "var(--green)" : "var(--red)", fontSize: 11 }}>
-              {formatUsd(tel.totalUsd ?? tel.floatingUsd)}
+          ) : (
+            <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 800,
+                  color: (tel.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)",
+                }}
+              >
+                Actual R {formatAR(tel.actualR)}
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    fontWeight: 600,
+                    marginLeft: 6,
+                  }}
+                >
+                  ({formatIR(tel.idealR)})
+                </span>
+              </div>
+              <div style={{ color: (tel.floatingUsd ?? 0) >= 0 ? "var(--green)" : "var(--red)", fontSize: 11 }}>
+                {formatUsd(tel.totalUsd ?? tel.floatingUsd)}
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             disabled={isClosing}
@@ -432,18 +459,18 @@ function StandaloneDefaultTradeCard({
               gap: 5,
               padding: "6px 12px",
               borderRadius: 6,
-              background: "rgba(239, 68, 68, 0.15)",
-              border: "1px solid rgba(239, 68, 68, 0.35)",
-              color: "var(--red)",
+              background: trade.status === "pending" ? "rgba(245, 158, 11, 0.15)" : "rgba(239, 68, 68, 0.15)",
+              border: trade.status === "pending" ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(239, 68, 68, 0.35)",
+              color: trade.status === "pending" ? "#fbbf24" : "var(--red)",
               fontSize: 11,
               fontWeight: 700,
               cursor: isClosing ? "wait" : "pointer",
               opacity: isClosing ? 0.5 : 1,
             }}
-            title="Close this TradeDefault position on broker"
+            title={trade.status === "pending" ? "Cancel resting limit order on broker" : "Close this TradeDefault position on broker"}
           >
             <X size={13} />
-            {isClosing ? "Closing..." : "Close TradeDefault"}
+            {isClosing ? (trade.status === "pending" ? "Cancelling..." : "Closing...") : (trade.status === "pending" ? "Cancel Limit Order" : "Close TradeDefault")}
           </button>
         </div>
       </div>
@@ -467,15 +494,13 @@ function StandaloneDefaultTradeCard({
         <TelemetryValue label="Fill" value={formatPrice(fill)} />
         <TelemetryValue label="Mark" value={formatPrice(mark)} color="var(--accent)" />
         <TelemetryValue
-          label={
-            trade.isTrailing
-              ? "SL (Trail)"
-              : trade.isBreakeven
-              ? "SL (BE)"
-              : trade.isHalfRisk || trade.slHalfMoved
-              ? "SL (50%)"
-              : "SL"
-          }
+          label={(() => {
+            const slDist = calculateSlDistance(trade.filledPrice ?? trade.entryPrice, trade.confirmedSlPrice ?? trade.slPrice, trade.symbol);
+            if (trade.isTrailing) return `SL (Trail${slDist?.short ? ` • ${slDist.short}` : ""})`;
+            if (trade.isBreakeven) return "SL (BE: 0.0p)";
+            if (trade.isHalfRisk || trade.slHalfMoved) return `SL (50%${slDist?.short ? ` • ${slDist.short}` : ""})`;
+            return slDist?.short ? `SL (${slDist.short})` : "SL";
+          })()}
           value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}
           color={
             trade.isTrailing || isMilestoneBooked || trade.isBreakeven
@@ -820,6 +845,7 @@ function StandalonePropTradeCard({
           <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.01em" }}>
             {trade.symbol}
           </span>
+          <SessionLedDot symbol={trade.symbol} size={7.5} />
           <span
             style={{
               padding: "2px 8px",
@@ -920,30 +946,54 @@ function StandalonePropTradeCard({
 
         {/* Right side: Live Telemetry & Dedicated Close Button */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 800,
-                color: (tel.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-              }}
-            >
-              Actual R {formatAR(tel.actualR)}
+          {trade.status === "pending" ? (
+            <div style={{ textAlign: "right" }}>
               <span
                 style={{
-                  fontSize: 11,
-                  color: "var(--muted)",
-                  fontWeight: 600,
-                  marginLeft: 6,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                  background: "rgba(245, 158, 11, 0.2)",
+                  color: "#fbbf24",
+                  border: "1px solid rgba(245, 158, 11, 0.4)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
                 }}
               >
-                ({formatIR(tel.idealR)})
+                RESTING LIMIT
               </span>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace", marginTop: 2 }}>
+                Target: 1:{targetRR.toFixed(2)}RR
+              </div>
             </div>
-            <div style={{ color: (tel.floatingUsd ?? 0) >= 0 ? "var(--green)" : "var(--red)", fontSize: 11 }}>
-              {formatUsd(tel.totalUsd ?? tel.floatingUsd)}
+          ) : (
+            <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 800,
+                  color: (tel.actualR ?? 0) >= 0 ? "var(--green)" : "var(--red)",
+                }}
+              >
+                Actual R {formatAR(tel.actualR)}
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    fontWeight: 600,
+                    marginLeft: 6,
+                  }}
+                >
+                  ({formatIR(tel.idealR)})
+                </span>
+              </div>
+              <div style={{ color: (tel.floatingUsd ?? 0) >= 0 ? "var(--green)" : "var(--red)", fontSize: 11 }}>
+                {formatUsd(tel.totalUsd ?? tel.floatingUsd)}
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             disabled={isClosing}
@@ -954,18 +1004,18 @@ function StandalonePropTradeCard({
               gap: 5,
               padding: "6px 12px",
               borderRadius: 6,
-              background: "rgba(239, 68, 68, 0.15)",
-              border: "1px solid rgba(239, 68, 68, 0.35)",
-              color: "var(--red)",
+              background: trade.status === "pending" ? "rgba(245, 158, 11, 0.15)" : "rgba(239, 68, 68, 0.15)",
+              border: trade.status === "pending" ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(239, 68, 68, 0.35)",
+              color: trade.status === "pending" ? "#fbbf24" : "var(--red)",
               fontSize: 11,
               fontWeight: 700,
               cursor: isClosing ? "wait" : "pointer",
               opacity: isClosing ? 0.5 : 1,
             }}
-            title="Close this TradeProp position on broker"
+            title={trade.status === "pending" ? "Cancel resting limit order on broker" : "Close this TradeProp position on broker"}
           >
             <X size={13} />
-            {isClosing ? "Closing..." : "Close TradeProp"}
+            {isClosing ? (trade.status === "pending" ? "Cancelling..." : "Closing...") : (trade.status === "pending" ? "Cancel Limit Order" : "Close TradeProp")}
           </button>
         </div>
       </div>
@@ -1012,15 +1062,13 @@ function StandalonePropTradeCard({
         <TelemetryValue label="Fill" value={formatPrice(fill)} />
         <TelemetryValue label="Mark" value={formatPrice(mark)} color="var(--accent)" />
         <TelemetryValue
-          label={
-            trade.isTrailing
-              ? "SL (Trail)"
-              : trade.isBreakeven
-              ? "SL (BE)"
-              : trade.isHalfRisk || trade.slHalfMoved
-              ? "SL (-0.5R)"
-              : "SL"
-          }
+          label={(() => {
+            const slDist = calculateSlDistance(trade.filledPrice ?? trade.entryPrice, trade.confirmedSlPrice ?? trade.slPrice, trade.symbol);
+            if (trade.isTrailing) return `SL (Trail${slDist?.short ? ` • ${slDist.short}` : ""})`;
+            if (trade.isBreakeven) return "SL (BE: 0.0p)";
+            if (trade.isHalfRisk || trade.slHalfMoved) return `SL (-0.5R${slDist?.short ? ` • ${slDist.short}` : ""})`;
+            return slDist?.short ? `SL (${slDist.short})` : "SL";
+          })()}
           value={formatPrice(trade.confirmedSlPrice ?? trade.slPrice)}
           color={
             trade.isTrailing || is1_5RReached || trade.isBreakeven

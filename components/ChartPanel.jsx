@@ -1186,17 +1186,23 @@ export default function ChartPanel({
 
     for (const t of symAutoTrades) {
       if (!t) continue;
-      const isOpenTrade = ["active", "managing", "open"].includes(String(t.status || "").toLowerCase());
+      const statusLower = String(t.status || "").toLowerCase();
+      const isPendingLimit = ["pending", "placing", "resting"].includes(statusLower) || (Boolean(t.orderType === "limit" || t.isLimit) && !t.filledAt);
+      const isOpenTrade = ["active", "managing", "open", "filling", "armed_fill"].includes(statusLower) || isPendingLimit;
       const isClosedTrade =
         !isOpenTrade &&
-        (["closed_tp", "closed_sl", "closed_be", "closed"].includes(t.status) ||
+        (["closed_tp", "closed_sl", "closed_be", "closed"].includes(statusLower) ||
         Boolean(t.closedAt) ||
         Boolean(t.closeTime));
 
       if (isClosedTrade) {
         const closedTime = new Date(t.closedAt || t.closeTime || t.updatedAt || t.createdAt || t.entryTime || 0).getTime();
         closedList.push({ trade: t, time: Number.isFinite(closedTime) ? closedTime : 0 });
-      } else if (["staged", "confirming", "armed"].includes(t.status)) {
+      } else if (["staged", "confirming", "armed"].includes(statusLower)) {
+        stagedList.push(t);
+      } else if (isPendingLimit) {
+        // Pending limit orders are live resting orders: add to activeList; also add to stagedList as fallback if Live Trades toggle is off
+        activeList.push(t);
         stagedList.push(t);
       } else {
         activeList.push(t);
@@ -1295,8 +1301,13 @@ export default function ChartPanel({
     // Filter out staged trade if an active live trade is already running on this symbol & direction
     const unactiveStagedList = deduplicatedStagedList.filter((staged) => {
       if (!staged) return false;
+      // If autoDrawings already rendered this exact trade, suppress duplicate staged drawing
+      if (isEnabled && autoDrawings.some((d) => d.id === `auto_${staged._id || staged.id}`)) {
+        return false;
+      }
       const sDir = staged.dir === -1 || String(staged.direction || staged.dirLabel).toLowerCase() === "sell" ? -1 : 1;
       const hasActiveInDir = deduplicatedActiveList.some((act) => {
+        if (act._id && staged._id && String(act._id) === String(staged._id)) return isEnabled;
         const aDir = act.dir === -1 || String(act.direction || act.dirLabel).toLowerCase() === "sell" ? -1 : 1;
         return aDir === sDir || sDir === 0;
       });

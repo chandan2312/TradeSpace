@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Maximize2, X } from "lucide-react";
+import SessionLedDot from "./autonomous/SessionLedDot";
 import BiasPanel from "./BiasPanel"; // We can reuse BiasPanel's SymbolRow? 
 // Actually, let's just create a small dropdown with the SymbolRow.
 
@@ -38,9 +39,12 @@ export default function MiniBiasHeader({ symbol, symBias, catBias }) {
         </div>
       )}
 
-      {/* Symbol Bias Score */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor(symBias.score), background: "var(--panel-2)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" }}>
-        {symBias.score > 0 ? "+" : ""}{symBias.score}
+      {/* Symbol Bias Score & Session Dot */}
+      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor(symBias.score), background: "var(--panel-2)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" }}>
+          {symBias.score > 0 ? "+" : ""}{symBias.score}
+        </div>
+        <SessionLedDot symbol={symbol} size={6} />
       </div>
 
       {/* Timeframe Blocks */}

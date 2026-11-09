@@ -7,8 +7,9 @@ import ConfluenceBreakdown from "./ConfluenceBreakdown";
 import DecisionReasons from "./DecisionReasons";
 import EvidenceDetails from "./EvidenceDetails";
 import RadarIdeaChart from "./RadarIdeaChart";
-import { TelemetryValue, formatPrice, finiteNumber, markPriceFor } from "./TradeTelemetry";
+import { TelemetryValue, formatPrice, finiteNumber, markPriceFor, calculateSlDistance } from "./TradeTelemetry";
 import ModelBadge from "./ModelBadge";
+import SessionLedDot from "./SessionLedDot";
 
 export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
   const dialogRef = useRef(null);
@@ -212,6 +213,7 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                   >
                     {pair.tradeableSymbol || pair.symbol}
                   </h2>
+                  <SessionLedDot pair={pair} size={8} />
 
                   <span
                     style={{
@@ -507,7 +509,14 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
         >
           <TelemetryValue label="Mark Price" value={formatPrice(markPrice)} />
           <TelemetryValue label="Planned Entry" value={formatPrice(entryVal)} color="var(--accent)" />
-          <TelemetryValue label="Structural SL" value={formatPrice(slVal)} color="#ea580c" />
+          <TelemetryValue
+            label={(() => {
+              const dist = calculateSlDistance(entryVal, slVal, pair.tradeableSymbol || pair.symbol);
+              return dist?.short ? `Structural SL (${dist.short})` : "Structural SL";
+            })()}
+            value={formatPrice(slVal)}
+            color="#ea580c"
+          />
           <TelemetryValue label="Target TP" value={formatPrice(tpVal)} color="#a855f7" />
           <TelemetryValue
             label="Potential R:R"

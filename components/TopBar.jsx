@@ -7,6 +7,7 @@ import { LayoutIcon } from "../lib/layouts";
 import IndicatorsMenu from "./IndicatorsMenu";
 import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
 import { tradeRiskTelemetry, formatR } from "./autonomous/TradeTelemetry";
+import SessionLedDot from "./autonomous/SessionLedDot";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
@@ -164,6 +165,7 @@ export default function TopBar({
       <button className="primary symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
         style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
         <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
+        <SessionLedDot symbol={symbol} size={6.5} style={{ marginLeft: 2 }} />
       </button>
 
       <div style={{ position: "relative", flexShrink: 0 }}>

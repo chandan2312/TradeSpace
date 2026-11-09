@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { formatPrice, formatR, formatUsd, formatIR, formatAR, finiteNumber } from "./TradeTelemetry";
+import SessionLedDot from "./SessionLedDot";
 
 function isPropTrade(t) {
   if (t?.isPropFirm === true) return true;
@@ -447,6 +448,7 @@ export default function ClosedHistory({ closedTrades = [] }) {
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontWeight: 800, fontSize: 13 }}>{t.symbol}</span>
+                        <SessionLedDot symbol={t.symbol} size={6} />
                         <span
                           style={{
                             fontSize: 10,

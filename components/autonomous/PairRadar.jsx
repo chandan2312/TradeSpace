@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Compass,
   Eye,
@@ -19,12 +19,77 @@ import {
   CandlestickChart,
   ChevronRight,
   Target,
+  Clock,
+  Radio,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
-import { finiteNumber, formatPrice, markPriceFor } from "./TradeTelemetry";
+import { finiteNumber, formatPrice, markPriceFor, calculateSlDistance } from "./TradeTelemetry";
 import { resolveRadarTradeIdeaPricing } from "../../lib/autonomous/tradeDrawing";
+import { isTradingPermittedNow } from "../../lib/autonomous/timeslots";
 import ModelBadge from "./ModelBadge";
 import NegativeScoreBarWithTooltip from "./NegativeScoreBarWithTooltip";
 import PositiveScoreBarWithTooltip from "./PositiveScoreBarWithTooltip";
+import SessionLedDot from "./SessionLedDot";
+
+function formatTimeAgo(timestamp, now = Date.now()) {
+  if (!timestamp) return "just now";
+  const t = typeof timestamp === "string" ? new Date(timestamp).getTime() : (timestamp > 1e11 ? timestamp : timestamp * 1000);
+  if (!Number.isFinite(t) || t <= 0) return "just now";
+  const diffSec = Math.max(0, Math.round((now - t) / 1000));
+  if (diffSec < 8) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
+}
+
+function checkSessionAllowed(pair, config, now) {
+  // 1. Direct boolean if evaluated by backend scanner
+  if (pair?.sessionProfile && typeof pair.sessionProfile.isCurrentlyActive === "boolean") {
+    const slotName = pair.activeTimeSlot?.name || pair.sessionProfile?.fullLabel || pair.sessionProfile?.label || "Trading Session";
+    const allowed = pair.sessionProfile.isCurrentlyActive;
+    return {
+      allowed,
+      slotName: pair.activeTimeSlot?.shortBadge || (allowed ? "ACTIVE" : "OFF"),
+      fullName: slotName,
+      tooltip: allowed
+        ? `🟢 Allowed Trading Session: Active (${slotName}) — Order Execution Permitted`
+        : `🔴 Outside Allowed Session: ${pair.sessionProfile?.reason || pair.sessionProfile?.description || "Outside Permitted Execution Hours"}`,
+    };
+  }
+
+  // 2. Client-side evaluation fallback
+  try {
+    const live = isTradingPermittedNow(now ? new Date(now) : new Date(), config, pair?.symbol);
+    const slotName = live.slot?.name || pair?.activeTimeSlot?.name || "Trading Session";
+    return {
+      allowed: Boolean(live.permitted),
+      slotName: live.slot?.shortBadge || (live.permitted ? "ACTIVE" : "OFF"),
+      fullName: slotName,
+      tooltip: live.permitted
+        ? `🟢 Allowed Trading Session: Active (${slotName}) — Order Execution Permitted`
+        : `🔴 Outside Allowed Session: ${live.reason || "Outside Permitted Execution Hours"}`,
+    };
+  } catch {
+    // 3. Fallback based on status & vetoes
+    const hasTimingVeto = pair?.vetoes?.some(
+      (v) => v.code === "TIMING" || v.code === "DEAD_ZONE" || v.code === "OFF_SESSION" || v.code === "SESSION_RESTRICTED"
+    );
+    const allowed = !hasTimingVeto && !/OFF_SESSION|DEAD_ZONE|TIMING/.test(pair?.status || "");
+    return {
+      allowed,
+      slotName: allowed ? "ACTIVE" : "OFF",
+      fullName: "Trading Window",
+      tooltip: allowed
+        ? "🟢 In Allowed Trading Session — Execution Permitted"
+        : "🔴 Outside Allowed Trading Session — Execution Blocked",
+    };
+  }
+}
 
 const HORIZON_ICONS = {
   all: Layers,
@@ -94,7 +159,18 @@ export default function PairRadar({
   onToggleWhitelist,
   whitelist = [],
   ticks = {},
+  config = {},
+  scannedAt = null,
 }) {
+  const [currentNow, setCurrentNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentNow(Date.now());
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
   const [horizonFilter, setHorizonFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState("all");
@@ -651,6 +727,34 @@ export default function PairRadar({
         </div>
       </div>
 
+      {/* Dynamic Keyframes for Pulsing Session LED Beacons */}
+      <style>{`
+        @keyframes radar-led-pulse {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.95), 0 0 2px #22c55e;
+          }
+          50% {
+            opacity: 0.6;
+            transform: scale(0.85);
+            box-shadow: 0 0 3px rgba(34, 197, 94, 0.4), 0 0 1px #22c55e;
+          }
+        }
+        @keyframes radar-led-pulse-red {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.85), 0 0 2px #ef4444;
+          }
+          50% {
+            opacity: 0.6;
+            transform: scale(0.85);
+            box-shadow: 0 0 3px rgba(239, 68, 68, 0.35), 0 0 1px #ef4444;
+          }
+        }
+      `}</style>
+
       {/* Grid of Minimal Pair Cards */}
       {filteredAndSorted.length === 0 ? (
         <div
@@ -735,6 +839,7 @@ export default function PairRadar({
             const sl = pricing.sl;
             const tp = pricing.tp;
             const displayRR = pricing.rr;
+            const slDist = calculateSlDistance(entry, sl, pair.tradeableSymbol || pair.symbol);
 
             const conviction = finiteNumber(pair.brain?.conviction);
             const isWhitelisted = whitelistSet.has(pair.symbol);
@@ -940,51 +1045,70 @@ export default function PairRadar({
                 ? "rgba(249, 115, 22, 0.12)"
                 : "var(--panel)";
 
+            const sessionInfo = checkSessionAllowed(pair, config, currentNow);
+            const pairTimestamp = pair.scannedAt || pair.at || pair.snapshot?.updatedAt || scannedAt;
+            const timeAgoText = formatTimeAgo(pairTimestamp, currentNow);
+
             return (
               <article
                 key={pair.radarKey || `${pair.symbol}:${pair.horizon || pair.scenario?.id || "day"}`}
                 onClick={() => onInspectPair?.(pair)}
                 style={{
                   background: prime
-                    ? "rgba(34, 197, 94, 0.04)"
+                    ? "linear-gradient(180deg, rgba(34, 197, 94, 0.05) 0%, rgba(15, 23, 42, 0.9) 100%)"
                     : isWatching
-                    ? "rgba(249, 115, 22, 0.03)"
-                    : "var(--panel-2)",
+                    ? "linear-gradient(180deg, rgba(249, 115, 22, 0.04) 0%, rgba(15, 23, 42, 0.9) 100%)"
+                    : isBlocked
+                    ? "linear-gradient(180deg, rgba(239, 68, 68, 0.04) 0%, rgba(15, 23, 42, 0.9) 100%)"
+                    : "linear-gradient(180deg, rgba(30, 41, 59, 0.35) 0%, rgba(15, 23, 42, 0.9) 100%)",
                   border: `1px solid ${
                     prime
                       ? "rgba(34, 197, 94, 0.45)"
                       : isWatching
                       ? "rgba(249, 115, 22, 0.35)"
                       : isScanning
-                      ? "rgba(56, 189, 248, 0.25)"
+                      ? "rgba(56, 189, 248, 0.28)"
                       : isBlocked
-                      ? "rgba(239, 68, 68, 0.2)"
+                      ? "rgba(239, 68, 68, 0.24)"
                       : "var(--border)"
                   }`,
-                  borderRadius: 10,
-                  padding: "12px 14px",
+                  borderRadius: 12,
+                  padding: "13px 14px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 9,
+                  gap: 10,
                   cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  boxShadow: prime ? "0 4px 14px rgba(34, 197, 94, 0.12)" : "none",
+                  transition: "all 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+                  boxShadow: prime
+                    ? "0 4px 20px rgba(34, 197, 94, 0.12)"
+                    : isWatching
+                    ? "0 4px 18px rgba(249, 115, 22, 0.08)"
+                    : "0 2px 10px rgba(0, 0, 0, 0.25)",
                   position: "relative",
+                  backdropFilter: "blur(8px)",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = "var(--purple, #a855f7)";
-                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 8px 24px rgba(168, 85, 247, 0.18)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = prime
                     ? "rgba(34, 197, 94, 0.45)"
+                    : isWatching
+                    ? "rgba(249, 115, 22, 0.35)"
                     : isBlocked
-                    ? "rgba(239, 68, 68, 0.2)"
+                    ? "rgba(239, 68, 68, 0.24)"
                     : "var(--border)";
                   e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = prime
+                    ? "0 4px 20px rgba(34, 197, 94, 0.12)"
+                    : isWatching
+                    ? "0 4px 18px rgba(249, 115, 22, 0.08)"
+                    : "0 2px 10px rgba(0, 0, 0, 0.25)";
                 }}
               >
-                {/* 1. Header: Rank, Star, Symbol, Direction, Horizon & Watchlist */}
+                {/* 1. Primary Header: Identity, Rank, Direction + Corner Green/Red Session Light + Status */}
                 <div
                   style={{
                     display: "flex",
@@ -994,7 +1118,7 @@ export default function PairRadar({
                     flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                     {/* Rank Pill */}
                     <span
                       style={{
@@ -1034,21 +1158,23 @@ export default function PairRadar({
                       <Star size={13} fill={isWhitelisted ? "currentColor" : "none"} />
                     </button>
 
-                    <strong style={{ fontSize: 14 }}>
+                    {/* Asset Symbol */}
+                    <strong style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: "-0.01em", color: "var(--fg)" }}>
                       {pair.tradeableSymbol || pair.symbol}
                     </strong>
 
+                    {/* Direction Pill */}
                     <span
                       style={{
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: 800,
                         padding: "1px 6px",
                         borderRadius: 3,
                         background:
                           pair.dir === 1
-                            ? "rgba(34, 197, 94, 0.15)"
+                            ? "rgba(34, 197, 94, 0.16)"
                             : pair.dir === -1
-                            ? "rgba(239, 68, 68, 0.15)"
+                            ? "rgba(239, 68, 68, 0.16)"
                             : "var(--panel)",
                         color:
                           pair.dir === 1
@@ -1056,14 +1182,19 @@ export default function PairRadar({
                             : pair.dir === -1
                             ? "var(--red)"
                             : "var(--muted)",
+                        border: `1px solid ${
+                          pair.dir === 1
+                            ? "rgba(34, 197, 94, 0.3)"
+                            : pair.dir === -1
+                            ? "rgba(239, 68, 68, 0.3)"
+                            : "var(--border)"
+                        }`,
+                        fontFamily: "monospace",
                       }}
                     >
                       {pair.dir === 1 ? "LONG ▲" : pair.dir === -1 ? "SHORT ▼" : "NEUTRAL ⬌"}
                     </span>
-                    <ModelBadge item={pair.stagedLevel || pair.entryModel || level || pair} size="xs" />
-                  </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     {/* Horizon Badge */}
                     <span
                       style={{
@@ -1101,14 +1232,17 @@ export default function PairRadar({
                           ? "30M-5M"
                           : "4H-15M")}
                     </span>
+                  </div>
 
+                  {/* Corner Status & Indicators: Status Pill + Minimal Glowing Session Dot in Corner */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     {/* Status Pill */}
                     <span
                       style={{
                         fontSize: 9,
                         fontWeight: 700,
-                        padding: "1px 6px",
-                        borderRadius: 3,
+                        padding: "2px 7px",
+                        borderRadius: 4,
                         background: prime
                           ? "rgba(34, 197, 94, 0.18)"
                           : isWatching
@@ -1118,28 +1252,105 @@ export default function PairRadar({
                           : "var(--panel)",
                         color: statusColor,
                         border: `1px solid ${statusColor}40`,
+                        fontFamily: "monospace",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {status.replace(/_/g, " ")}
                     </span>
+
+                    {/* Corner Minimal Glowing Session LED Dot */}
+                    <SessionLedDot
+                      pair={pair}
+                      config={config}
+                      now={currentNow}
+                      size={7.5}
+                    />
                   </div>
                 </div>
 
-                {/* 2. Opportunity & Conviction Visual Dual Meter Strip */}
+                {/* 2. Sub-Header Strip: Model Badge, Slot Badge & Confluence Highlights */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 6,
+                    fontSize: 10,
+                    color: "var(--muted)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, overflow: "hidden" }}>
+                    <ModelBadge item={pair.stagedLevel || pair.entryModel || level || pair} size="xs" showName={true} />
+                    {pair.activeTimeSlot?.shortBadge && (
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          color: "var(--muted)",
+                          background: "rgba(255, 255, 255, 0.04)",
+                          padding: "1px 5px",
+                          borderRadius: 3,
+                          border: "1px solid var(--border)",
+                          fontFamily: "monospace",
+                        }}
+                        title={pair.activeTimeSlot?.name}
+                      >
+                        {pair.activeTimeSlot.shortBadge}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Highlights: Blended Sweet Spot / SMT Divergence */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {(level?.isBlended || pair.isBlended) && (
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                          color: "var(--purple, #c084fc)",
+                          background: "rgba(168, 85, 247, 0.12)",
+                          padding: "1px 5px",
+                          borderRadius: 3,
+                          border: "1px solid rgba(168, 85, 247, 0.3)",
+                        }}
+                        title="Blended Sweet Spot: Merged FVG + Order Block zone"
+                      >
+                        💎 Sweet Spot
+                      </span>
+                    )}
+                    {(pair.brain?.smtEvidence?.hasDivergence || level?.evidence?.hasSmtDivergence || pair.stagedLevel?.evidence?.hasSmtDivergence) && (
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                          color: "#38bdf8",
+                          background: "rgba(56, 189, 248, 0.12)",
+                          padding: "1px 5px",
+                          borderRadius: 3,
+                          border: "1px solid rgba(56, 189, 248, 0.3)",
+                        }}
+                        title="SMT Divergence Confirmed across correlated benchmark"
+                      >
+                        ⚡ SMT
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Dual-Meter Visual Telemetry Strip (Opportunity & Conviction) */}
                 <div
                   style={{
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr",
                     gap: 8,
                     padding: "7px 9px",
-                    background: "var(--panel)",
+                    background: "rgba(0, 0, 0, 0.28)",
                     borderRadius: 6,
                     border: "1px solid var(--border)",
                   }}
                 >
-                  {/* Column 1: Opportunity Score + Red Opp Drag Meter */}
+                  {/* Column 1: Opportunity Score + Opp Drag */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {/* Positive Opportunity Score Bar with Tooltip */}
                     <PositiveScoreBarWithTooltip
                       label="Opportunity"
                       value={effectiveScore}
@@ -1153,8 +1364,6 @@ export default function PairRadar({
                       align="left"
                       placement="bottom"
                     />
-
-                    {/* Red Negative Opportunity / Friction Drag Bar with Tooltip */}
                     <NegativeScoreBarWithTooltip
                       label="Opp Drag"
                       value={negScore}
@@ -1167,9 +1376,8 @@ export default function PairRadar({
                     />
                   </div>
 
-                  {/* Column 2: Brain Conviction + Red Conviction Drag Meter */}
+                  {/* Column 2: Brain Conviction + Conviction Drag */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {/* Positive Brain Conviction Bar with Tooltip */}
                     <PositiveScoreBarWithTooltip
                       label="Conviction"
                       value={conviction ?? 0}
@@ -1183,8 +1391,6 @@ export default function PairRadar({
                       align="right"
                       placement="bottom"
                     />
-
-                    {/* Red Negative Conviction Drag Bar with Tooltip */}
                     <NegativeScoreBarWithTooltip
                       label="Conviction Drag"
                       value={convictionNegMod}
@@ -1196,37 +1402,9 @@ export default function PairRadar({
                       placement="bottom"
                     />
                   </div>
-
-                  {/* Optional: Blended Sweet Spot indicator */}
-                  {(level?.isBlended || pair.isBlended) && (
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "flex-end",
-                        paddingTop: 1,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 8.5,
-                          fontWeight: 800,
-                          color: "var(--purple, #c084fc)",
-                          background: "rgba(168, 85, 247, 0.12)",
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          border: "1px solid rgba(168, 85, 247, 0.3)",
-                        }}
-                        title="Blended Sweet Spot: Merged FVG + Order Block zone"
-                      >
-                        💎 Blended Sweet Spot
-                      </span>
-                    </div>
-                  )}
                 </div>
 
-                {/* 3. Setup Price Geometry Grid (The Core Trade Idea Data) */}
+                {/* 4. Setup Price Geometry Grid (The Core Trade Idea Data) */}
                 {pricing.hasSetup ? (
                   <div
                     style={{
@@ -1234,7 +1412,7 @@ export default function PairRadar({
                       gridTemplateColumns: "repeat(4, 1fr)",
                       gap: 6,
                       padding: "6px 8px",
-                      background: "var(--panel)",
+                      background: "rgba(0, 0, 0, 0.22)",
                       borderRadius: 6,
                       border: "1px solid var(--border)",
                       fontFamily: "monospace",
@@ -1250,7 +1428,24 @@ export default function PairRadar({
                       <div style={{ fontWeight: 700, color: "var(--accent)" }}>{formatPrice(entry)}</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>SL</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 8.5, color: "var(--muted)", textTransform: "uppercase" }}>SL</span>
+                        {(slDist?.short || pricing.slDistanceShort) && (
+                          <span
+                            style={{
+                              fontSize: 8.5,
+                              fontWeight: 800,
+                              color: "#ea580c",
+                              background: "rgba(234, 88, 12, 0.15)",
+                              padding: "0 4px",
+                              borderRadius: 3,
+                            }}
+                            title={`Exact SL Distance from Entry: ${slDist?.formatted || pricing.slDistanceFormatted}`}
+                          >
+                            {slDist?.short || pricing.slDistanceShort}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontWeight: 700, color: "#ea580c" }}>{formatPrice(sl)}</div>
                     </div>
                     <div>
@@ -1302,7 +1497,7 @@ export default function PairRadar({
                   </div>
                 )}
 
-                {/* 4. HTF Dealing Range & DOL Landmark */}
+                {/* 5. HTF Dealing Range & DOL Landmark */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 9.5 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--muted)" }}>
                     <span>
@@ -1337,14 +1532,14 @@ export default function PairRadar({
                     )}
                   </div>
 
-                  {/* Mini range progress line */}
+                  {/* Mini range progress line with Equilibrium center tick */}
                   {coveragePct !== null && (
                     <div
                       style={{
                         position: "relative",
                         width: "100%",
                         height: 3,
-                        background: "var(--panel)",
+                        background: "rgba(255, 255, 255, 0.08)",
                         borderRadius: 2,
                         overflow: "hidden",
                       }}
@@ -1356,7 +1551,7 @@ export default function PairRadar({
                           top: 0,
                           bottom: 0,
                           width: 1,
-                          background: "var(--border)",
+                          background: "rgba(255, 255, 255, 0.35)",
                         }}
                       />
                       <div
@@ -1370,7 +1565,7 @@ export default function PairRadar({
                   )}
                 </div>
 
-                {/* 5. Footer & CTA Prompt */}
+                {/* 6. Footer: Status Rationale + Minimal Last Updated Time ("__ ago") + Chart & Brain CTA */}
                 <div
                   style={{
                     display: "flex",
@@ -1392,7 +1587,6 @@ export default function PairRadar({
                       flex: 1,
                     }}
                   >
-                    <ModelBadge item={pair.stagedLevel || pair.entryModel || level || pair} size="xs" showName={true} />
                     {typeof pair.statusReason === "string" && (
                       <span
                         style={{
@@ -1402,25 +1596,47 @@ export default function PairRadar({
                           color: isBlocked ? "var(--red)" : "var(--muted)",
                           fontSize: 9.5,
                         }}
+                        title={pair.statusReason}
                       >
-                        · {pair.statusReason}
+                        {pair.statusReason}
                       </span>
                     )}
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      color: "var(--purple, #c084fc)",
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <CandlestickChart size={12} />
-                    <span>Chart & Brain</span>
-                    <ChevronRight size={11} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    {/* Minimal Last Updated Time in "__ ago" format */}
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3.5,
+                        fontSize: 9,
+                        color: "var(--muted)",
+                        fontFamily: "monospace",
+                        opacity: 0.85,
+                        whiteSpace: "nowrap",
+                      }}
+                      title={`Last scanned: ${pairTimestamp ? new Date(pairTimestamp).toLocaleTimeString() : "Recent"}`}
+                    >
+                      <Clock size={10} style={{ opacity: 0.65 }} />
+                      <span>{timeAgoText}</span>
+                    </div>
+
+                    {/* Chart & Brain Action Link */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                        color: "var(--purple, #c084fc)",
+                        fontWeight: 700,
+                        fontSize: 9.5,
+                      }}
+                    >
+                      <CandlestickChart size={11} />
+                      <span>Chart & Brain</span>
+                      <ChevronRight size={10} />
+                    </div>
                   </div>
                 </div>
               </article>

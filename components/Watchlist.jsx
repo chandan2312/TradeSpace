@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid, Zap, ChevronDown } from "lucide-react";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 import { getSymbolAliases, resolveAliasValue } from "../lib/watchlistAliases.js";
+import SessionLedDot from "./autonomous/SessionLedDot";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
@@ -1168,6 +1169,7 @@ function WatchRow({
             />
           )}
           <span className="num" style={{ fontWeight: 700, fontSize: 11 }}>{sym}</span>
+          <SessionLedDot symbol={sym} size={5.5} style={{ marginLeft: 2 }} />
           {hasAlert && <span style={{ color: "var(--orange)", fontSize: 9 }} title="Has active alert">●</span>}
         </div>
         {spreadPips != null && (

@@ -88,10 +88,10 @@ export const FALLBACK_ENTRY_MODELS = [
   { id: "breaker_block", name: "Breaker Block & Mitigation Retest", badge: "Breaker Block", description: "Failed opposing OB → raid/displaced structure failure → retest of the breaker." },
   { id: "ote_continuation", name: "OTE Trend Expansion", badge: "OTE Sweetspot", description: "Aligned impulse → .618–.786 retracement with an embedded valid FVG/OB." },
   { id: "silver_bullet", name: "ICT Silver Bullet Window", badge: "Silver Bullet", description: "London 10–11 or NY 17–18 EET only; in-window displacement and opposing unconsumed session target." },
-  { id: "displacement_breakout", name: "Displacement Momentum Breakout", badge: "Momentum Breakout", description: "Violent institutional expansion beyond swing/range without pullback → momentum continuation entry with stop at candle origin/extreme." },
+  { id: "displacement_breakout", name: "Displacement Momentum Breakout (Deprecated)", badge: "Momentum Breakout", description: "Disabled: Retail momentum chase that buys tops and sells bottoms." },
   { id: "judas_swing", name: "London Judas Swing Reversal", badge: "Judas Swing", description: "London Open (07:00-09:30 UTC) false raid of Asian Range or PDH/PDL with 15M displacement MSS reversal back into HTF trend." },
   { id: "smt_divergence_sweep", name: "SMT Intermarket Sweep", badge: "SMT Divergence", description: "Liquidity extreme raid accompanied by contemporaneous non-confirmation divergence from correlated benchmark partner." },
-  { id: "fvg_rejection", name: "Virgin FVG Volume Imbalance Rejection", badge: "FVG Rejection", description: "Runaway trend momentum impulse with immediate 50% CE tap of a fresh virgin displacement FVG." },
+  { id: "fvg_rejection", name: "Virgin FVG Volume Imbalance Rejection (Deprecated)", badge: "FVG Rejection", description: "Disabled: Momentum chase that buys tops / sells drops without structural discount or liquidity sweep." },
   { id: "po3_daily_cycle", name: "Power of 3 Daily Cycle", badge: "PO3 Cycle", description: "NY Midnight / Daily Open manipulation into discount/premium followed by 15M displacement reclaim." },
 ];
 

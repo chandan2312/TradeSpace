@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { X, RotateCcw, Trash2, BellOff, StarOff } from "lucide-react";
 import { getTradingDayKey } from "../lib/time.js";
+import SessionLedDot from "./autonomous/SessionLedDot";
 
 const FILTERS = [
   { id: "active", label: "Active" },
@@ -131,9 +132,11 @@ function AlertRow({ a, current, onJump, onDelete, onDeleteBySymbol, onRearm }) {
           style={{
             padding: "1px 4px", fontWeight: 700, fontSize: 12,
             color: current ? "var(--accent)" : "var(--text)",
+            display: "inline-flex", alignItems: "center", gap: 5
           }}
         >
           {a.symbol}
+          <SessionLedDot symbol={a.symbol} size={5.5} />
         </button>
         <span className="num" style={{ fontWeight: 600, fontSize: 12 }}>{a.price}</span>
         <span className="muted" style={{ fontSize: 11 }}>{a.condition}</span>

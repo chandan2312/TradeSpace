@@ -32,6 +32,113 @@ export function formatAR(value) {
   return n === null ? "AR: --" : `AR ${n >= 0 ? "+" : ""}${n.toFixed(2)}R`;
 }
 
+/**
+ * Calculates stop loss distance in points or pips for any asset.
+ * Enables live traders on external brokers to set the exact SL distance
+ * without needing price-to-price comparison against VPS MT5 quote shifts.
+ */
+export function calculateSlDistance(entry, sl, symbol) {
+  const e = finiteNumber(entry);
+  const s = finiteNumber(sl);
+  if (e === null || s === null) return null;
+
+  const rawDist = Math.abs(e - s);
+  if (rawDist <= 0) return null;
+
+  const canon = String(symbol || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().replace(/\.I$/i, "");
+
+  // 1. Indices: US30, DJ30, NAS100, NDX100, US500, SP500, SPX500, GER40, GER30, UK100, JP225, AUS200
+  if (/^(US30|DJ30|NAS100|NDX100|US500|SP500|SPX500|GER40|GER30|UK100|JP225|AUS200)/i.test(canon)) {
+    const pts = rawDist;
+    return {
+      rawDist,
+      unit: "pts",
+      value: pts,
+      formatted: `${pts.toFixed(1)} pts`,
+      short: `${pts.toFixed(1)} pts`,
+    };
+  }
+
+  // 2. Metals: Gold (XAUUSD) & Silver (XAGUSD)
+  if (/^XAU/i.test(canon) || canon === "GOLD") {
+    // For Gold: $0.10 = 1 pip (100 points = $1.00 move)
+    const pips = rawDist / 0.10;
+    const pts = rawDist;
+    return {
+      rawDist,
+      unit: "pips",
+      value: pips,
+      formatted: `${pips.toFixed(1)} pips ($${pts.toFixed(2)})`,
+      short: `${pips.toFixed(1)}p`,
+    };
+  }
+  if (/^XAG/i.test(canon) || canon === "SILVER") {
+    const pips = rawDist / 0.01;
+    return {
+      rawDist,
+      unit: "pips",
+      value: pips,
+      formatted: `${pips.toFixed(1)} pips`,
+      short: `${pips.toFixed(1)}p`,
+    };
+  }
+
+  // 3. Crypto: BTCUSD, ETHUSD, SOLUSD
+  if (/^(BTC|ETH|SOL|XRP)/i.test(canon)) {
+    const pts = rawDist;
+    return {
+      rawDist,
+      unit: "pts",
+      value: pts,
+      formatted: `${pts >= 10 ? pts.toFixed(1) : pts.toFixed(2)} pts`,
+      short: `${pts.toFixed(1)} pts`,
+    };
+  }
+
+  // 4. Forex: JPY Crosses (USDJPY, GBPJPY, EURJPY, CADJPY, etc.)
+  if (canon.endsWith("JPY") || canon.includes("JPY")) {
+    const pips = rawDist / 0.01;
+    return {
+      rawDist,
+      unit: "pips",
+      value: pips,
+      formatted: `${pips.toFixed(1)} pips`,
+      short: `${pips.toFixed(1)}p`,
+    };
+  }
+
+  // 5. Forex: Standard 5-digit majors and crosses (EURUSD, GBPUSD, USDCHF, USDCAD, etc.)
+  if (/^[A-Z]{6}$/i.test(canon)) {
+    const pips = rawDist / 0.0001;
+    return {
+      rawDist,
+      unit: "pips",
+      value: pips,
+      formatted: `${pips.toFixed(1)} pips`,
+      short: `${pips.toFixed(1)}p`,
+    };
+  }
+
+  // Fallback
+  if (rawDist < 0.1) {
+    const pips = rawDist / 0.0001;
+    return {
+      rawDist,
+      unit: "pips",
+      value: pips,
+      formatted: `${pips.toFixed(1)} pips`,
+      short: `${pips.toFixed(1)}p`,
+    };
+  }
+  return {
+    rawDist,
+    unit: "pts",
+    value: rawDist,
+    formatted: `${rawDist.toFixed(1)} pts`,
+    short: `${rawDist.toFixed(1)} pts`,
+  };
+}
+
 export function IRARBadge({ idealR, actualR, size = "md", style = {} }) {
   const ir = finiteNumber(idealR);
   const ar = finiteNumber(actualR);

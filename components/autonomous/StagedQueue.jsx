@@ -29,6 +29,7 @@ import EvidenceDetails from "./EvidenceDetails";
 import StagedIdeaChart from "./StagedIdeaChart";
 import StagedTradeModal from "./StagedTradeModal";
 import ModelBadge from "./ModelBadge";
+import SessionLedDot from "./SessionLedDot";
 import NegativeScoreBarWithTooltip from "./NegativeScoreBarWithTooltip";
 import PositiveScoreBarWithTooltip from "./PositiveScoreBarWithTooltip";
 import {
@@ -38,6 +39,7 @@ import {
   formatUsd,
   finiteNumber,
   markPriceFor,
+  calculateSlDistance,
 } from "./TradeTelemetry";
 import { resolveCopierRouting } from "../../lib/autonomous/magicEncoder.js";
 
@@ -548,6 +550,7 @@ export default function StagedQueue({
                     <strong style={{ fontSize: 15, letterSpacing: "-0.01em" }}>
                       {trade.symbol}
                     </strong>
+                    <SessionLedDot symbol={trade.symbol} size={7.5} />
                     <span
                       style={{
                         fontSize: 10,
@@ -843,7 +846,26 @@ export default function StagedQueue({
                     <div style={{ fontWeight: 700, color: "var(--fg)" }}>{formatPrice(entryVal)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: 8.5 }}>STOP LOSS</div>
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 4, color: "var(--muted)", fontSize: 8.5 }}>
+                      <span>STOP LOSS</span>
+                      {(() => {
+                        const dist = calculateSlDistance(entryVal, slVal, trade.symbol);
+                        return dist?.short ? (
+                          <span
+                            style={{
+                              color: "var(--red)",
+                              fontWeight: 800,
+                              background: "rgba(239, 68, 68, 0.15)",
+                              padding: "0 3px",
+                              borderRadius: 3,
+                            }}
+                            title={`SL Distance: ${dist.formatted}`}
+                          >
+                            {dist.short}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
                     <div style={{ fontWeight: 700, color: "var(--red)" }}>{formatPrice(slVal)}</div>
                   </div>
                   <div>

@@ -704,6 +704,99 @@ assert(stagedDProp.style.statsLabel.includes("PROP"), "Label indicates PROP mode
 assert.equal(stagedDProp.points[0].time, lastMockBar.time + 7 * tfSec, "Secondary setup staggered by 2 bars (7-candle gap)");
 console.log("✅ PASS: Staged Prop-Firm model correctly differentiated with Cyan/Rose palette");
 
+// -------------------------------------------------------------
+// TEST 24: Resting Limit Order (UK100 style) -> Native Position Tool with dashed entry line
+// -------------------------------------------------------------
+const limitOrderTrade = {
+  _id: "trade_limit_uk100_1",
+  symbol: "UK100",
+  dir: 1,
+  direction: "BUY",
+  status: "pending",
+  orderType: "limit",
+  entryPrice: 10765.33,
+  slPrice: 10729.80,
+  tpPrice: 10871.92,
+  createdAt: new Date(mockBars[10].time * 1000).toISOString(),
+};
+
+const limitDrawings = tradeToPositionDrawings(limitOrderTrade, mockBars, tfSec);
+assert.equal(limitDrawings.length, 1, "Must return 1 native position tool for resting limit order");
+const limitDrawing = limitDrawings[0];
+assert.equal(limitDrawing.kind, "long-position", "BUY limit order produces long-position tool");
+assert.equal(limitDrawing.points[0].time, mockBars[10].time, "Starts at createdAt candle");
+assert.equal(limitDrawing.points[0].price, 10765.33, "Entry price matches limit order price");
+assert.equal(limitDrawing.points[1].price, 10765.33, "Horizontal right boundary matches limit price");
+assert.equal(limitDrawing.style.lineStyle, "dashed", "Resting limit order entry line must be dashed");
+assert.ok(limitDrawing.style.statsLabel.includes("RESTING LIMIT"), "Stats label must indicate RESTING LIMIT");
+assert.ok(limitDrawing.points[1].time > limitDrawing.points[0].time, "Right boundary must extend to current live candle + offset");
+console.log("✅ PASS: Resting Limit Order (pending) renders native RR tool with dashed entry line and RESTING LIMIT stats");
+
+// -------------------------------------------------------------
+// TEST 25: Mandatory SL Points/Pips & RR Stats on Limit and Staged Orders
+// -------------------------------------------------------------
+assert.equal(limitDrawing.style.slDistanceText, "35.5 pts", "UK100 limit order SL points calculated accurately");
+assert.equal(limitDrawing.style.plannedRRText, "1:3.00RR", "UK100 limit order planned RR formatted as 1:3.00RR");
+assert.ok(limitDrawing.style.statsLabel.includes("SL: 35.5 pts"), "Stats label includes mandatory SL points");
+assert.ok(limitDrawing.style.statsLabel.includes("1:3.00RR"), "Stats label includes mandatory RR ratio");
+
+// EURUSD Staged setup
+const stagedEurSetup = {
+  _id: "staged_eur_test",
+  symbol: "EURUSD",
+  dir: 1,
+  direction: "BUY",
+  status: "staged",
+  entryPrice: 1.0850,
+  slPrice: 1.0835,
+  tpPrice: 1.0895,
+};
+const stagedEurDrawing = buildStagedTradeDrawing(stagedEurSetup, mockBars, tfSec, 0);
+assert.equal(stagedEurDrawing.style.slDistanceText, "15.0 pips", "EURUSD staged setup SL distance is 15.0 pips");
+assert.equal(stagedEurDrawing.style.plannedRRText, "1:3.00RR", "EURUSD staged planned RR is 1:3.00RR");
+assert.ok(stagedEurDrawing.style.statsLabel.includes("15.0p"), "Staged stats label contains SL pips distance");
+console.log("✅ PASS: Mandatory SL points/pips & RR verified on limit and staged orders");
+
+// -------------------------------------------------------------
+// TEST 26: Dynamic Live RR Placement (< 1R below SL zone vs >= 1R above TP zone)
+// -------------------------------------------------------------
+// Live trade 1 (< 1.0R): +0.48R
+const liveSub1RTrade = {
+  _id: "trade_live_sub1r",
+  symbol: "EURUSD",
+  dir: 1,
+  direction: "BUY",
+  status: "active",
+  entryPrice: 1.0850,
+  slPrice: 1.0835,
+  tpPrice: 1.0895,
+  actualR: 0.48,
+  createdAt: new Date(mockBars[5].time * 1000).toISOString(),
+};
+const liveSub1RDrawing = tradeToPositionDrawing(liveSub1RTrade, mockBars, tfSec);
+assert.equal(liveSub1RDrawing.style.isLive, true, "Marked as live active trade");
+assert.equal(liveSub1RDrawing.style.actualR, 0.48, "Actual R telemetry populated");
+assert.equal(liveSub1RDrawing.style.slDistanceText, "15.0 pips", "Live trade retains SL pips distance");
+
+// Live trade 2 (>= 1.0R): +1.85R
+const liveSuper1RTrade = {
+  _id: "trade_live_super1r",
+  symbol: "EURUSD",
+  dir: 1,
+  direction: "BUY",
+  status: "active",
+  entryPrice: 1.0850,
+  slPrice: 1.0835,
+  tpPrice: 1.0895,
+  actualR: 1.85,
+  createdAt: new Date(mockBars[5].time * 1000).toISOString(),
+};
+const liveSuper1RDrawing = tradeToPositionDrawing(liveSuper1RTrade, mockBars, tfSec);
+assert.equal(liveSuper1RDrawing.style.isLive, true, "Marked as live active trade");
+assert.equal(liveSuper1RDrawing.style.actualR, 1.85, "Actual R telemetry populated for trade above 1R");
+assert.ok(liveSuper1RDrawing.style.actualR >= 1.0, "Trade is >= 1.0R to trigger above-TP zone placement");
+console.log("✅ PASS: Dynamic Live RR Placement (< 1R vs >= 1R) telemetry verified");
+
 console.log("\n=====================================================================");
 console.log("🎯 ALL NATIVE LIGHTWEIGHT-CHARTS-DRAWING RR TOOL TESTS PASSED!");
 console.log("=====================================================================");
