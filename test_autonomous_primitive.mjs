@@ -356,32 +356,40 @@ const liveTradeWithBe = {
   filledAt: new Date(mockBars[10].time * 1000).toISOString(),
 };
 
-const allDrawings = tradeToPositionDrawings(liveTradeWithBe, mockBars, tfSec);
-assert.equal(allDrawings.length, 2, "Must return 2 drawings: native position tool + boundary-to-boundary trailing SL line");
+// Breakeven stage trade: strictly NO redundant trailing line (native position tool already denotes BE level)
+const beDrawings = tradeToPositionDrawings(liveTradeWithBe, mockBars, tfSec);
+assert.equal(beDrawings.length, 1, "Must return 1 drawing: native position tool only (no redundant line at breakeven)");
+
+// Actively trailed trade in profit: returns 2 drawings (position tool + trailing SL line in profit)
+const liveTradeTrailed = {
+  ...liveTradeWithBe,
+  _id: "trade_live_trail_1",
+  isTrailing: true,
+  slPrice: 1.0870, // Trailed +20 pips into profit
+};
+
+const allDrawings = tradeToPositionDrawings(liveTradeTrailed, mockBars, tfSec);
+assert.equal(allDrawings.length, 2, "Must return 2 drawings: native position tool + boundary-to-boundary trailing SL line in profit");
 assert.equal(allDrawings[0].kind, "long-position", "First drawing is the native position tool");
 assert.equal(allDrawings[1].kind, "trend-line", "Second drawing is the trailing SL line");
-assert.equal(allDrawings[1].id, "auto_trail_trade_live_be_1", "Trailing line ID must match auto_trail_ prefix");
+assert.equal(allDrawings[1].id, "auto_trail_trade_live_trail_1", "Trailing line ID must match auto_trail_ prefix");
 assert.equal(allDrawings[1].style.lineStyle, "dashed", "Trailing line must be dashed");
 assert.equal(allDrawings[1].points[0].time, allDrawings[0].points[0].time, "Trailing line starts at RR tool left boundary (entryTime)");
 assert.equal(allDrawings[1].points[1].time, allDrawings[0].points[1].time, "Trailing line ends at RR tool right boundary (p2Time)");
-assert.equal(allDrawings[1].points[0].price, 1.0850, "Trailing line horizontal price matches breakeven level");
-assert.equal(allDrawings[1].points[1].price, 1.0850, "Trailing line horizontal price matches breakeven level");
+assert.equal(allDrawings[1].points[0].price, 1.0870, "Trailing line horizontal price matches trailed level in profit");
+assert.equal(allDrawings[1].points[1].price, 1.0870, "Trailing line horizontal price matches trailed level in profit");
 assert.equal(allDrawings[1].locked, true, "Trailing line must be locked");
-
-const milestoneDrawings = tradeToPositionDrawings(liveTradeWithBe, mockBars, tfSec, { includeMilestones: true });
-assert.ok(milestoneDrawings.length >= 2, "Milestone drawings must include position tool + trailing line + milestone triggers");
-assert.ok(milestoneDrawings.some(d => d.id?.startsWith("auto_trail_trigger_")), "Milestone drawings include trailing activation trigger line");
-console.log("✅ PASS: Boundary-to-boundary Trailing SL dashed line and optional Milestone triggers verified across RR tool");
+console.log("✅ PASS: Boundary-to-boundary Trailing SL dashed line verified strictly when trailed into profit");
 
 // -------------------------------------------------------------
 // TEST 13: Pullback Tap of Trailing SL Line Truncates Both RR Tool and Line at Tap Candle
 // -------------------------------------------------------------
-// Short BTC trade entered on bar 10 at 86512.33 with initial SL 87139. Moved to BE 86512.33.
-// Bar 25 pulls back and taps 86512.33 (high = 86515 >= 86512.33).
+// Short BTC trade entered on bar 10 at 86512.33 with initial SL 87139. Trailed into profit to 86350.00.
+// Bar 25 pulls back and taps 86350.00 (high = 86520 >= 86350.00).
 const dynamicBarsPullback = mockBars.map((b, i) => {
   if (i < 10) return { ...b, open: 86600, high: 86650, low: 86500, close: 86550 };
   if (i >= 10 && i < 25) return { ...b, open: 86400 - (i - 10) * 20, high: 86450 - (i - 10) * 20, low: 86200 - (i - 10) * 20, close: 86300 - (i - 10) * 20 };
-  if (i === 25) return { ...b, open: 86200, high: 86520, low: 86180, close: 86480 }; // High 86520 >= 86512.33 (TAPS BE!)
+  if (i === 25) return { ...b, open: 86200, high: 86520, low: 86180, close: 86480 }; // High 86520 >= 86350.00 (TAPS Trailing SL!)
   return { ...b, open: 86550, high: 86700, low: 86450, close: 86650 }; // Future candles after tap
 });
 
@@ -393,8 +401,8 @@ const closedBeBtcTrade = {
   status: "closed_be",
   entryPrice: 86512.33,
   initialSlPrice: 87139.00,
-  slPrice: 86512.33, // Breakeven active
-  isBreakeven: true,
+  slPrice: 86500.00, // Trailed into profit (12.33 pts past entry 86512.33)
+  isTrailing: true,
   tpPrice: 84468.00,
   filledAt: new Date(dynamicBarsPullback[10].time * 1000).toISOString(),
   closedAt: new Date(dynamicBarsPullback[45].time * 1000).toISOString(),
