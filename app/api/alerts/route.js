@@ -3,18 +3,38 @@ import { broadcast } from "@/lib/realtime";
 import { json } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
 import { getSymbolAliases } from "@/lib/watchlistAliases";
-import { invalidateAlertsCache } from "@/lib/alert-engine";
+import { invalidateAlertsCache, pruneStaleTriggeredAlerts } from "@/lib/alert-engine";
+import { getTradingDayStartSec } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   const rawSymbol = req.nextUrl.searchParams.get("symbol");
   const { alertsCol } = await getCols();
-  let filter = {};
+
+  // Proactive cleanup: purge any stale triggered alerts from prior trading days
+  await pruneStaleTriggeredAlerts().catch(() => {});
+
+  const todayStartSec = getTradingDayStartSec(new Date());
+  const todayStartDate = new Date(todayStartSec * 1000);
+
+  const staleTriggeredFilter = {
+    $nor: [
+      { status: "triggered", triggeredAt: { $lt: todayStartDate } },
+      { status: "triggered", triggeredAt: null, createdAt: { $lt: todayStartDate } }
+    ]
+  };
+
+  let filter = staleTriggeredFilter;
   if (rawSymbol) {
     const canon = toCanonicalSymbol(rawSymbol);
     const aliases = getSymbolAliases(rawSymbol);
-    filter = { symbol: { $in: Array.from(new Set([rawSymbol, rawSymbol.toUpperCase(), canon, ...aliases])) } };
+    filter = {
+      $and: [
+        staleTriggeredFilter,
+        { symbol: { $in: Array.from(new Set([rawSymbol, rawSymbol.toUpperCase(), canon, ...aliases])) } }
+      ]
+    };
   }
   const alerts = await alertsCol.find(filter).sort({ createdAt: -1 }).toArray();
   return json({ ok: true, alerts });

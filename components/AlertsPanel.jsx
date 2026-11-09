@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { X, RotateCcw, Trash2, BellOff, StarOff } from "lucide-react";
+import { getTradingDayKey } from "../lib/time.js";
 
 const FILTERS = [
   { id: "active", label: "Active" },
@@ -17,14 +18,25 @@ const COND_COLOR = { cross: "var(--orange)", above: "var(--green)", below: "var(
 export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onDeleteBySymbol, onRearm, onCloseMobile }) {
   const [filter, setFilter] = useState("active");
 
+  const validAlerts = useMemo(() => {
+    const currentDayKey = getTradingDayKey(new Date());
+    return (alerts || []).filter((a) => {
+      if (a.status === "triggered") {
+        const alertDayKey = getTradingDayKey(a.triggeredAt || a.updatedAt || a.createdAt);
+        return alertDayKey === currentDayKey;
+      }
+      return true;
+    });
+  }, [alerts]);
+
   const counts = useMemo(() => ({
-    active: alerts.filter((a) => a.status === "active").length,
-    triggered: alerts.filter((a) => a.status === "triggered").length,
-    all: alerts.length,
-  }), [alerts]);
+    active: validAlerts.filter((a) => a.status === "active").length,
+    triggered: validAlerts.filter((a) => a.status === "triggered").length,
+    all: validAlerts.length,
+  }), [validAlerts]);
 
   const rows = useMemo(() => {
-    let list = alerts;
+    let list = validAlerts;
     if (filter !== "all") list = list.filter((a) => a.status === filter);
     // current symbol pinned to the top within each filter
     return [...list].sort((a, b) => {
@@ -35,7 +47,7 @@ export default function AlertsPanel({ alerts, symbol, setSymbol, onDelete, onDel
       if (a.status !== b.status) return a.status === "active" ? -1 : 1;
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
-  }, [alerts, filter, symbol]);
+  }, [validAlerts, filter, symbol]);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, borderTop: "1px solid var(--border)" }}>

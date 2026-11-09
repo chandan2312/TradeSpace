@@ -18,7 +18,8 @@ import {
   resolveRadarTradeIdeaPricing,
 } from "../lib/autonomous/tradeDrawing.js";
 import { normalizeCandles } from "../lib/candleNormalization.js";
-import { getEetTime, getTradingDateString, getEetOffsetSec } from "../lib/time.js";
+import { getEetTime, getTradingDateString, getEetOffsetSec, getTradingDayKey } from "../lib/time.js";
+import { BiasEnginePrimitive } from "../lib/bias/primitive.js";
 
 const TF_SEC = {
   M1: 60, "1M": 60,
@@ -243,7 +244,7 @@ class AlertsPrimitive {
 }
 
 export default function ChartPanel({
-  symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert, indicators, onAutoAlert,
+  symbol, tf, tick, alerts, barsCache, onAddAlert, onAddAlertLayer, onDeleteAlert, onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert, indicators, onToggleIndicator, onAutoAlert,
   autonomousTrades = [],
   radarPairs = [],
   syncOpts, paneId, syncedLogicalRange, setSyncedLogicalRange, syncedCrosshair, setSyncedCrosshair,
@@ -257,6 +258,7 @@ export default function ChartPanel({
   const lastBarRef = useRef(null);
   const patternsRef = useRef(null);  // PatternsPrimitive attached to the series
   const alertsPrimRef = useRef(null); // AlertsPrimitive
+  const biasPrimRef = useRef(null);   // BiasEnginePrimitive attached to the series
   const drawingManagerRef = useRef(null); // DrawingManager from lightweight-charts-drawing
   const barsRef = useRef([]);        // full bar array the detectors run on
   const [dataVersion, setDataVersion] = useState(0); // bumped on load + bar close
@@ -558,6 +560,10 @@ export default function ChartPanel({
       series.attachPrimitive(alertsPrim);
       alertsPrimRef.current = alertsPrim;
 
+      const biasPrim = new BiasEnginePrimitive();
+      series.attachPrimitive(biasPrim);
+      biasPrimRef.current = biasPrim;
+
       // Pure TradingView DrawingManager from lightweight-charts-drawing
       const drawingManager = new DrawingManager(chart, series, {
         magnet: "off",
@@ -579,6 +585,9 @@ export default function ChartPanel({
       chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      patternsRef.current = null;
+      alertsPrimRef.current = null;
+      biasPrimRef.current = null;
     };
   }, []);
 
@@ -1106,9 +1115,27 @@ export default function ChartPanel({
 
   // ---------- custom alert lines ----------
   useEffect(() => {
-    const visibleAlerts = (alerts || []).filter(a => !a.note?.includes("[RR:"));
+    const currentDayKey = getTradingDayKey(new Date());
+    const visibleAlerts = (alerts || []).filter(a => {
+      if (a.note?.includes("[RR:")) return false;
+      if (a.status === "triggered") {
+        // Double removal: strictly show triggered alert lines from TODAY only
+        const alertDayKey = getTradingDayKey(a.triggeredAt || a.updatedAt || a.createdAt);
+        return alertDayKey === currentDayKey;
+      }
+      return true;
+    });
     alertsPrimRef.current?.update(visibleAlerts, dragging, barsRef.current);
   }, [alerts, dragging, dataVersion]);
+
+  // ---------- Bias Engine & Market Brain visual overlays ----------
+  useEffect(() => {
+    const prim = biasPrimRef.current;
+    if (!prim) return;
+    const isEnabled = indicators?.biasEngine !== false;
+    const symBias = biasData?.symbols?.find((s) => s.symbol === symbol);
+    prim.update(symBias, tf, barsRef.current, isEnabled, digits);
+  }, [biasData, symbol, tf, dataVersion, indicators?.biasEngine, digits]);
 
   // ---------- autonomous trades overlay via DrawingManager (lightweight-charts-drawing native RR tool) ----------
   useEffect(() => {
@@ -1370,8 +1397,13 @@ export default function ChartPanel({
     
     // find alerts near this price (within 10 pixels of y-space), ignoring RR tool auto-alerts
     const y = series.priceToCoordinate(price);
+    const currentDayKey = getTradingDayKey(new Date());
     const nearAlerts = alerts.filter((a) => {
       if (a.note?.includes("[RR:")) return false;
+      if (a.status === "triggered") {
+        const alertDayKey = getTradingDayKey(a.triggeredAt || a.updatedAt || a.createdAt);
+        if (alertDayKey !== currentDayKey) return false;
+      }
       const ay = series.priceToCoordinate(a.price);
       return ay != null && Math.abs(ay - y) < 10;
     });
@@ -1650,7 +1682,12 @@ export default function ChartPanel({
       
       const y = param.point.y;
       let hit = null;
+      const currentDayKey = getTradingDayKey(new Date());
       for (const a of alertsRef.current) {
+        if (a.status === "triggered") {
+          const alertDayKey = getTradingDayKey(a.triggeredAt || a.updatedAt || a.createdAt);
+          if (alertDayKey !== currentDayKey) continue;
+        }
         const ay = seriesRef.current.priceToCoordinate(a.price);
         const threshold = (typeof window !== "undefined" && window.innerWidth <= 768) ? 20 : 10;
         if (ay != null && Math.abs(ay - y) < threshold) { 

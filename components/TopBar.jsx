@@ -522,6 +522,32 @@ export default function TopBar({
         )}
       </button>
 
+      {/* Desktop Taskbar: Bias Engine & Market Brain Overlay Toggle */}
+      <button
+        className={`hide-mobile ${indicators?.biasEngine !== false ? "primary" : "ghost"}`}
+        onClick={() => {
+          setIndicators?.((prev) => ({ ...prev, biasEngine: prev?.biasEngine === false ? true : false }));
+        }}
+        title="Toggle Bias Engine & Market Brain Overlay on Chart (Target DOL, EQ, OTE, Invalidation, FVGs)"
+        aria-label="Toggle Bias Engine Overlay"
+        style={{
+          padding: "4px 8px",
+          fontSize: 12,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          background: indicators?.biasEngine !== false ? "rgba(6, 182, 212, 0.2)" : "transparent",
+          border: indicators?.biasEngine !== false ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+          color: indicators?.biasEngine !== false ? "#22d3ee" : "var(--muted)",
+        }}
+      >
+        <Compass size={14} style={{ color: indicators?.biasEngine !== false ? "#22d3ee" : "var(--muted)" }} />
+        <span>Bias</span>
+      </button>
+
       <div style={{ position: "relative", flexShrink: 0 }} className="hide-mobile">
         <button
           className={themeMenuOpen ? "primary" : "ghost"}
@@ -870,6 +896,13 @@ export default function TopBar({
               style={{ flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600 }}
             >
               Radar {symbolRadarCount > 0 ? `(${symbolRadarCount})` : (indicators?.radarTrades !== false ? "ON" : "OFF")}
+            </button>
+            <button
+              className={indicators?.biasEngine !== false ? "primary" : "ghost"}
+              onClick={() => setIndicators?.(p => ({ ...p, biasEngine: p?.biasEngine === false }))}
+              style={{ flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600 }}
+            >
+              Bias {indicators?.biasEngine !== false ? "ON" : "OFF"}
             </button>
             <div style={{ flexShrink: 0 }}>
               <IndicatorsMenu indicators={indicators} setIndicators={setIndicators} />

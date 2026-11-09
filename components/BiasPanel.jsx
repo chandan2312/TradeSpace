@@ -239,17 +239,46 @@ function StrengthBars({ items }) {
   const max = Math.max(...items.map((c) => Math.abs(c.score)), 1);
   return (
     <div style={{ padding: "0 12px 8px" }}>
-      <div className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>
-        Currency strength
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span className="muted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Currency strength
+        </span>
+        <span style={{ fontSize: 8.5, color: "var(--accent)", fontFamily: "monospace", fontWeight: 700 }}>
+          CONVICTION-WEIGHTED
+        </span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "2px 12px" }}>
-        {items.map((c) => (
-          <div key={c.ccy} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span className="num" style={{ fontSize: 10, fontWeight: 700, width: 26 }}>{c.ccy}</span>
-            <CenterBar value={(c.score / max) * 100} height={4} />
-            <span className="num" style={{ fontSize: 9, color: scoreColor(c.score), width: 24, textAlign: "right" }}>{fmtS(c.score)}</span>
-          </div>
-        ))}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "3px 12px" }}>
+        {items.map((c) => {
+          const tooltip = [
+            `${c.ccy}: ${fmtS(c.score)} (${c.status || "Neutral"})`,
+            typeof c.conviction === "number" ? `Brain Conviction: ${c.conviction}%` : null,
+            typeof c.stability === "number" ? `Stability: ${c.stability}%` : null,
+            Array.isArray(c.dominantDrivers) && c.dominantDrivers.length > 0
+              ? `Drivers: ${c.dominantDrivers.map(d => `${d.symbol} (${fmtS(d.contribution)})`).join(", ")}`
+              : null,
+          ].filter(Boolean).join(" · ");
+
+          return (
+            <div key={c.ccy} title={tooltip} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "help" }}>
+              <span className="num" style={{ fontSize: 10, fontWeight: 700, width: 26 }}>{c.ccy}</span>
+              {typeof c.conviction === "number" && (
+                <span style={{
+                  fontSize: 8,
+                  fontFamily: "monospace",
+                  fontWeight: 700,
+                  color: c.conviction >= 75 ? "var(--green)" : "var(--muted)",
+                  background: c.conviction >= 75 ? "rgba(34, 197, 94, 0.12)" : "rgba(255, 255, 255, 0.05)",
+                  padding: "0 3px",
+                  borderRadius: 2,
+                }}>
+                  {c.conviction}%
+                </span>
+              )}
+              <CenterBar value={(c.score / max) * 100} height={4} />
+              <span className="num" style={{ fontSize: 9, color: scoreColor(c.score), width: 24, textAlign: "right" }}>{fmtS(c.score)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

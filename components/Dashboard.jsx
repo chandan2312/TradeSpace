@@ -19,12 +19,14 @@ import ChartSettingsModal from "./ChartSettingsModal";
 import CorrelatedPairsModal from "./CorrelatedPairsModal";
 import CurrencyStrengthMeter from "./CurrencyStrengthMeter";
 import AutonomousLiveHUD from "./autonomous/AutonomousLiveHUD";
+import LoopController from "./LoopController";
 import { useChartSettings } from "../lib/chartSettings";
 import { LAYOUT_CONFIG } from "../lib/layouts";
 import { sanitizeDrawings } from "../lib/draw/core.js";
 import { canonOf } from "../lib/autonomous/symbols.js";
 import { toCanonicalSymbol } from "../lib/symbols/mapping.js";
 import { hydrateTemplatesFromServer } from "../lib/draw/templates.js";
+import { getTradingDayKey } from "../lib/time.js";
 
 // Strip un-anchored (pre-time-model) drawings from a stored {symbol:[...]} blob
 // so loading an old layout can't reintroduce drawings that won't place on TF.
@@ -91,13 +93,14 @@ export default function Dashboard() {
   const [syncOpts, setSyncOpts] = useState({ symbol: false, tf: false, time: false, crosshair: false });
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [symbolFlags, setSymbolFlags] = useState({}); // { symbol: "red" | "blue" | "green" | "yellow" }
-  const [indicators, setIndicators] = useState({ autoTrades: true, stagedTrades: true, radarTrades: true }); // { patternId: bool } — ƒx pattern toggles
+  const [indicators, setIndicators] = useState({ biasEngine: true, autoTrades: true, stagedTrades: true, radarTrades: true }); // { patternId: bool } — ƒx pattern toggles
   
   // Loop Mode State
   const [isLooping, setIsLooping] = useState(false);
   const [loopMenuOpen, setLoopMenuOpen] = useState(false);
   const [loopInterval, setLoopInterval] = useState(5000);
   const [loopColors, setLoopColors] = useState(["red"]);
+  const [loopSource, setLoopSource] = useState("all_flags");
 
   const [alerts, setAlerts] = useState([]);
   const [alertsLoaded, setAlertsLoaded] = useState(false);
@@ -249,7 +252,7 @@ export default function Dashboard() {
         const ind = localStorage.getItem("ts_indicators");
         if (ind) {
           const parsed = JSON.parse(ind);
-          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, radarTrades: true, ...parsed }));
+          setIndicators(prev => ({ biasEngine: true, autoTrades: true, stagedTrades: true, radarTrades: true, ...parsed }));
         }
         const lid = getTabItem("ts_loaded_layout_id");
         if (lid) setLoadedLayoutId(lid);
@@ -262,6 +265,11 @@ export default function Dashboard() {
           for (const [k, v] of Object.entries(parsed)) barsCache.current.set(k, v);
         }
         
+        const lsrc = localStorage.getItem("ts_loop_source");
+        if (lsrc) setLoopSource(lsrc);
+        const linter = localStorage.getItem("ts_loop_interval");
+        if (linter) setLoopInterval(Number(linter));
+
         const wl = localStorage.getItem("ts_watchlist_layouts");
         if (wl) {
            const parsed = JSON.parse(wl);
@@ -281,8 +289,8 @@ export default function Dashboard() {
           localStorage.setItem("ts_symbol_flags", JSON.stringify(d.settings.flags));
         }
         if (d.settings.indicators) {
-          setIndicators(prev => ({ autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
-          localStorage.setItem("ts_indicators", JSON.stringify({ autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
+          setIndicators(prev => ({ biasEngine: true, autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
+          localStorage.setItem("ts_indicators", JSON.stringify({ biasEngine: true, autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
         }
         if (typeof d.settings.biasEnabled === "boolean") {
           setBiasEnabled(d.settings.biasEnabled);
@@ -597,8 +605,113 @@ export default function Dashboard() {
 
   // ---------- Loop Mode Logic ----------
   const loopSymbols = useMemo(() => {
+    if (!loopSource || loopSource === "all_flags") {
+      const flagged = Object.keys(symbolFlags).filter(sym => Boolean(symbolFlags[sym]));
+      if (flagged.length > 0) return flagged;
+      return watchlists[0]?.symbols || [];
+    }
+    if (loopSource.startsWith("flag:")) {
+      const col = loopSource.replace("flag:", "");
+      return Object.keys(symbolFlags).filter(sym => symbolFlags[sym] === col);
+    }
+    if (loopSource === "flags_multi") {
+      return Object.keys(symbolFlags).filter(sym => loopColors.includes(symbolFlags[sym]));
+    }
+    if (loopSource.startsWith("wl:")) {
+      const wlId = loopSource.replace("wl:", "");
+      const wl = watchlists.find(w => w._id === wlId);
+      return wl?.symbols || [];
+    }
+    if (loopSource === "all_wl") {
+      const set = new Set();
+      watchlists.forEach(w => (w.symbols || []).forEach(s => set.add(s)));
+      return Array.from(set);
+    }
+    if (loopSource === "auto") {
+      const set = new Set();
+      (autonomousTrades || []).forEach(t => {
+        const s = t.tradeableSymbol || t.symbol || t.canonicalSymbol;
+        if (s) set.add(s);
+      });
+      return Array.from(set);
+    }
+    if (loopSource === "radar") {
+      const set = new Set();
+      (radarPairs || []).forEach(p => {
+        const s = p.tradeableSymbol || p.symbol;
+        if (s) set.add(s);
+      });
+      return Array.from(set);
+    }
     return Object.keys(symbolFlags).filter(sym => loopColors.includes(symbolFlags[sym]));
-  }, [symbolFlags, loopColors]);
+  }, [loopSource, loopColors, symbolFlags, watchlists, autonomousTrades, radarPairs]);
+
+  const handleLoopSourceChange = useCallback((newSource) => {
+    setLoopSource(newSource);
+    try { localStorage.setItem("ts_loop_source", newSource); } catch {}
+    let nextSymbols = [];
+    if (newSource.startsWith("wl:")) {
+      const wl = watchlists.find(w => w._id === newSource.replace("wl:", ""));
+      nextSymbols = wl?.symbols || [];
+    } else if (newSource === "all_wl") {
+      const set = new Set();
+      watchlists.forEach(w => (w.symbols || []).forEach(s => set.add(s)));
+      nextSymbols = Array.from(set);
+    } else if (newSource === "auto") {
+      const set = new Set();
+      (autonomousTrades || []).forEach(t => {
+        const s = t.tradeableSymbol || t.symbol || t.canonicalSymbol;
+        if (s) set.add(s);
+      });
+      nextSymbols = Array.from(set);
+    } else if (newSource === "radar") {
+      const set = new Set();
+      (radarPairs || []).forEach(p => {
+        const s = p.tradeableSymbol || p.symbol;
+        if (s) set.add(s);
+      });
+      nextSymbols = Array.from(set);
+    } else if (newSource === "all_flags") {
+      nextSymbols = Object.keys(symbolFlags).filter(sym => Boolean(symbolFlags[sym]));
+    } else if (newSource.startsWith("flag:")) {
+      const col = newSource.replace("flag:", "");
+      nextSymbols = Object.keys(symbolFlags).filter(sym => symbolFlags[sym] === col);
+    }
+    if (nextSymbols.length > 0 && (!panes[0]?.symbol || !nextSymbols.includes(panes[0]?.symbol))) {
+      setPanes(prev => [{ ...prev[0], symbol: nextSymbols[0] }]);
+    }
+  }, [watchlists, autonomousTrades, radarPairs, symbolFlags, panes]);
+
+  const handleLoopIntervalChange = useCallback((newInterval) => {
+    setLoopInterval(newInterval);
+    try { localStorage.setItem("ts_loop_interval", String(newInterval)); } catch {}
+  }, []);
+
+  // Keyboard navigation when slideshow loop is open (Space = pause/play, Left/Right = prev/next, Esc = close)
+  useEffect(() => {
+    if (!loopMenuOpen || layout !== "1") return;
+    const handleKeyDown = (e) => {
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || e.target?.isContentEditable) return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        setIsLooping((prev) => !prev);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        loopPrev();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        loopNext();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsLooping(false);
+        setLoopMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [loopMenuOpen, layout, loopSymbols]);
 
   useEffect(() => {
     if (!isLooping || layout !== "1" || loopSymbols.length === 0) return;
@@ -655,15 +768,12 @@ export default function Dashboard() {
   const loadAlerts = useCallback(async () => {
     const data = await api("/api/alerts");
     if (data.ok) {
-      const yesterday = Date.now() - 24 * 3600000;
-      const sevenDaysAgo = Date.now() - 7 * 24 * 3600000;
-      const filtered = data.alerts.filter(a => {
+      const currentDayKey = getTradingDayKey(new Date());
+      const filtered = (data.alerts || []).filter(a => {
         if (a.status === "triggered") {
-           const time = new Date(a.triggeredAt || a.updatedAt || a.createdAt).getTime();
-           if (a.rating === 2 || a.rating === 3) {
-             return time > sevenDaysAgo;
-           }
-           return time > yesterday;
+          // Double removal: strictly show triggered alerts of date today only (Europe/Athens trading day)
+          const alertDayKey = getTradingDayKey(a.triggeredAt || a.updatedAt || a.createdAt);
+          return alertDayKey === currentDayKey;
         }
         return true;
       });
@@ -785,7 +895,11 @@ export default function Dashboard() {
     loadSavedLayouts();
     loadAutonomousTrades();
     const iv = setInterval(loadAutonomousTrades, 12000);
-    return () => clearInterval(iv);
+    const alertIv = setInterval(loadAlerts, 60000);
+    return () => {
+      clearInterval(iv);
+      clearInterval(alertIv);
+    };
   }, [loadAlerts, loadWatchlists, loadSavedLayouts, loadAutonomousTrades]);
 
   useEffect(() => {
@@ -1573,7 +1687,7 @@ export default function Dashboard() {
         savedLayouts={savedLayouts}
         onLoadLayout={onLoadLayout}
         onOpenSaveLayout={() => setSaveLayoutOpen(true)}
-        onOpenLoop={() => { setLoopMenuOpen(true); setIsLooping(true); }}
+        onOpenLoop={() => { if (layout !== "1") changeLayout("1"); setLoopMenuOpen(true); setIsLooping(true); }}
         indicators={indicators}
         setIndicators={setIndicators}
         loadedLayoutId={loadedLayoutId}
@@ -1635,76 +1749,56 @@ export default function Dashboard() {
                       ...spanStyle
                     }}
                   >
-                    {loopMenuOpen && layout === "1" ? (
-                      <div className="loop-controller" style={{ position: "absolute", top: 8, left: 12, right: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "center", background: "var(--panel)", padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.5)", overflowX: "auto" }}>
-                        <div style={{ display: "flex", gap: 4, marginRight: 4 }}>
-                          {["red", "blue", "green", "yellow"].map(color => (
-                            <button
-                              key={color}
-                              className="ghost"
-                              onClick={() => {
-                                setLoopColors(prev => 
-                                  prev.includes(color) 
-                                    ? prev.length > 1 ? prev.filter(c => c !== color) : prev
-                                    : [...prev, color]
-                                );
-                              }}
-                              style={{
-                                padding: "4px", 
-                                borderRadius: 4,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                color: color === "red" ? "#ef5350" : color === "blue" ? "#2962ff" : color === "green" ? "#26a69a" : color === "yellow" ? "#ffeb3b" : "var(--text)",
-                                opacity: loopColors.includes(color) ? 1 : 0.2,
-                                background: loopColors.includes(color) ? "rgba(255,255,255,0.05)" : "transparent"
-                              }}
-                              title={`Toggle ${color} flag`}
-                            >
-                              <Flag size={14} fill={loopColors.includes(color) ? "currentColor" : "none"} strokeWidth={loopColors.includes(color) ? 0 : 2} />
-                            </button>
-                          ))}
-                        </div>
-                        <button className="ghost" onClick={loopPrev} title="Previous" style={{padding: "4px"}}><SkipBack size={16} /></button>
-                        <button className={isLooping ? "primary" : "ghost"} onClick={() => setIsLooping(!isLooping)} title={isLooping ? "Pause" : "Play"} style={{padding: "4px 8px"}}>
-                          {isLooping ? <Pause size={16} /> : <Play size={16} />}
-                        </button>
-                        <button className="ghost" onClick={loopNext} title="Next" style={{padding: "4px"}}><SkipForward size={16} /></button>
-                        <button className="ghost" onClick={() => { setIsLooping(false); setLoopMenuOpen(false); }} title="Stop" style={{padding: "4px", color: "var(--orange)"}}><Square size={16} /></button>
-                        <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px" }} />
-                        <select 
-                          value={loopInterval} 
-                          onChange={e => setLoopInterval(Number(e.target.value))}
-                          style={{ background: "transparent", border: "none", color: "var(--text)", outline: "none", fontSize: 12, cursor: "pointer" }}
-                        >
-                          <option value={3000} style={{color: "#000"}}>3s</option>
-                          <option value={5000} style={{color: "#000"}}>5s</option>
-                          <option value={10000} style={{color: "#000"}}>10s</option>
-                          <option value={15000} style={{color: "#000"}}>15s</option>
-                          <option value={20000} style={{color: "#000"}}>20s</option>
-                          <option value={30000} style={{color: "#000"}}>30s</option>
-                          <option value={45000} style={{color: "#000"}}>45s</option>
-                          <option value={60000} style={{color: "#000"}}>60s</option>
-                        </select>
-                        <div style={{fontSize: 10, opacity: 0.5, marginLeft: 4, whiteSpace: "nowrap"}}>({loopSymbols.length} items)</div>
-                      </div>
-                    ) : (
-                      <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 6, alignItems: "center" }}>
-                        {(panes.length > 1 || fullScreenPaneId || isMobile || layout === "1") && (
-                          <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title={fullScreenPaneId ? "Exit Fullscreen (or triple-click)" : "Fullscreen (or triple-click)"} style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
-                            {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                          </button>
-                        )}
-                        {panes.length > 1 && !fullScreenPaneId && (
-                          <div style={{ fontSize: 14, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)", display: "flex", alignItems: "center", gap: 6 }}>
-                            {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
-                          </div>
-                        )}
-                        <button className="ghost" onClick={() => { setActivePaneId(pane.id); setCorrelatedOpen(true); }} title="View Correlated Pairs" style={{ padding: "4px 6px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center", fontSize: 12 }}>
-                          <LayoutGrid size={14} color="var(--accent)" />
-                        </button>
-                      </div>
+                    {/* Minimal Floating Loop Controller (Centered at Top) */}
+                    {loopMenuOpen && layout === "1" && (
+                      <LoopController
+                        isLooping={isLooping}
+                        onTogglePlay={() => setIsLooping(!isLooping)}
+                        onPrev={loopPrev}
+                        onNext={loopNext}
+                        onClose={() => {
+                          setIsLooping(false);
+                          setLoopMenuOpen(false);
+                        }}
+                        loopInterval={loopInterval}
+                        onChangeInterval={handleLoopIntervalChange}
+                        currentSymbol={pane.symbol}
+                        loopSymbols={loopSymbols}
+                        watchlists={watchlists}
+                        symbolFlags={symbolFlags}
+                        autonomousTrades={autonomousTrades}
+                        radarPairs={radarPairs}
+                        loopSource={loopSource}
+                        onChangeSource={handleLoopSourceChange}
+                        loopColors={loopColors}
+                        onToggleColor={(color) => {
+                          setLoopColors((prev) =>
+                            prev.includes(color)
+                              ? prev.length > 1
+                                ? prev.filter((c) => c !== color)
+                                : prev
+                              : [...prev, color]
+                          );
+                        }}
+                      />
                     )}
+
+                    {/* Standard Top-Left Pane Controls (Fullscreen, Symbol TF Tag, Correlated Pairs) */}
+                    <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 6, alignItems: "center" }}>
+                      {(panes.length > 1 || fullScreenPaneId || isMobile || layout === "1") && (
+                        <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title={fullScreenPaneId ? "Exit Fullscreen (or triple-click)" : "Fullscreen (or triple-click)"} style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                          {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        </button>
+                      )}
+                      {panes.length > 1 && !fullScreenPaneId && (
+                        <div style={{ fontSize: 14, fontWeight: 700, pointerEvents: "none", opacity: 0.8, textShadow: "0 1px 4px var(--bg)", display: "flex", alignItems: "center", gap: 6 }}>
+                          {pane.symbol} <span style={{fontSize: 11, fontWeight: 500, opacity: 0.7}}>{pane.tf}</span>
+                        </div>
+                      )}
+                      <button className="ghost" onClick={() => { setActivePaneId(pane.id); setCorrelatedOpen(true); }} title="View Correlated Pairs" style={{ padding: "4px 6px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center", fontSize: 12 }}>
+                        <LayoutGrid size={14} color="var(--accent)" />
+                      </button>
+                    </div>
                     <ChartPanel
                       paneId={pane.id}
                       symbol={pane.symbol}
@@ -1734,6 +1828,7 @@ export default function Dashboard() {
                       onCreateChainAlert={createChainAlert}
                       onJoinChainAlert={joinChainAlert}
                       indicators={indicators}
+                      onToggleIndicator={(id) => setIndicators((prev) => ({ ...prev, [id]: prev?.[id] === false ? true : false }))}
                       onAutoAlert={alertsLoaded ? handleAutoAlert : null}
                       onOpenSettings={(tab) => { setChartSettingsTab(tab || "Symbol"); setChartSettingsOpen(true); }}
                       isActive={activePaneId === pane.id}
