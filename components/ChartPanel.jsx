@@ -1238,6 +1238,15 @@ export default function ChartPanel({
       const pModel = String(pair.entryModel?.id || pair.stagedLevel?.modelId || pair.modelId || "").toLowerCase();
       const pHorizon = String(pair.horizon || pair.scenario?.id || "").toLowerCase();
 
+      // If an active live trade is already running on this symbol and direction, ALWAYS suppress raw radar idea
+      if (deduplicatedActiveList.length > 0) {
+        const hasActiveInDir = deduplicatedActiveList.some((t) => {
+          const tDir = t.dir === -1 || String(t.direction || t.dirLabel).toLowerCase() === "sell" ? -1 : 1;
+          return pDir === 0 || tDir === 0 || pDir === tDir;
+        });
+        if (hasActiveInDir) return true;
+      }
+
       return liveAndStagedTrades.some((t) => {
         if (!t) return false;
         const tSym = String(t.canonicalSymbol || t.symbol || t.tradeableSymbol || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -1279,12 +1288,23 @@ export default function ChartPanel({
 
     const autoDrawings = isEnabled
       ? chartTrades
-          .flatMap((t) => tradeToPositionDrawings(t, barsRef.current, tfSec))
+          .flatMap((t) => tradeToPositionDrawings(t, barsRef.current, tfSec, { includeMilestones: true }))
           .filter((d) => d && !isDismissed(d.id))
       : [];
 
+    // Filter out staged trade if an active live trade is already running on this symbol & direction
+    const unactiveStagedList = deduplicatedStagedList.filter((staged) => {
+      if (!staged) return false;
+      const sDir = staged.dir === -1 || String(staged.direction || staged.dirLabel).toLowerCase() === "sell" ? -1 : 1;
+      const hasActiveInDir = deduplicatedActiveList.some((act) => {
+        const aDir = act.dir === -1 || String(act.direction || act.dirLabel).toLowerCase() === "sell" ? -1 : 1;
+        return aDir === sDir || sDir === 0;
+      });
+      return !hasActiveInDir;
+    });
+
     const stagedDrawings = isStagedEnabled
-      ? deduplicatedStagedList
+      ? unactiveStagedList
           .flatMap((t, idx) => tradeToStagedPositionDrawings(t, barsRef.current, tfSec, idx))
           .filter((d) => d && !isDismissed(d.id))
       : [];

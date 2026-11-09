@@ -367,7 +367,11 @@ assert.equal(allDrawings[1].points[1].time, allDrawings[0].points[1].time, "Trai
 assert.equal(allDrawings[1].points[0].price, 1.0850, "Trailing line horizontal price matches breakeven level");
 assert.equal(allDrawings[1].points[1].price, 1.0850, "Trailing line horizontal price matches breakeven level");
 assert.equal(allDrawings[1].locked, true, "Trailing line must be locked");
-console.log("✅ PASS: Boundary-to-boundary Trailing SL dashed line verified across RR tool");
+
+const milestoneDrawings = tradeToPositionDrawings(liveTradeWithBe, mockBars, tfSec, { includeMilestones: true });
+assert.ok(milestoneDrawings.length >= 2, "Milestone drawings must include position tool + trailing line + milestone triggers");
+assert.ok(milestoneDrawings.some(d => d.id?.startsWith("auto_trail_trigger_")), "Milestone drawings include trailing activation trigger line");
+console.log("✅ PASS: Boundary-to-boundary Trailing SL dashed line and optional Milestone triggers verified across RR tool");
 
 // -------------------------------------------------------------
 // TEST 13: Pullback Tap of Trailing SL Line Truncates Both RR Tool and Line at Tap Candle
