@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { RotateCcw, AlertCircle, Loader2, ZoomIn, ZoomOut } from "lucide-react";
 import {
   buildRadarTradeIdeaDrawing,
@@ -16,7 +16,7 @@ const TF_OPTIONS = [
   { id: "4h", label: "4H", apiTf: "H4", sec: 14400 },
 ];
 
-export default function RadarIdeaChart({
+function RadarIdeaChart({
   pair,
   ticks = {},
   defaultTf,
@@ -691,3 +691,15 @@ export default function RadarIdeaChart({
     </div>
   );
 }
+
+export default memo(RadarIdeaChart, (prevProps, nextProps) => {
+  if (prevProps.pair !== nextProps.pair) return false;
+  if (prevProps.defaultTf !== nextProps.defaultTf) return false;
+  if (prevProps.height !== nextProps.height) return false;
+  const sym = prevProps.pair?.tradeableSymbol || prevProps.pair?.symbol;
+  const nextSym = nextProps.pair?.tradeableSymbol || nextProps.pair?.symbol;
+  if (sym !== nextSym) return false;
+  const prevTick = prevProps.ticks?.[sym]?.close ?? prevProps.ticks?.[sym]?.price ?? prevProps.ticks?.[sym]?.bid;
+  const nextTick = nextProps.ticks?.[sym]?.close ?? nextProps.ticks?.[sym]?.price ?? nextProps.ticks?.[sym]?.bid;
+  return prevTick === nextTick;
+});

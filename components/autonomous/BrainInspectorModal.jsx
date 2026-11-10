@@ -8,6 +8,7 @@ import DecisionReasons from "./DecisionReasons";
 import EvidenceDetails from "./EvidenceDetails";
 import RadarIdeaChart from "./RadarIdeaChart";
 import { TelemetryValue, formatPrice, finiteNumber, markPriceFor, calculateSlDistance } from "./TradeTelemetry";
+import { resolveRadarTradeIdeaPricing } from "../../lib/autonomous/tradeDrawing";
 import ModelBadge from "./ModelBadge";
 import SessionLedDot from "./SessionLedDot";
 
@@ -99,11 +100,12 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
     : "1D / 4H Macro Bias";
   const gatekeeperLabel = `${pair.scenario?.gatekeeperTf || "15M"} Gatekeeper`;
 
+  const pricing = resolveRadarTradeIdeaPricing(pair);
   const markPrice = markPriceFor(pair, ticks);
-  const entryVal = finiteNumber(staged?.entry ?? candidates?.[0]?.entry ?? markPrice);
-  const slVal = finiteNumber(staged?.sl ?? candidates?.[0]?.sl);
-  const tpVal = finiteNumber(staged?.tp ?? candidates?.[0]?.tp ?? staged?.targets?.[0]?.price);
-  const rawRR = staged?.rr ?? staged?.targetRR ?? candidates?.[0]?.rr;
+  const entryVal = pricing.entry ?? finiteNumber(staged?.entry ?? candidates?.[0]?.entry);
+  const slVal = pricing.sl ?? finiteNumber(staged?.sl ?? candidates?.[0]?.sl);
+  const tpVal = pricing.tp ?? finiteNumber(staged?.tp ?? candidates?.[0]?.tp ?? staged?.targets?.[0]?.price);
+  const rawRR = pricing.rr ?? staged?.rr ?? staged?.targetRR ?? candidates?.[0]?.rr;
   const displayRR = finiteNumber(rawRR);
 
   const conviction = finiteNumber(brain.conviction);
@@ -508,16 +510,27 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
           }}
         >
           <TelemetryValue label="Mark Price" value={formatPrice(markPrice)} />
-          <TelemetryValue label="Planned Entry" value={formatPrice(entryVal)} color="var(--accent)" />
+          <TelemetryValue
+            label="Planned Entry"
+            value={entryVal !== null ? formatPrice(entryVal) : "Awaiting Level"}
+            color="var(--accent)"
+          />
           <TelemetryValue
             label={(() => {
-              const dist = calculateSlDistance(entryVal, slVal, pair.tradeableSymbol || pair.symbol);
-              return dist?.short ? `Structural SL (${dist.short})` : "Structural SL";
+              if (entryVal !== null && slVal !== null) {
+                const dist = calculateSlDistance(entryVal, slVal, pair.tradeableSymbol || pair.symbol);
+                return dist?.short ? `Structural SL (${dist.short})` : "Structural SL";
+              }
+              return "Structural SL";
             })()}
-            value={formatPrice(slVal)}
+            value={slVal !== null ? formatPrice(slVal) : "Awaiting Setup"}
             color="#ea580c"
           />
-          <TelemetryValue label="Target TP" value={formatPrice(tpVal)} color="#a855f7" />
+          <TelemetryValue
+            label="Target TP"
+            value={tpVal !== null ? formatPrice(tpVal) : "Awaiting Target"}
+            color="#a855f7"
+          />
           <TelemetryValue
             label="Potential R:R"
             value={displayRR !== null ? `${displayRR.toFixed(2)}R` : "—"}
