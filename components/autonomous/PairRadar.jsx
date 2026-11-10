@@ -1485,7 +1485,7 @@ export default function PairRadar({
                         {isWatching
                           ? "Awaiting Retracement Level (FVG/OTE)"
                           : isBlocked
-                          ? (pair.statusReason?.slice(0, 34) || "Execution Veto Active")
+                          ? (pair.status === "BLOCKED_DATA_ERROR" ? (pair.statusReason || "MT5 Bridge Data Offline") : (pair.statusReason?.slice(0, 48) || "Execution Veto Active"))
                           : "Scanning Order Flow..."}
                       </span>
                     </div>

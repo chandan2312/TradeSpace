@@ -1103,15 +1103,18 @@ ROUTES = {
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, status, obj):
-        body = json.dumps(obj, default=str).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-NEXUS-MT5-TOKEN")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            body = json.dumps(obj, default=str).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-NEXUS-MT5-TOKEN")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception:
+            pass
 
     def _payload(self, parsed_path=None):
         payload = {}
@@ -1122,7 +1125,8 @@ class Handler(BaseHTTPRequestHandler):
         if length:
             try:
                 body = json.loads(self.rfile.read(length).decode("utf-8"))
-                payload.update(body)
+                if isinstance(body, dict):
+                    payload.update(body)
             except Exception:
                 pass
         return payload
@@ -1170,7 +1174,11 @@ class Handler(BaseHTTPRequestHandler):
         # Suppress logging for high-frequency poll requests to prevent console buffer memory thrashing
         if hasattr(self, "path") and (self.path.startswith("/ticks") or self.path == "/health" or self.path == "/tick"):
             return
-        print(f"[mt5-bridge] {self.address_string()} {fmt % args}", flush=True)
+        try:
+            msg = (fmt % args) if args else str(fmt)
+            print(f"[mt5-bridge] {self.address_string()} {msg}", flush=True)
+        except Exception:
+            pass
 
 
 def main():
