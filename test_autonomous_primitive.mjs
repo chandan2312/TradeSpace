@@ -797,6 +797,34 @@ assert.equal(liveSuper1RDrawing.style.actualR, 1.85, "Actual R telemetry populat
 assert.ok(liveSuper1RDrawing.style.actualR >= 1.0, "Trade is >= 1.0R to trigger above-TP zone placement");
 console.log("✅ PASS: Dynamic Live RR Placement (< 1R vs >= 1R) telemetry verified");
 
+// -------------------------------------------------------------
+// TEST 27: Closed Trade Extends to Exit Candle (Does NOT Collapse to 1 Candle on Immediate Dip)
+// -------------------------------------------------------------
+// Buy trade entered at bar 10 (1.0850). Bar 11 dips to 1.0849 (touches entry level).
+// Trade continues running until closedAt at bar 28 (manual/BE/exit).
+const dynamicBarsDip = mockBars.map((b, i) => {
+  if (i === 11) return { ...b, open: 1.0850, high: 1.0855, low: 1.0848, close: 1.0852 }; // Dips across entry
+  return b;
+});
+const closedDippedTrade = {
+  _id: "trade_dipped_closed_1",
+  symbol: "EURUSD",
+  dir: 1,
+  direction: "BUY",
+  status: "closed_be",
+  outcome: "BREAKEVEN",
+  entryPrice: 1.0850,
+  initialSlPrice: 1.0830,
+  slPrice: 1.0850,
+  tpPrice: 1.0890,
+  filledAt: new Date(dynamicBarsDip[10].time * 1000).toISOString(),
+  closedAt: new Date(dynamicBarsDip[28].time * 1000).toISOString(),
+};
+const dDipped = tradeToPositionDrawing(closedDippedTrade, dynamicBarsDip, tfSec);
+assert.equal(dDipped.points[0].time, dynamicBarsDip[10].time, "Entry is bar 10");
+assert.equal(dDipped.points[1].time, dynamicBarsDip[28].time, "Right boundary must strictly span to bar 28 (exit candle), NOT collapsed to bar 11");
+console.log("✅ PASS: Closed Trade with immediate entry dip strictly extends to exit candle (no 1-candle collapse)");
+
 console.log("\n=====================================================================");
 console.log("🎯 ALL NATIVE LIGHTWEIGHT-CHARTS-DRAWING RR TOOL TESTS PASSED!");
 console.log("=====================================================================");

@@ -29,14 +29,8 @@ import {
 import ModelBadge from "./ModelBadge";
 import SessionLedDot from "./SessionLedDot";
 
-// Helper: Determine if a trade is a Prop-Firm Safe model or Default model
-const isPropTrade = (t) =>
-  Boolean(
-    t.isPropFirm ||
-    t.managementLogic === "prop_firm_safe" ||
-    t.legId === "prop_firm" ||
-    (!t.managementLogic && t.legId !== "default")
-  );
+// Helper: Standardized Prop-Firm Safe model for all autonomous trades
+const isPropTrade = () => true;
 
 // Helper: Resolve linked sibling from active trade list (without merging them)
 function getSiblingTrade(trade, allTrades) {

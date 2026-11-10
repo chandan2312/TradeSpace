@@ -1799,7 +1799,7 @@ export default function AutonomousLiveHUD({
                               cursor: isApproving ? "wait" : "pointer",
                             }}
                           >
-                            {isApproving ? "Approving..." : isDual ? "Approve Dual Setup" : "Approve Trade"}
+                            {isApproving ? "Approving..." : "Approve Trade"}
                           </button>
                         </div>
                       </div>

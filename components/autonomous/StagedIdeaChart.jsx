@@ -471,19 +471,9 @@ export default function StagedIdeaChart({
               SL: <strong style={{ color: "var(--red)" }}>{formatPrice(slVal)}</strong>
             </span>
           )}
-          {halfPriceVal > 0 && (
-            <span style={{ color: "#f59e0b" }}>
-              50%: <strong>{formatPrice(halfPriceVal)}</strong>
-            </span>
-          )}
-          {propTpVal > 0 && (
+          {(propTpVal > 0 || fullTpVal > 0) && (
             <span style={{ color: "#06b6d4" }}>
-              Prop: <strong>{formatPrice(propTpVal)}</strong>
-            </span>
-          )}
-          {fullTpVal > 0 && (
-            <span style={{ color: "var(--green)" }}>
-              Full: <strong>{formatPrice(fullTpVal)}</strong>
+              Target: <strong>{formatPrice(propTpVal || fullTpVal)}</strong>
             </span>
           )}
         </div>

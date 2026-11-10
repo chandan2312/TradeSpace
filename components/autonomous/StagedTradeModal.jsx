@@ -389,9 +389,7 @@ export default function StagedTradeModal({
                 }
                 color="var(--red)"
               />
-              <TelemetryValue label="50% Milestone" value={`${formatPrice(setup.halfPrice)} (${Number(setup.halfRR || 2.2).toFixed(1)}R)`} color="#f59e0b" />
-              <TelemetryValue label="Prop Target" value={`${formatPrice(setup.propTp)} (${Number(setup.propRR || 2.0).toFixed(1)}R)`} color="#06b6d4" />
-              <TelemetryValue label="Full Runner TP" value={`${formatPrice(setup.fullTp)} (${Number(setup.fullRR || 4.5).toFixed(1)}R)`} color="var(--green)" />
+              <TelemetryValue label="Target (Prop TP)" value={`${formatPrice(setup.propTp || trade.tpPrice || level.tp)} (${Number(setup.propRR || trade.targetRR || 2.0).toFixed(1)}R)`} color="#06b6d4" />
               <TelemetryValue label="Risk Distance" value={`${dist.toFixed(5)} (${trade.riskPips ? `${trade.riskPips} pips` : `${Math.round(dist * 10000)} pts`})`} color="var(--accent)" />
             </div>
 
