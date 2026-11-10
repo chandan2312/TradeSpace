@@ -45,6 +45,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+import socket
 import time
 import secrets
 import threading
@@ -92,6 +94,11 @@ _load_env_file()
 
 TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
+CACHE_LOCK = threading.Lock()
+_RATES_CACHE = {}
+_ACCOUNT_CACHE = None
+_TICK_CACHE = {}
+_SYMBOLS_CACHE = None
 
 # A write is journaled before order_send. After a crash/timeout its request id
 # remains unresolved and is never replayed; orders/deals reconcile the outcome.
@@ -289,6 +296,13 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
 
 
 def tick_dict(app_symbol: str, payload: dict = None) -> dict:
+    app_upper = str(app_symbol or "").strip().upper()
+    now_mono = time.monotonic()
+    with CACHE_LOCK:
+        cached = _TICK_CACHE.get(app_upper)
+        if cached and (now_mono - cached[0] < 0.5):
+            return cached[1]
+
     symbol = resolve_symbol(app_symbol, payload)
     if not symbol:
         return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
@@ -299,7 +313,7 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
     point = float(getattr(info, "point", 0.0) or 0.0)
     bid = float(getattr(tick, "bid", 0.0) or 0.0)
     ask = float(getattr(tick, "ask", 0.0) or 0.0)
-    return {
+    res = {
         "ok": True,
         "status": "tick",
         "app_symbol": app_symbol,
@@ -313,6 +327,9 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
         "digits": getattr(info, "digits", None),
         "spread_points": ((ask - bid) / point) if point else None,
     }
+    with CACHE_LOCK:
+        _TICK_CACHE[app_upper] = (now_mono, res)
+    return res
 
 
 def handle_health(_payload):
@@ -359,13 +376,22 @@ def handle_ticks(payload):
 
 def handle_symbols(payload):
     """List all symbols visible to the terminal."""
-    ok, msg = ensure_mt5()
-    if not ok:
-        return {"ok": False, "status": "not-connected", "message": msg}
+    global _SYMBOLS_CACHE
     query = str(payload.get("query") or payload.get("q") or "").strip().lower()
     group = str(payload.get("group") or "").strip()
     visible_only = bool(payload.get("visible_only", False))
     limit = int(payload.get("limit") or 0)
+    now_mono = time.monotonic()
+
+    # Fast in-memory hit for base symbols query
+    if not query and not group and not visible_only and not limit:
+        with CACHE_LOCK:
+            if _SYMBOLS_CACHE and (now_mono - _SYMBOLS_CACHE[0] < 60.0):
+                return _SYMBOLS_CACHE[1]
+
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
 
     raw = mt5.symbols_get(group) if group else mt5.symbols_get()
     items = []
@@ -389,7 +415,11 @@ def handle_symbols(payload):
     total = len(items)
     if limit > 0:
         items = items[:limit]
-    return {"ok": True, "status": "symbols", "total": total, "count": len(items), "symbols": items}
+    res = {"ok": True, "status": "symbols", "total": total, "count": len(items), "symbols": items}
+    if not query and not group and not visible_only and not limit:
+        with CACHE_LOCK:
+            _SYMBOLS_CACHE = (now_mono, res)
+    return res
 
 
 def handle_symbol(payload):
@@ -439,21 +469,29 @@ def handle_symbol(payload):
 
 
 def handle_rates(payload):
-    ok, msg = ensure_mt5()
-    if not ok:
-        return {"ok": False, "status": "not-connected", "message": msg}
     app_symbol = str(payload.get("sym") or payload.get("symbol") or "").strip().upper()
     if not app_symbol:
         return {"ok": False, "status": "bad-request", "message": "sym required"}
-    symbol = resolve_symbol(app_symbol, payload)
-    if not symbol:
-        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
     tf_name = str(payload.get("timeframe") or payload.get("tf") or "M5").strip().upper()
     tf_const = TF_MAP.get(tf_name)
     if tf_const is None:
         return {"ok": False, "status": "bad-request", "message": f"unsupported timeframe {tf_name}"}
     count = max(1, min(int(payload.get("count") or 500), 5000))
     offset = max(0, int(payload.get("offset") or 0))
+
+    cache_key = (app_symbol, tf_name, count, offset)
+    now_mono = time.monotonic()
+    with CACHE_LOCK:
+        cached = _RATES_CACHE.get(cache_key)
+        if cached and (now_mono - cached[0] < 2.0):
+            return cached[1]
+
+    ok, msg = ensure_mt5()
+    if not ok:
+        return {"ok": False, "status": "not-connected", "message": msg}
+    symbol = resolve_symbol(app_symbol, payload)
+    if not symbol:
+        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
 
     rates = None
     now_ts = int(datetime.now(timezone.utc).timestamp())
@@ -462,25 +500,30 @@ def handle_rates(payload):
     except Exception:
         pass
 
-    # Fast backoff retry allowing MT5 to fetch fresh candles from broker without stalling HTTP threads
-    delays = [0.05, 0.1, 0.2, 0.3]
-    for attempt_idx in range(len(delays)):
-        for req_count in (count, max(20, count // 2) if count > 50 else count):
-            for attempt in (
-                lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, req_count),
-                lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, req_count) if offset == 0 else None,
-            ):
-                try:
-                    rates = attempt()
-                except Exception:
-                    rates = None
-                if rates is not None and len(rates) > 0:
-                    break
-            if rates is not None and len(rates) > 0:
-                break
+    for attempt in (
+        lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
+        lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
+    ):
+        try:
+            rates = attempt()
+        except Exception:
+            rates = None
         if rates is not None and len(rates) > 0:
             break
-        time.sleep(delays[attempt_idx])
+
+    # If first attempt is None/empty (cold symbol / terminal initial fetch), retry once after a tiny 0.05s pause
+    if rates is None or len(rates) == 0:
+        time.sleep(0.05)
+        for attempt in (
+            lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
+            lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
+        ):
+            try:
+                rates = attempt()
+            except Exception:
+                rates = None
+            if rates is not None and len(rates) > 0:
+                break
 
     if rates is None or len(rates) == 0:
         return {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}
@@ -518,7 +561,7 @@ def handle_rates(payload):
             curr["h"] = max(curr["h"], curr["o"])
             curr["l"] = min(curr["l"], curr["o"])
 
-    return {
+    res = {
         "ok": bool(bars),
         "status": "rates" if bars else "rates-empty",
         "app_symbol": app_symbol,
@@ -527,6 +570,9 @@ def handle_rates(payload):
         "count": len(bars),
         "bars": bars,
     }
+    with CACHE_LOCK:
+        _RATES_CACHE[cache_key] = (now_mono, res)
+    return res
 
 
 def handle_bulk_rates(payload):
@@ -1043,6 +1089,12 @@ def handle_state(payload):
 
 def handle_account(_payload):
     """Get account balance, equity, margin, leverage."""
+    global _ACCOUNT_CACHE
+    now_mono = time.monotonic()
+    with CACHE_LOCK:
+        if _ACCOUNT_CACHE and (now_mono - _ACCOUNT_CACHE[0] < 1.5):
+            return _ACCOUNT_CACHE[1]
+
     ok, msg = ensure_mt5()
     if not ok:
         return {"ok": False, "status": "not-connected", "message": msg}
@@ -1051,7 +1103,7 @@ def handle_account(_payload):
     if not acc:
         return {"ok": False, "status": "account-error", "message": "Failed to get account info"}
 
-    return {
+    res = {
         "ok": True,
         "account": {
             "login": acc.login,
@@ -1070,6 +1122,9 @@ def handle_account(_payload):
             "trade_expert": acc.trade_expert,
         }
     }
+    with CACHE_LOCK:
+        _ACCOUNT_CACHE = (now_mono, res)
+    return res
 
 
 ROUTES = {
@@ -1101,20 +1156,66 @@ ROUTES = {
 }
 
 
+class RobustThreadingHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def handle_error(self, request, client_address):
+        exc_type, exc_val, _ = sys.exc_info()
+        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            return  # Suppress normal client disconnection / abort
+        if exc_type and issubclass(exc_type, socket.error):
+            if getattr(exc_val, "winerror", None) in (10054, 10053, 10060):
+                return  # Suppress Windows socket connection resets
+        super().handle_error(request, client_address)
+
+
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            self.close_connection = True
+        except socket.error as e:
+            if getattr(e, "winerror", None) in (10054, 10053, 10060):
+                self.close_connection = True
+            else:
+                raise
+
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            self.close_connection = True
+        except socket.error as e:
+            if getattr(e, "winerror", None) in (10054, 10053, 10060):
+                self.close_connection = True
+            else:
+                raise
+
     def _send(self, status, obj):
         try:
             body = json.dumps(obj, default=str).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-NEXUS-MT5-TOKEN")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
             self.wfile.write(body)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
+        except socket.error as e:
+            if getattr(e, "winerror", None) in (10054, 10053, 10060):
+                pass
         except Exception:
             pass
+        finally:
+            self.close_connection = True
 
     def _payload(self, parsed_path=None):
         payload = {}
@@ -1160,8 +1261,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             payload = self._payload(parsed)
-            with LOCK:
-                result = durable_write(handler, payload) if path in ["/order", "/modify", "/close", "/cancel"] else handler(payload)
+            # Only write operations and state mutations require LOCK; read endpoints execute concurrently
+            is_write = path in ["/order", "/modify", "/close", "/cancel"]
+            if is_write:
+                with LOCK:
+                    result = durable_write(handler, payload)
+            else:
+                result = handler(payload)
             self._send(200, result)
         except Exception as exc:
             self._send(500, {"ok": False, "status": "bridge-exception", "message": str(exc)})
@@ -1207,12 +1313,20 @@ def main():
     print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN - set MT5_TOKEN env var'}", flush=True)
     print("=" * 60, flush=True)
 
-    # Proactive memory release for constrained VPS (1GB RAM)
+    # Proactive memory release and cache pruning for constrained VPS (1GB RAM)
     def _periodic_gc():
         import gc
         while True:
             time.sleep(60)
             try:
+                now_mono = time.monotonic()
+                with CACHE_LOCK:
+                    expired_rates = [k for k, v in _RATES_CACHE.items() if (now_mono - v[0]) > 10.0]
+                    for k in expired_rates:
+                        _RATES_CACHE.pop(k, None)
+                    expired_ticks = [k for k, v in _TICK_CACHE.items() if (now_mono - v[0]) > 5.0]
+                    for k in expired_ticks:
+                        _TICK_CACHE.pop(k, None)
                 gc.collect()
             except Exception:
                 pass
@@ -1220,7 +1334,7 @@ def main():
     threading.Thread(target=_periodic_gc, daemon=True).start()
 
     try:
-        ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+        RobustThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
     except KeyboardInterrupt:
         print("\n[bridge] shutting down...", flush=True)
     finally:
