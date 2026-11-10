@@ -151,7 +151,12 @@ export async function GET() {
       const cleanRecentClosed = recentClosed.filter(isTradeSpaceTrade);
 
       const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status) || trade.status === "pending");
-      const stagedTrades = openTrades.filter((trade) => ["staged", "armed", "confirming"].includes(trade.status));
+      const currentEnabledModels = config.enabledModels || {};
+      const stagedTrades = openTrades.filter((trade) => {
+        if (!["staged", "armed", "confirming"].includes(trade.status)) return false;
+        const mId = trade.modelId || trade.entryModel?.id;
+        return !mId || currentEnabledModels[mId] !== false;
+      });
       // Surface every nonterminal execution/reconciliation state without reproducing engine transitions.
       const executionTrades = openTrades.filter((trade) => !activeTrades.includes(trade) && !stagedTrades.includes(trade));
 
@@ -193,6 +198,20 @@ export async function GET() {
           isTradeable: inMain,
         };
       });
+
+      // Strict Model Sanitization: If an entry model was disabled in settings, strip it immediately from leaderboard pairs
+      for (const pair of sanitizedRanked) {
+        const mId = pair.entryModel?.id || pair.stagedLevel?.modelId;
+        if (mId && currentEnabledModels[mId] === false) {
+          pair.stagedLevel = null;
+          pair.entryModel = null;
+          pair.targets = [];
+          pair.permitted = false;
+          pair.status = pair.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
+          pair.statusReason = `Holding ${pair.dirLabel || "macro"} bias. Model [${mId}] disabled in settings; scanning for active models.`;
+          pair.vetoes = [{ code: "MODEL_DISABLED", reason: `Entry model ${mId} is disabled in configuration.` }];
+        }
+      }
 
       // Detect any main watchlist symbols that are missing from current rankedPairs
       const existingSymbols = new Set(sanitizedRanked.map((p) => canonOf(p.symbol || p.tradeableSymbol)));

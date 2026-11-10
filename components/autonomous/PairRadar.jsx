@@ -1281,7 +1281,13 @@ export default function PairRadar({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 5, overflow: "hidden" }}>
-                    <ModelBadge item={pair.stagedLevel || pair.entryModel || level || pair} size="xs" showName={true} />
+                    {(pair.stagedLevel || pair.entryModel || level) ? (
+                      <ModelBadge item={pair.stagedLevel || pair.entryModel || level} size="xs" showName={true} />
+                    ) : (
+                      <span style={{ fontSize: 9, color: "var(--muted)", fontStyle: "italic" }}>
+                        {isWatching ? "Scanning Retracement" : "Analyzing Structure"}
+                      </span>
+                    )}
                     {pair.activeTimeSlot?.shortBadge && (
                       <span
                         style={{

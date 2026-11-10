@@ -1322,7 +1322,11 @@ export default function ChartPanel({
 
     const radarDrawings = isRadarEnabled
       ? symRadarPairs
-          .filter((p) => !isRadarPairCovered(p))
+          .filter((p) => {
+            const pricing = resolveRadarTradeIdeaPricing(p);
+            if (!pricing.hasSetup) return false;
+            return !isRadarPairCovered(p);
+          })
           .flatMap((p, idx) => pairToRadarTradeIdeaDrawings(p, barsRef.current, tfSec, idx))
           .filter((d) => d && !isDismissed(d.id))
       : [];
