@@ -189,6 +189,7 @@ export default function ControlConsole({
       return merged;
     })(),
     allowedTimeSlots: { ...(config.allowedTimeSlots || {}), dead_zone: false },
+    deletedTimeSlots: Array.isArray(config.deletedTimeSlots) ? [...config.deletedTimeSlots] : [],
     symbolTimeSlots: (() => {
       const raw = { ...(config.symbolTimeSlots || {}) };
       if (raw.US30 && !raw.DJ30) raw.DJ30 = raw.US30;
@@ -485,6 +486,42 @@ export default function ControlConsole({
     }));
   };
 
+  const deleteSlot = (slotId) => {
+    setForm((prev) => ({
+      ...prev,
+      deletedTimeSlots: Array.from(new Set([...(prev.deletedTimeSlots || []), slotId])),
+      allowedTimeSlots: {
+        ...prev.allowedTimeSlots,
+        [slotId]: false,
+      },
+    }));
+  };
+
+  const restoreSlot = (slotId) => {
+    setForm((prev) => ({
+      ...prev,
+      deletedTimeSlots: (prev.deletedTimeSlots || []).filter((id) => id !== slotId),
+      allowedTimeSlots: {
+        ...prev.allowedTimeSlots,
+        [slotId]: true,
+      },
+    }));
+  };
+
+  const restoreAllSlots = () => {
+    setForm((prev) => ({
+      ...prev,
+      deletedTimeSlots: [],
+      allowedTimeSlots: {
+        ...prev.allowedTimeSlots,
+        ...(prev.deletedTimeSlots || []).reduce((acc, id) => {
+          acc[id] = true;
+          return acc;
+        }, {}),
+      },
+    }));
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     if (saving) return;
@@ -503,6 +540,7 @@ export default function ControlConsole({
           scalp: isScalp,
         },
         allowedTimeSlots: { ...form.allowedTimeSlots, dead_zone: false },
+        deletedTimeSlots: form.deletedTimeSlots || [],
         symbolTimeSlots: cleanedSlots,
         modelThresholds: form.modelThresholds,
       });
@@ -520,7 +558,7 @@ export default function ControlConsole({
     return FALLBACK_ENTRY_MODELS;
   }, [allEntryModels]);
 
-  const slots = useMemo(() => {
+  const { activeSlots, deletedSlots } = useMemo(() => {
     const serverMap = {};
     if (Array.isArray(allTimeSlots)) {
       for (const s of allTimeSlots) {
@@ -531,7 +569,7 @@ export default function ControlConsole({
       ...CONFIGURABLE_SLOTS,
       { id: "dead_zone", name: "Rollover Dead Zone / Spread Expansion", defaultRange: "00:00 - 02:00 EET", short: "Dead Zone", badge: "DEAD ZONE", phase: "SETTLEMENT", isDeadZone: true },
     ];
-    return combined.map((slot) => {
+    const all = combined.map((slot) => {
       const serverSlot = serverMap[slot.id] || {};
       const custom = form.slotCustomTimings?.[slot.id];
       const start = custom?.start || DEFAULT_SLOT_TIMINGS[slot.id]?.start;
@@ -543,7 +581,12 @@ export default function ControlConsole({
         effectiveRange,
       };
     });
-  }, [allTimeSlots, form.slotCustomTimings]);
+    const deletedSet = new Set(form.deletedTimeSlots || []);
+    return {
+      activeSlots: all.filter((s) => !deletedSet.has(s.id)),
+      deletedSlots: all.filter((s) => deletedSet.has(s.id)),
+    };
+  }, [allTimeSlots, form.slotCustomTimings, form.deletedTimeSlots]);
 
   return (
     <div
@@ -1269,7 +1312,7 @@ export default function ControlConsole({
                     gap: 8,
                   }}
                 >
-                  {slots.map((slot) => {
+                  {activeSlots.map((slot) => {
                     const isDeadZone = slot.id === "dead_zone" || slot.isDeadZone;
                     const isEnabled = !isDeadZone && !!form.allowedTimeSlots[slot.id];
                     const currentTiming = form.slotCustomTimings?.[slot.id] || DEFAULT_SLOT_TIMINGS[slot.id] || { start: "00:00", end: "00:00" };
@@ -1325,28 +1368,53 @@ export default function ControlConsole({
                             </div>
                           </label>
 
-                          {isCustomized && (
-                            <button
-                              type="button"
-                              onClick={() => resetSlotTiming(slot.id)}
-                              title={`Reset to default (${defaultTiming.start} - ${defaultTiming.end})`}
-                              style={{
-                                ...inputStyle,
-                                width: "auto",
-                                padding: "2px 6px",
-                                fontSize: 10,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 3,
-                                background: "rgba(245, 158, 11, 0.15)",
-                                borderColor: "rgba(245, 158, 11, 0.3)",
-                                color: "#f59e0b",
-                              }}
-                            >
-                              <RotateCcw size={10} /> Reset
-                            </button>
-                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            {isCustomized && (
+                              <button
+                                type="button"
+                                onClick={() => resetSlotTiming(slot.id)}
+                                title={`Reset to default (${defaultTiming.start} - ${defaultTiming.end})`}
+                                style={{
+                                  ...inputStyle,
+                                  width: "auto",
+                                  padding: "2px 6px",
+                                  fontSize: 10,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 3,
+                                  background: "rgba(245, 158, 11, 0.15)",
+                                  borderColor: "rgba(245, 158, 11, 0.3)",
+                                  color: "#f59e0b",
+                                }}
+                              >
+                                <RotateCcw size={10} /> Reset
+                              </button>
+                            )}
+
+                            {!isDeadZone && (
+                              <button
+                                type="button"
+                                onClick={() => deleteSlot(slot.id)}
+                                title={`Delete '${slot.name}' from active sessions configuration`}
+                                style={{
+                                  ...inputStyle,
+                                  width: "auto",
+                                  padding: "2px 6px",
+                                  fontSize: 10,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 3,
+                                  background: "rgba(239, 68, 68, 0.12)",
+                                  borderColor: "rgba(239, 68, 68, 0.25)",
+                                  color: "var(--red)",
+                                }}
+                              >
+                                <Trash2 size={10} /> Delete
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {isDeadZone ? (
@@ -1403,6 +1471,82 @@ export default function ControlConsole({
                     );
                   })}
                 </div>
+
+                {deletedSlots.length > 0 && (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: "1px dashed rgba(239, 68, 68, 0.35)",
+                      background: "rgba(239, 68, 68, 0.06)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--red)", display: "flex", alignItems: "center", gap: 5 }}>
+                        <Trash2 size={12} /> Deleted Sessions ({deletedSlots.length}) — Omitted from Trading & Scanning
+                      </div>
+                      <button
+                        type="button"
+                        onClick={restoreAllSlots}
+                        style={{
+                          ...inputStyle,
+                          width: "auto",
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          background: "var(--panel-2)",
+                          color: "var(--accent)",
+                        }}
+                      >
+                        <RotateCcw size={10} /> Restore All Sessions
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {deletedSlots.map((dSlot) => (
+                        <div
+                          key={dSlot.id}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            background: "var(--panel-2)",
+                            border: "1px solid var(--border)",
+                            fontSize: 11,
+                          }}
+                        >
+                          <span style={{ color: "var(--muted)" }}>{dSlot.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => restoreSlot(dSlot.id)}
+                            title="Restore this session"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "1px 3px",
+                              color: "var(--accent)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                              fontSize: 10,
+                              fontWeight: 600,
+                            }}
+                          >
+                            <RotateCcw size={9} /> Restore
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ color: "var(--muted)", fontSize: 10 }}>
                   Times are in Europe/Athens (EET/EEST = UTC+2 in winter / UTC+3 in summer). Changes immediately adjust radar scan windows and execution filters when saved.
                 </div>
@@ -1686,7 +1830,7 @@ export default function ControlConsole({
                             gap: 6,
                           }}
                         >
-                          {CONFIGURABLE_SLOTS.map((slot) => {
+                          {CONFIGURABLE_SLOTS.filter((slot) => !(form.deletedTimeSlots || []).includes(slot.id)).map((slot) => {
                             const isChecked = activeSlots.includes(slot.id);
 
                             return (
