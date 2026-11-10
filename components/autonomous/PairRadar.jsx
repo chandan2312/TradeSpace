@@ -819,7 +819,7 @@ export default function PairRadar({
             const pairTick = ticks[sym] || ticks[pair.symbol] || ticks[pair.tradeableSymbol];
             return (
               <RadarCard
-                key={pair.radarKey || ${pair.symbol}:}
+                key={pair.radarKey || `${pair.symbol}:${pair.horizon || index}`}
                 pair={pair}
                 index={index}
                 isWhitelisted={whitelistSet.has(pair.symbol)}
