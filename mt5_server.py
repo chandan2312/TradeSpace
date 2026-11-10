@@ -1171,14 +1171,9 @@ class Handler(BaseHTTPRequestHandler):
         return str(self.client_address[0])
 
     def log_message(self, fmt, *args):
-        # Suppress logging for high-frequency poll requests to prevent console buffer memory thrashing
-        if hasattr(self, "path") and (self.path.startswith("/ticks") or self.path == "/health" or self.path == "/tick"):
-            return
-        try:
-            msg = (fmt % args) if args else str(fmt)
-            print(f"[mt5-bridge] {self.address_string()} {msg}", flush=True)
-        except Exception:
-            pass
+        # Completely suppress all HTTP access logs to eliminate Windows console buffer deadlocks,
+        # conhost memory growth, and stdout socket disconnects.
+        pass
 
 
 def main():
