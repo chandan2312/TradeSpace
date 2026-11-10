@@ -825,6 +825,45 @@ assert.equal(dDipped.points[0].time, dynamicBarsDip[10].time, "Entry is bar 10")
 assert.equal(dDipped.points[1].time, dynamicBarsDip[28].time, "Right boundary must strictly span to bar 28 (exit candle), NOT collapsed to bar 11");
 console.log("✅ PASS: Closed Trade with immediate entry dip strictly extends to exit candle (no 1-candle collapse)");
 
+// -------------------------------------------------------------
+// TEST 28: RR Tool Stats Distance First (Pips/Points) & Dynamic Zone Routing
+// -------------------------------------------------------------
+// 1. Untriggered / Staged trade: distance in pips/points at first place
+const stagedTestTrade = {
+  id: "staged_dist_test",
+  symbol: "US30",
+  dir: 1,
+  direction: "BUY",
+  entryPrice: 40000,
+  slPrice: 39950,
+  tpPrice: 40150,
+  managementLogic: "prop_firm_safe",
+};
+const stagedDrawing = buildStagedTradeDrawing(stagedTestTrade, mockBars, tfSec, 0);
+assert.equal(stagedDrawing.style.slDistanceText, "50.0 pts", "US30 staged SL distance is 50.0 pts");
+assert.equal(stagedDrawing.style.tpDistanceText, "150.0 pts", "US30 staged TP distance is 150.0 pts");
+
+// 2. Closed Hit TP trade: TP distance is populated
+const closedTpTrade = {
+  _id: "trade_closed_tp_test",
+  symbol: "EURUSD",
+  dir: 1,
+  direction: "BUY",
+  status: "closed_tp",
+  outcome: "WIN",
+  entryPrice: 1.0850,
+  initialSlPrice: 1.0830,
+  slPrice: 1.0830,
+  tpPrice: 1.0910,
+  actualR: 3.0,
+  createdAt: new Date(mockBars[5].time * 1000).toISOString(),
+  closedAt: new Date(mockBars[20].time * 1000).toISOString(),
+};
+const closedTpDrawing = tradeToPositionDrawing(closedTpTrade, mockBars, tfSec);
+assert.equal(closedTpDrawing.style.slDistanceText, "20.0 pips", "SL distance is 20.0 pips");
+assert.equal(closedTpDrawing.style.tpDistanceText, "60.0 pips", "TP distance is 60.0 pips");
+console.log("✅ PASS: RR Tool stats distance in pips/points & dynamic TP/SL distance verification");
+
 console.log("\n=====================================================================");
 console.log("🎯 ALL NATIVE LIGHTWEIGHT-CHARTS-DRAWING RR TOOL TESTS PASSED!");
 console.log("=====================================================================");
