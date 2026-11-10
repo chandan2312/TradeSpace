@@ -14,7 +14,7 @@ import {
   BookOpen,
 } from "lucide-react";
 
-import { getCurrentTimeSlot, getEetTime } from "../../lib/autonomous/timeslots.js";
+import { getCurrentTimeSlot, getEetTime, getEffectiveTimeSlots } from "../../lib/autonomous/timeslots.js";
 
 export default function AutonomousHeader({
   config,
@@ -57,19 +57,24 @@ export default function AutonomousHeader({
         `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} EET`
       );
 
-      const slot = getCurrentTimeSlot(now);
+      const slot = getCurrentTimeSlot(now, config);
       setCurrentSlot(slot);
 
+      const effectiveSlots = getEffectiveTimeSlots(config);
+      const totMin = h * 60 + m;
       const sessions = [];
-      if (h >= 2 && h <= 8) sessions.push("ASIA");
-      if (h >= 10 && h <= 18) sessions.push("LONDON");
-      if (h >= 15 && h <= 23) sessions.push("NEW YORK");
+      const asia = effectiveSlots.ASIAN_RANGE;
+      const london = effectiveSlots.LONDON_OPEN;
+      const ny = effectiveSlots.NEW_YORK_AM;
+      if (asia && totMin >= (asia.startMinute ?? 120) && totMin < (effectiveSlots.ASIAN_RANGE.endMinute ?? 480)) sessions.push("ASIA");
+      if (london && totMin >= (london.startMinute ?? 600) && totMin < (effectiveSlots.LONDON_CLOSE?.endMinute ?? 1230)) sessions.push("LONDON");
+      if (ny && totMin >= (ny.startMinute ?? 985) && totMin < (effectiveSlots.NEW_YORK_PM?.endMinute ?? 1410)) sessions.push("NEW YORK");
       setActiveSession(sessions.join(" · ") || "OFF-HOURS");
     };
     updateTime();
     const iv = setInterval(updateTime, 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [config]);
 
   const isRunning = !!config?.enabled;
   const configAvailable = typeof config?.enabled === "boolean";
