@@ -21,7 +21,7 @@ import {
   pollBroker,
   startAutonomousLoop,
 } from "../../../lib/autonomous/engine.js";
-import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES } from "../../../lib/autonomous/timeslots.js";
+import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES, isTradingPermittedNow, getSymbolSessionProfile } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
 import { syncMT5HistoryToJournalThrottled, isTradeSpaceTrade, JOURNAL_START_BROKER_SEC } from "../../../lib/journal/store.js";
@@ -177,11 +177,23 @@ export async function GET() {
       const mainSymbolsList = Array.isArray(mainWatchlistSymbols) ? mainWatchlistSymbols : [];
       const mainSymbolSet = new Set(mainSymbolsList.map((s) => canonOf(s)));
 
-      // Sanitize rankedPairs and ensure isInMainWatchlist flag is synchronized with live watchlist
+      // Sanitize rankedPairs and ensure isInMainWatchlist flag & session profiles are synchronized with live config
       let sanitizedRanked = (leaderboard.rankedPairs || []).map((pair) => {
         const { snapshot, ...rest } = pair;
         const c = canonOf(rest.symbol || rest.tradeableSymbol);
         const inMain = mainSymbolSet.has(c);
+        const sym = rest.symbol || rest.tradeableSymbol;
+        const livePermitted = isTradingPermittedNow(new Date(), config, sym);
+        const profileForPair = getSymbolSessionProfile(sym, config);
+        const isSessionActive = Boolean(livePermitted.permitted);
+
+        let pairStatus = rest.status;
+        let pairVetoes = rest.vetoes || [];
+        if (isSessionActive && (pairStatus === "OFF_SESSION_DEAD_ZONE" || pairStatus === "BLOCKED_TIMING" || pairStatus === "BLOCKED_DEAD_ZONE")) {
+          pairStatus = rest.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
+          pairVetoes = pairVetoes.filter((v) => v.code !== "TIMING" && v.code !== "DEAD_ZONE" && v.code !== "OFF_SESSION");
+        }
+
         const trueScore = Math.max(0, Math.min(100, Math.round(
           rest.stagedLevel?.confluenceScore ??
           rest.rawScore ??
@@ -196,6 +208,14 @@ export async function GET() {
           primaryDrag: rest.primaryDrag ?? rest.brain?.primaryDrag ?? null,
           isInMainWatchlist: inMain,
           isTradeable: inMain,
+          activeTimeSlot: currentTimeSlot,
+          sessionProfile: {
+            ...profileForPair,
+            isCurrentlyActive: isSessionActive,
+            reason: livePermitted.reason,
+          },
+          status: pairStatus,
+          vetoes: pairVetoes,
         };
       });
 

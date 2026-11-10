@@ -31,19 +31,7 @@ function formatTimeAgo(timestamp, now = Date.now()) {
 }
 
 function checkSessionAllowed(pair, config, now) {
-  if (pair?.sessionProfile && typeof pair.sessionProfile.isCurrentlyActive === "boolean") {
-    const slotName = pair.activeTimeSlot?.name || pair.sessionProfile?.fullLabel || pair.sessionProfile?.label || "Trading Session";
-    const allowed = pair.sessionProfile.isCurrentlyActive;
-    return {
-      allowed,
-      slotName: pair.activeTimeSlot?.shortBadge || (allowed ? "ACTIVE" : "OFF"),
-      fullName: slotName,
-      tooltip: allowed
-        ? `🟢 Allowed Trading Session: Active (${slotName}) — Order Execution Permitted`
-        : `🔴 Outside Allowed Session: ${pair.sessionProfile?.reason || pair.sessionProfile?.description || "Outside Permitted Execution Hours"}`,
-    };
-  }
-
+  // 1. Live dynamic evaluation based on latest user config and current clock
   try {
     const live = isTradingPermittedNow(now ? new Date(now) : new Date(), config, pair?.symbol);
     const slotName = live.slot?.name || pair?.activeTimeSlot?.name || "Trading Session";
@@ -56,6 +44,21 @@ function checkSessionAllowed(pair, config, now) {
         : `🔴 Outside Allowed Session: ${live.reason || "Outside Permitted Execution Hours"}`,
     };
   } catch {
+    // 2. Fall back to backend scanner evaluated profile
+    if (pair?.sessionProfile && typeof pair.sessionProfile.isCurrentlyActive === "boolean") {
+      const slotName = pair.activeTimeSlot?.name || pair.sessionProfile?.fullLabel || pair.sessionProfile?.label || "Trading Session";
+      const allowed = pair.sessionProfile.isCurrentlyActive;
+      return {
+        allowed,
+        slotName: pair.activeTimeSlot?.shortBadge || (allowed ? "ACTIVE" : "OFF"),
+        fullName: slotName,
+        tooltip: allowed
+          ? `🟢 Allowed Trading Session: Active (${slotName}) — Order Execution Permitted`
+          : `🔴 Outside Allowed Session: ${pair.sessionProfile?.reason || pair.sessionProfile?.description || "Outside Permitted Execution Hours"}`,
+      };
+    }
+
+    // 3. Fallback based on status & vetoes
     const hasTimingVeto = pair?.vetoes?.some(
       (v) => v.code === "TIMING" || v.code === "DEAD_ZONE" || v.code === "OFF_SESSION" || v.code === "SESSION_RESTRICTED"
     );

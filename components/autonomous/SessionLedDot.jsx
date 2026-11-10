@@ -7,27 +7,9 @@ import { isTradingPermittedNow } from "../../lib/autonomous/timeslots";
  * Universal session status resolver for any asset/symbol or radar pair.
  */
 export function getSessionStatus(symbol, pair = null, config = {}, now = new Date()) {
-  // 1. Backend scanner evaluated profile
-  if (pair?.sessionProfile && typeof pair.sessionProfile.isCurrentlyActive === "boolean") {
-    const slotName =
-      pair.activeTimeSlot?.name ||
-      pair.sessionProfile?.fullLabel ||
-      pair.sessionProfile?.label ||
-      "Trading Session";
-    const allowed = pair.sessionProfile.isCurrentlyActive;
-    return {
-      allowed,
-      slotName: pair.activeTimeSlot?.shortBadge || (allowed ? "ACTIVE" : "OFF"),
-      fullName: slotName,
-      tooltip: allowed
-        ? `🟢 Allowed Trading Session: Active (${slotName})`
-        : `🔴 Outside Allowed Session: ${pair.sessionProfile?.reason || pair.sessionProfile?.description || "Outside Permitted Execution Hours"}`,
-    };
-  }
-
-  // 2. Client-side evaluation fallback
+  const sym = symbol || pair?.symbol;
+  // 1. Live dynamic evaluation based on latest user config and clock
   try {
-    const sym = symbol || pair?.symbol;
     const live = isTradingPermittedNow(now ? (now instanceof Date ? now : new Date(now)) : new Date(), config, sym);
     const slotName = live.slot?.name || pair?.activeTimeSlot?.name || "Trading Session";
     return {
@@ -39,6 +21,24 @@ export function getSessionStatus(symbol, pair = null, config = {}, now = new Dat
         : `🔴 Outside Allowed Session: ${live.reason || "Outside Permitted Execution Hours"}`,
     };
   } catch {
+    // 2. Fall back to backend scanner evaluated profile if live calculation is unavailable
+    if (pair?.sessionProfile && typeof pair.sessionProfile.isCurrentlyActive === "boolean") {
+      const slotName =
+        pair.activeTimeSlot?.name ||
+        pair.sessionProfile?.fullLabel ||
+        pair.sessionProfile?.label ||
+        "Trading Session";
+      const allowed = pair.sessionProfile.isCurrentlyActive;
+      return {
+        allowed,
+        slotName: pair.activeTimeSlot?.shortBadge || (allowed ? "ACTIVE" : "OFF"),
+        fullName: slotName,
+        tooltip: allowed
+          ? `🟢 Allowed Trading Session: Active (${slotName})`
+          : `🔴 Outside Allowed Session: ${pair.sessionProfile?.reason || pair.sessionProfile?.description || "Outside Permitted Execution Hours"}`,
+      };
+    }
+
     // 3. Fallback based on status & vetoes
     const hasTimingVeto = pair?.vetoes?.some(
       (v) =>

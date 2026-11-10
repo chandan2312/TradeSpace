@@ -66,9 +66,11 @@ export default function AutonomousHeader({
       const asia = effectiveSlots.ASIAN_RANGE;
       const london = effectiveSlots.LONDON_OPEN;
       const ny = effectiveSlots.NEW_YORK_AM;
+      const preNy = effectiveSlots.PRE_NY_PREP;
       if (asia && totMin >= (asia.startMinute ?? 120) && totMin < (effectiveSlots.ASIAN_RANGE.endMinute ?? 480)) sessions.push("ASIA");
       if (london && totMin >= (london.startMinute ?? 600) && totMin < (effectiveSlots.LONDON_CLOSE?.endMinute ?? 1230)) sessions.push("LONDON");
-      if (ny && totMin >= (ny.startMinute ?? 985) && totMin < (effectiveSlots.NEW_YORK_PM?.endMinute ?? 1410)) sessions.push("NEW YORK");
+      if (ny && totMin >= (ny.startMinute ?? 985) && totMin < Math.max(ny.endMinute ?? 1230, effectiveSlots.NEW_YORK_PM?.endMinute ?? 1410, 1410)) sessions.push("NEW YORK");
+      else if (preNy && preNy.startMinute > 0 && totMin >= preNy.startMinute && totMin < preNy.endMinute) sessions.push("PRE-NY");
       setActiveSession(sessions.join(" · ") || "OFF-HOURS");
     };
     updateTime();

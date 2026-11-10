@@ -295,7 +295,18 @@ export default function ControlConsole({
       const nextSlots = { ...(prev.slotCustomTimings || {}), [slotId]: updated };
       const nextSessions = { ...(prev.sessionTimings || {}) };
       if (slotId === "asian_range") nextSessions.asia = { ...updated };
-      if (slotId === "ny_open") nextSessions.newyork = { ...updated };
+      if (slotId === "ny_open") {
+        nextSessions.newyork = { ...updated };
+        if (field === "start" && nextSlots.pre_ny_prep) {
+          nextSlots.pre_ny_prep = { ...nextSlots.pre_ny_prep, end: val };
+        }
+      }
+      if (slotId === "pre_ny_prep" && field === "end") {
+        if (nextSlots.ny_open) {
+          nextSlots.ny_open = { ...nextSlots.ny_open, start: val };
+          nextSessions.newyork = { ...nextSessions.newyork, start: val };
+        }
+      }
       return { ...prev, slotCustomTimings: nextSlots, sessionTimings: nextSessions };
     });
   };
