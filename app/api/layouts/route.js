@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCols } from "@/lib/mongo";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const { layoutsCol } = await getCols();
   const layouts = await layoutsCol.find({}).sort({ createdAt: 1 }).toArray();

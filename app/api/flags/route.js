@@ -1,6 +1,8 @@
 import { getCols } from "@/lib/mongo";
 import { json } from "@/lib/http";
 
+export const dynamic = "force-dynamic";
+
 // Store all flags in a single document for simplicity (key-value: symbol -> color)
 const FLAGS_DOC_ID = "global_symbol_flags";
 

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCols } from "@/lib/mongo";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req, { params }) {
   try {
     const { symbol } = params;

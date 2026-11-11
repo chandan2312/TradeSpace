@@ -2,6 +2,8 @@ import { getCols } from "@/lib/mongo";
 import { json } from "@/lib/http";
 import { getServerSymbolMapping, setServerSymbolMapping } from "@/lib/symbols/mapping";
 
+export const dynamic = "force-dynamic";
+
 const SETTINGS_DOC_ID = "global_user_settings";
 
 export async function GET() {

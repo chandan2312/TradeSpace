@@ -3,10 +3,41 @@ import { broadcast } from "@/lib/realtime";
 import { json } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
 import { getSymbolAliases } from "@/lib/watchlistAliases";
-import { invalidateAlertsCache, pruneStaleTriggeredAlerts } from "@/lib/alert-engine";
 import { getTradingDayStartSec } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
+export const dynamicParams = true;
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+function invalidateAlertsCache() {
+  globalThis._tsAlertsCache = null;
+  globalThis._tsAlertsAt = 0;
+}
+
+async function pruneStaleTriggeredAlerts() {
+  try {
+    const { alertsCol } = await getCols();
+    const todayStartSec = getTradingDayStartSec(new Date());
+    const todayStartDate = new Date(todayStartSec * 1000);
+
+    const cleanupRes = await alertsCol.deleteMany({
+      status: "triggered",
+      $or: [
+        { triggeredAt: { $lt: todayStartDate } },
+        { triggeredAt: null, createdAt: { $lt: todayStartDate } }
+      ]
+    });
+
+    if (cleanupRes.deletedCount > 0) {
+      invalidateAlertsCache();
+      broadcast({ type: "alerts_changed" });
+    }
+    return cleanupRes.deletedCount || 0;
+  } catch {
+    return 0;
+  }
+}
 
 export async function GET(req) {
   const rawSymbol = req.nextUrl.searchParams.get("symbol");
