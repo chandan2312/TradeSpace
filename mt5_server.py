@@ -97,19 +97,30 @@ LOCK = threading.RLock()
 CACHE_LOCK = threading.Lock()
 _RATES_CACHE = {}
 _ACCOUNT_CACHE = None
+_STATE_CACHE = None
 _TICK_CACHE = {}
 _SYMBOLS_CACHE = None
+_IN_FLIGHT_RATES = {}
+_IN_FLIGHT_TICKS = {}
 
 # A write is journaled before order_send. After a crash/timeout its request id
 # remains unresolved and is never replayed; orders/deals reconcile the outcome.
 def journal_connection():
     path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
     conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except Exception:
+        pass
     conn.execute("CREATE TABLE IF NOT EXISTS requests (request_id TEXT PRIMARY KEY, digest TEXT NOT NULL, state TEXT NOT NULL, response TEXT, created REAL NOT NULL)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_requests_created ON requests (created)")
     return conn
 
 
 def durable_write(handler, payload):
+    global _STATE_CACHE
+    _STATE_CACHE = None
     request_id = str(payload.get("request_id") or "")
     if not request_id:
         return handler(payload)  # Existing market bridge clients retain compatibility.
@@ -134,6 +145,7 @@ def durable_write(handler, payload):
     result["request_id"] = request_id
     with journal_connection() as conn:
         conn.execute("UPDATE requests SET state=?,response=? WHERE request_id=?", ("finished", json.dumps(result), request_id))
+    _STATE_CACHE = None
     return result
 
 
@@ -302,34 +314,56 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
         cached = _TICK_CACHE.get(app_upper)
         if cached and (now_mono - cached[0] < 0.5):
             return cached[1]
+        flight_event = _IN_FLIGHT_TICKS.get(app_upper)
+        if flight_event is None:
+            flight_event = threading.Event()
+            _IN_FLIGHT_TICKS[app_upper] = flight_event
+            is_leader = True
+        else:
+            is_leader = False
 
-    symbol = resolve_symbol(app_symbol, payload)
-    if not symbol:
-        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
-    info = mt5.symbol_info(symbol)
-    tick = mt5.symbol_info_tick(symbol)
-    if not info or not tick:
-        return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
-    point = float(getattr(info, "point", 0.0) or 0.0)
-    bid = float(getattr(tick, "bid", 0.0) or 0.0)
-    ask = float(getattr(tick, "ask", 0.0) or 0.0)
-    res = {
-        "ok": True,
-        "status": "tick",
-        "app_symbol": app_symbol,
-        "symbol": symbol,
-        "bid": bid,
-        "ask": ask,
-        "last": float(getattr(tick, "last", 0.0) or 0.0),
-        "time": getattr(tick, "time", None),
-        "time_msc": getattr(tick, "time_msc", None),
-        "point": point,
-        "digits": getattr(info, "digits", None),
-        "spread_points": ((ask - bid) / point) if point else None,
-    }
-    with CACHE_LOCK:
-        _TICK_CACHE[app_upper] = (now_mono, res)
-    return res
+    if not is_leader:
+        flight_event.wait(timeout=2.0)
+        with CACHE_LOCK:
+            cached = _TICK_CACHE.get(app_upper)
+            if cached:
+                return cached[1]
+
+    try:
+        symbol = resolve_symbol(app_symbol, payload)
+        if not symbol:
+            return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
+        info = mt5.symbol_info(symbol)
+        tick = mt5.symbol_info_tick(symbol)
+        if not info or not tick:
+            return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
+        point = float(getattr(info, "point", 0.0) or 0.0)
+        bid = float(getattr(tick, "bid", 0.0) or 0.0)
+        ask = float(getattr(tick, "ask", 0.0) or 0.0)
+        res = {
+            "ok": True,
+            "status": "tick",
+            "app_symbol": app_symbol,
+            "symbol": symbol,
+            "bid": bid,
+            "ask": ask,
+            "last": float(getattr(tick, "last", 0.0) or 0.0),
+            "time": getattr(tick, "time", None),
+            "time_msc": getattr(tick, "time_msc", None),
+            "point": point,
+            "digits": getattr(info, "digits", None),
+            "spread_points": ((ask - bid) / point) if point else None,
+        }
+        with CACHE_LOCK:
+            _TICK_CACHE[app_upper] = (now_mono, res)
+            if len(_TICK_CACHE) > 200:
+                oldest_k = min(_TICK_CACHE.keys(), key=lambda k: _TICK_CACHE[k][0])
+                _TICK_CACHE.pop(oldest_k, None)
+        return res
+    finally:
+        with CACHE_LOCK:
+            _IN_FLIGHT_TICKS.pop(app_upper, None)
+        flight_event.set()
 
 
 def handle_health(_payload):
@@ -482,38 +516,61 @@ def handle_rates(payload):
     cache_key = (app_symbol, tf_name, count, offset)
     now_mono = time.monotonic()
     with CACHE_LOCK:
+        # 1. Exact cache match
         cached = _RATES_CACHE.get(cache_key)
         if cached and (now_mono - cached[0] < 5.0):
             return cached[1]
 
-    ok, msg = ensure_mt5()
-    if not ok:
-        return {"ok": False, "status": "not-connected", "message": msg}
-    symbol = resolve_symbol(app_symbol, payload)
-    if not symbol:
-        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
+        # 2. Dynamic cache slicing: if an existing cached entry with offset 0 has >= count bars, slice and serve directly
+        if offset == 0:
+            for (k_sym, k_tf, k_cnt, k_off), (c_time, c_res) in list(_RATES_CACHE.items()):
+                if k_sym == app_symbol and k_tf == tf_name and k_off == 0 and (now_mono - c_time < 5.0):
+                    bars = c_res.get("bars", [])
+                    if len(bars) >= count:
+                        sliced_bars = bars[-count:]
+                        sliced_res = {
+                            "ok": True,
+                            "status": "rates",
+                            "app_symbol": app_symbol,
+                            "symbol": c_res.get("symbol", app_symbol),
+                            "timeframe": tf_name,
+                            "count": len(sliced_bars),
+                            "bars": sliced_bars,
+                        }
+                        _RATES_CACHE[cache_key] = (c_time, sliced_res)
+                        return sliced_res
 
-    rates = None
-    now_ts = int(datetime.now(timezone.utc).timestamp())
+        # 3. In-flight single-flight coalescing
+        flight_event = _IN_FLIGHT_RATES.get(cache_key)
+        if flight_event is None:
+            flight_event = threading.Event()
+            _IN_FLIGHT_RATES[cache_key] = flight_event
+            is_leader = True
+        else:
+            is_leader = False
+
+    if not is_leader:
+        flight_event.wait(timeout=10.0)
+        with CACHE_LOCK:
+            cached = _RATES_CACHE.get(cache_key)
+            if cached:
+                return cached[1]
+
     try:
-        mt5.symbol_select(symbol, True)
-    except Exception:
-        pass
+        ok, msg = ensure_mt5()
+        if not ok:
+            return {"ok": False, "status": "not-connected", "message": msg}
+        symbol = resolve_symbol(app_symbol, payload)
+        if not symbol:
+            return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}"}
 
-    for attempt in (
-        lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
-        lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
-    ):
+        rates = None
+        now_ts = int(datetime.now(timezone.utc).timestamp())
         try:
-            rates = attempt()
+            mt5.symbol_select(symbol, True)
         except Exception:
-            rates = None
-        if rates is not None and len(rates) > 0:
-            break
+            pass
 
-    # If first attempt is None/empty (cold symbol / terminal initial fetch), retry once after a tiny 0.05s pause
-    if rates is None or len(rates) == 0:
-        time.sleep(0.05)
         for attempt in (
             lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
             lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
@@ -525,54 +582,78 @@ def handle_rates(payload):
             if rates is not None and len(rates) > 0:
                 break
 
-    if rates is None or len(rates) == 0:
-        return {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}
+        # If first attempt is None/empty (cold symbol / historical download from broker), retry with progressive backoff
+        if rates is None or len(rates) == 0:
+            for delay in (0.1, 0.25):
+                time.sleep(delay)
+                for attempt in (
+                    lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
+                    lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
+                ):
+                    try:
+                        rates = attempt()
+                    except Exception:
+                        rates = None
+                    if rates is not None and len(rates) > 0:
+                        break
+                if rates is not None and len(rates) > 0:
+                    break
 
-    bars = []
-    for row in rates:
-        try:
-            bars.append({
-                "t": int(row["time"]) * 1000,
-                "o": float(row["open"]),
-                "h": float(row["high"]),
-                "l": float(row["low"]),
-                "c": float(row["close"]),
-                "tick_volume": int(row["tick_volume"]) if "tick_volume" in row.dtype.names else None,
-            })
-        except Exception:
-            continue
-    bars.sort(key=lambda b: b["t"])
+        if rates is None or len(rates) == 0:
+            return {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}
 
-    # Seamlessly normalize consecutive continuous-session candle opens
-    tf_seconds_map = {
-        "M1": 60, "1M": 60, "M5": 300, "5M": 300, "M15": 900, "15M": 900,
-        "M30": 1800, "30M": 1800, "H1": 3600, "1H": 3600, "H4": 14400, "4H": 14400,
-        "D1": 86400, "1D": 86400,
-    }
-    tf_sec = tf_seconds_map.get(tf_name, 300)
-    is_d1 = tf_name in ("D1", "1D")
-    for i in range(1, len(bars)):
-        prev = bars[i - 1]
-        curr = bars[i]
-        dt = (curr["t"] - prev["t"]) // 1000
-        is_consec = (86400 <= dt <= 86400 * 1.5) if is_d1 else (abs(dt - tf_sec) <= 2)
-        if is_consec and prev["c"] > 0:
-            curr["o"] = prev["c"]
-            curr["h"] = max(curr["h"], curr["o"])
-            curr["l"] = min(curr["l"], curr["o"])
+        bars = []
+        for row in rates:
+            try:
+                bars.append({
+                    "t": int(row["time"]) * 1000,
+                    "o": float(row["open"]),
+                    "h": float(row["high"]),
+                    "l": float(row["low"]),
+                    "c": float(row["close"]),
+                    "tick_volume": int(row["tick_volume"]) if "tick_volume" in row.dtype.names else None,
+                })
+            except Exception:
+                continue
+        bars.sort(key=lambda b: b["t"])
 
-    res = {
-        "ok": bool(bars),
-        "status": "rates" if bars else "rates-empty",
-        "app_symbol": app_symbol,
-        "symbol": symbol,
-        "timeframe": tf_name,
-        "count": len(bars),
-        "bars": bars,
-    }
-    with CACHE_LOCK:
-        _RATES_CACHE[cache_key] = (now_mono, res)
-    return res
+        # Seamlessly normalize consecutive continuous-session candle opens
+        tf_seconds_map = {
+            "M1": 60, "1M": 60, "M5": 300, "5M": 300, "M15": 900, "15M": 900,
+            "M30": 1800, "30M": 1800, "H1": 3600, "1H": 3600, "H4": 14400, "4H": 14400,
+            "D1": 86400, "1D": 86400,
+        }
+        tf_sec = tf_seconds_map.get(tf_name, 300)
+        is_d1 = tf_name in ("D1", "1D")
+        for i in range(1, len(bars)):
+            prev = bars[i - 1]
+            curr = bars[i]
+            dt = (curr["t"] - prev["t"]) // 1000
+            is_consec = (86400 <= dt <= 86400 * 1.5) if is_d1 else (abs(dt - tf_sec) <= 2)
+            if is_consec and prev["c"] > 0:
+                curr["o"] = prev["c"]
+                curr["h"] = max(curr["h"], curr["o"])
+                curr["l"] = min(curr["l"], curr["o"])
+
+        res = {
+            "ok": bool(bars),
+            "status": "rates" if bars else "rates-empty",
+            "app_symbol": app_symbol,
+            "symbol": symbol,
+            "timeframe": tf_name,
+            "count": len(bars),
+            "bars": bars,
+        }
+        with CACHE_LOCK:
+            _RATES_CACHE[cache_key] = (now_mono, res)
+            if len(_RATES_CACHE) > 200:
+                oldest_k = min(_RATES_CACHE.keys(), key=lambda k: _RATES_CACHE[k][0])
+                _RATES_CACHE.pop(oldest_k, None)
+        return res
+    finally:
+        with CACHE_LOCK:
+            _IN_FLIGHT_RATES.pop(cache_key, None)
+        flight_event.set()
 
 
 def handle_bulk_rates(payload):
@@ -1055,11 +1136,18 @@ def handle_calc_profit(payload):
 
 
 def handle_state(payload):
+    global _STATE_CACHE
+    now_mono = time.monotonic()
+    days = int(payload.get("days") or 7)
+    with CACHE_LOCK:
+        if _STATE_CACHE and (now_mono - _STATE_CACHE[0] < 1.0) and _STATE_CACHE[2] == days:
+            return _STATE_CACHE[1]
+
     positions, orders, history, account = handle_positions({}), handle_orders({}), handle_history(payload), handle_account({})
     if not all(r.get("ok") for r in [positions, orders, history, account]):
         return {"ok": False, "message": "Incomplete broker snapshot"}
     now = datetime.now(timezone.utc)
-    raw_orders = mt5.history_orders_get(now - timedelta(days=int(payload.get("days") or 7)), now + timedelta(days=1))
+    raw_orders = mt5.history_orders_get(now - timedelta(days=days), now + timedelta(days=1))
     if raw_orders is None:
         return {"ok": False, "message": "Order history unavailable"}
     with journal_connection() as conn:
@@ -1084,7 +1172,10 @@ def handle_state(payload):
     daily = [d for d in history["history"] if float(d.get("time") or 0) >= day_start and d.get("type") in ["BUY", "SELL"]]
     pnl = sum(float(d.get("profit") or 0) + float(d.get("commission") or 0) + float(d.get("swap") or 0) + float(d.get("fee") or 0) for d in daily)
     order_fields = ["ticket", "position_id", "state", "comment", "symbol", "volume_initial", "volume_current"]
-    return {"ok": True, "positions": positions["positions"], "orders": orders["orders"], "history": history["history"], "account": account["account"], "requests": requests_list, "order_history": [{k: getattr(o, k, None) for k in order_fields} for o in raw_orders], "dailyPnl": pnl, "dayStartEquity": account["account"]["balance"] - pnl, "brokerDayStart": day_start, "at": now.timestamp()}
+    res = {"ok": True, "positions": positions["positions"], "orders": orders["orders"], "history": history["history"], "account": account["account"], "requests": requests_list, "order_history": [{k: getattr(o, k, None) for k in order_fields} for o in raw_orders], "dailyPnl": pnl, "dayStartEquity": account["account"]["balance"] - pnl, "brokerDayStart": day_start, "at": now.timestamp()}
+    with CACHE_LOCK:
+        _STATE_CACHE = (now_mono, res, days)
+    return res
 
 
 def handle_account(_payload):
@@ -1316,12 +1407,14 @@ def main():
     print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN - set MT5_TOKEN env var'}", flush=True)
     print("=" * 60, flush=True)
 
-    # Proactive memory release and cache pruning for constrained VPS (1GB RAM)
+    # Proactive memory release, journal maintenance, and cache pruning for constrained VPS (1GB RAM)
     def _periodic_gc():
         import gc
+        gc_counter = 0
         while True:
             time.sleep(60)
             try:
+                gc_counter += 1
                 now_mono = time.monotonic()
                 with CACHE_LOCK:
                     expired_rates = [k for k, v in _RATES_CACHE.items() if (now_mono - v[0]) > 10.0]
@@ -1330,6 +1423,20 @@ def main():
                     expired_ticks = [k for k, v in _TICK_CACHE.items() if (now_mono - v[0]) > 5.0]
                     for k in expired_ticks:
                         _TICK_CACHE.pop(k, None)
+
+                # Periodic SQLite journal pruning (every 10 minutes)
+                # Purges transaction records older than 14 days to eliminate disk/RAM clogging
+                if gc_counter % 10 == 0:
+                    try:
+                        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).timestamp()
+                        with journal_connection() as conn:
+                            conn.execute("DELETE FROM requests WHERE created < ?", (cutoff,))
+                            conn.commit()
+                            if gc_counter % 60 == 0:
+                                conn.execute("PRAGMA incremental_vacuum(50)")
+                    except Exception:
+                        pass
+
                 gc.collect()
             except Exception:
                 pass

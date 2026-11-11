@@ -74,11 +74,16 @@ export async function GET(req) {
   // For live candles (off === 0): serve cached if reasonably complete, and refresh in background if stale
   if (!force && cached?.data?.bars?.length) {
     const age = Date.now() - cached.at;
-    const isSufficientCount = off > 0 || cached.data.bars.length >= Math.min(n * 0.75, 200);
+    const isSufficientCount = off > 0 || cached.data.bars.length >= Math.min(n, 500);
 
     if (isSufficientCount) {
+      const responseData =
+        cached.data.bars.length > n && off === 0
+          ? { ...cached.data, count: n, bars: cached.data.bars.slice(-n) }
+          : cached.data;
+
       if (age < effectiveTtl) {
-        return json(cached.data);
+        return json(responseData);
       }
       if (age < 300_000) {
         if (!inFlightRequests.has(flightKey)) {
@@ -87,7 +92,7 @@ export async function GET(req) {
             .finally(() => inFlightRequests.delete(flightKey));
           inFlightRequests.set(flightKey, bg);
         }
-        return json(cached.data);
+        return json(responseData);
       }
     }
   }
