@@ -625,7 +625,8 @@ export default function ChartPanel({
 
   // ---------- load and synchronize bars with auto-gap healing & retry ----------
   const fetchGenerationRef = useRef(0);
-  const activeFetchKeyRef.current = `${symbol}:${tf}`;
+  const activeFetchKeyRef = useRef(`${symbol}:${tf}`);
+  activeFetchKeyRef.current = `${symbol}:${tf}`;
   const inFlightLoadBarsRef = useRef(new Set());
   const lastGapReconciledBarTimeRef = useRef(null);
   const lastSyncTimeRef = useRef(Date.now());
