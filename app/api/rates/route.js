@@ -23,41 +23,11 @@ const TF_RATES_TTL_MS = {
 
 const inFlightRequests = new Map();
 
-function getBiasBarsCache(symbol, brokerSym, tf) {
-  const closedCache = globalThis._tsClosedBiasBars;
-  if (!closedCache || !closedCache.size) return null;
-  const prefix1 = `${symbol}:${tf}:`;
-  const prefix2 = `${brokerSym}:${tf}:`;
-  for (const [k, val] of closedCache.entries()) {
-    if ((k.startsWith(prefix1) || k.startsWith(prefix2)) && val?.bars?.length && (Date.now() - val.at < 300_000)) {
-      const bars = val.bars.map((b) => ({
-        t: b.time * 1000,
-        o: b.open,
-        h: b.high,
-        l: b.low,
-        c: b.close,
-        tick_volume: b.v,
-      }));
-      return {
-        at: val.at,
-        data: {
-          ok: true,
-          bars,
-          timestampSemantics: "UTC_INSTANT",
-          symbol,
-          brokerSymbol: brokerSym,
-        },
-      };
-    }
-  }
-  return null;
-}
-
 async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey) {
-  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 5_000 });
+  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 6_000 });
   if (!d?.ok && !d?.circuitOpen) {
     await new Promise((r) => setTimeout(r, 350));
-    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 5_000 });
+    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 6_000 });
   }
   if (d?.ok && Array.isArray(d.bars)) {
     d.bars = d.bars.map((b) => ({
@@ -80,13 +50,13 @@ export async function GET(req) {
   const rawSymbol = sp.get("symbol");
   const rawTf = String(sp.get("tf") || "M5").toUpperCase();
   const tf = TF_NORMALIZE[rawTf] || rawTf;
-  const count = sp.get("count") || 600;
+  const count = sp.get("count") || 500;
   const offset = sp.get("offset") || 0;
   if (!rawSymbol) return json({ ok: false, error: "symbol required" }, 400);
 
   const canonicalSym = toCanonicalSymbol(rawSymbol);
   const brokerSym = toBrokerSymbol(canonicalSym);
-  const n = Math.min(Number(count) || 600, 5000);
+  const n = Math.min(Number(count) || 500, 5000);
   const off = Math.max(0, Number(offset) || 0);
 
   // Cache keys use canonical symbol for universal consistency
@@ -94,37 +64,30 @@ export async function GET(req) {
   const brokerKey = `${brokerSym}:${tf}:${n}:${off}`;
 
   const force = sp.get("refresh") === "1" || sp.get("force") === "1";
-  let cached = ratesCache.get(key) || ratesCache.get(brokerKey);
-
-  // If no direct ratesCache entry, check if the scanner already loaded this symbol and timeframe in bias cache
-  if (!cached) {
-    const biasCached = getBiasBarsCache(canonicalSym, brokerSym, tf);
-    if (biasCached) {
-      cached = biasCached;
-      ratesCache.set(key, cached);
-      if (brokerKey !== key) ratesCache.set(brokerKey, cached);
-    }
-  }
-
-  const effectiveTtl = TF_RATES_TTL_MS[tf] || RATES_TTL_MS || 60_000;
+  const cached = ratesCache.get(key) || ratesCache.get(brokerKey);
+  const effectiveTtl = off > 0 ? 3600_000 : (TF_RATES_TTL_MS[tf] || RATES_TTL_MS || 60_000);
   const flightKey = `${brokerSym}:${tf}:${n}:${off}`;
 
   // Stale-While-Revalidate:
-  // If cache exists and is fresh: return immediately!
-  // If cache exists and is < 5 min old (and not forced): return immediately and refresh in background!
+  // For historical pagination (off > 0): past history never changes, serve cached immediately
+  // For live candles (off === 0): serve cached if reasonably complete, and refresh in background if stale
   if (!force && cached?.data?.bars?.length) {
     const age = Date.now() - cached.at;
-    if (age < effectiveTtl) {
-      return json(cached.data);
-    }
-    if (age < 300_000) {
-      if (!inFlightRequests.has(flightKey)) {
-        const bg = fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey)
-          .catch(() => null)
-          .finally(() => inFlightRequests.delete(flightKey));
-        inFlightRequests.set(flightKey, bg);
+    const isSufficientCount = off > 0 || cached.data.bars.length >= Math.min(n * 0.75, 200);
+
+    if (isSufficientCount) {
+      if (age < effectiveTtl) {
+        return json(cached.data);
       }
-      return json(cached.data);
+      if (age < 300_000) {
+        if (!inFlightRequests.has(flightKey)) {
+          const bg = fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey)
+            .catch(() => null)
+            .finally(() => inFlightRequests.delete(flightKey));
+          inFlightRequests.set(flightKey, bg);
+        }
+        return json(cached.data);
+      }
     }
   }
 
@@ -152,10 +115,10 @@ export async function GET(req) {
     }
 
     // Bridge error / offline:
-    // If cached bars exist (< 5 min old), serve them cleanly
+    // If cached bars exist, serve them cleanly
     if (cached?.data?.bars?.length) {
       const cacheAge = Date.now() - cached.at;
-      if (cacheAge < 300_000) {
+      if (cacheAge < 300_000 || off > 0) {
         return json(cached.data);
       }
       return json({ ...cached.data, stale: true, offline: true, error: data?.message || "Bridge unreachable" });
@@ -164,7 +127,7 @@ export async function GET(req) {
   } catch (err) {
     if (cached?.data?.bars?.length) {
       const cacheAge = Date.now() - cached.at;
-      if (cacheAge < 300_000) {
+      if (cacheAge < 300_000 || off > 0) {
         return json(cached.data);
       }
       return json({ ...cached.data, stale: true, offline: true, error: err.message });

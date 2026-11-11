@@ -708,14 +708,14 @@ export default function ChartPanel({
 
       // Smart bar counts:
       // - Silent background gap-heal / refresh: only 80 bars needed! (Transfers in ~10ms)
-      // - Initial fresh load: 300 bars for LTF (M1-M15), 200 bars for HTF (H1-D1)
-      let count = 300;
+      // - Initial fresh load: 500 bars for LTF (M1-M15), 400 bars for HTF (H1-D1)
+      let count = 500;
       if (isSilent && hasExistingBars && !forceRefresh) {
         count = 80;
       } else if (["M1", "M5", "M15"].includes(curTf)) {
-        count = 300;
+        count = 500;
       } else if (["H1", "H4", "D1"].includes(curTf)) {
-        count = 200;
+        count = 400;
       }
 
       // Robust retry: allows mobile connections and sleeping tabs to wake up smoothly
