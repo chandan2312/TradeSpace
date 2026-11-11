@@ -59,9 +59,10 @@ export async function GET(req) {
   const n = Math.min(Number(count) || 500, 5000);
   const off = Math.max(0, Number(offset) || 0);
 
-  // Cache keys use canonical symbol for universal consistency
-  const key = `${canonicalSym}:${tf}:${n}:${off}`;
-  const brokerKey = `${brokerSym}:${tf}:${n}:${off}`;
+  // Cache keys: For live current candles (off === 0), use unified ':live' key shared with the engine!
+  // For historical pagination (off > 0), use dedicated ':history:off:n' key!
+  const key = off === 0 ? `${canonicalSym}:${tf}:live` : `${canonicalSym}:${tf}:history:${off}:${n}`;
+  const brokerKey = off === 0 ? `${brokerSym}:${tf}:live` : `${brokerSym}:${tf}:history:${off}:${n}`;
 
   const force = sp.get("refresh") === "1" || sp.get("force") === "1";
   const cached = ratesCache.get(key) || ratesCache.get(brokerKey);
