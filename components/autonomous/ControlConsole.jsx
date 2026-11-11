@@ -45,6 +45,41 @@ const sectionStyle = {
   gap: 16,
 };
 
+function formatEetToLocal(eetTimeStr) {
+  if (!eetTimeStr || typeof eetTimeStr !== "string") return "";
+  const parts = eetTimeStr.split(":").map(Number);
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return "";
+  const [h, m] = parts;
+  try {
+    const now = new Date();
+    const athensFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Athens",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+    });
+    const athensParts = athensFormatter.formatToParts(now);
+    const athensH = Number(athensParts.find((p) => p.type === "hour")?.value ?? 0);
+    const athensM = Number(athensParts.find((p) => p.type === "minute")?.value ?? 0);
+    const athensTotal = athensH * 60 + athensM;
+    const utcTotal = now.getUTCHours() * 60 + now.getUTCMinutes();
+    let athensOffsetMin = athensTotal - utcTotal;
+    if (athensOffsetMin < -720) athensOffsetMin += 1440;
+    if (athensOffsetMin > 720) athensOffsetMin -= 1440;
+
+    const inputEetMin = h * 60 + m;
+    const inputUtcMin = (inputEetMin - athensOffsetMin + 1440) % 1440;
+    const localOffsetMin = -now.getTimezoneOffset();
+    const inputLocalMin = (inputUtcMin + localOffsetMin + 1440) % 1440;
+
+    const locH = Math.floor(inputLocalMin / 60);
+    const locM = inputLocalMin % 60;
+    return `${String(locH).padStart(2, "0")}:${String(locM).padStart(2, "0")}`;
+  } catch {
+    return "";
+  }
+}
+
 export const DEFAULT_SLOT_TIMINGS = {
   asian_range: { start: "02:00", end: "06:00" },
   pre_london_prep: { start: "08:00", end: "10:00" },
@@ -1464,7 +1499,14 @@ export default function ControlConsole({
                                 }}
                               />
                             </label>
-                            <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: "auto" }}>EET</span>
+                            <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <span>EET</span>
+                              {typeof window !== "undefined" && currentTiming.start && currentTiming.end && (
+                                <span style={{ color: "var(--accent)", fontSize: 9.5, opacity: 0.9 }}>
+                                  ({formatEetToLocal(currentTiming.start)}–{formatEetToLocal(currentTiming.end)} local)
+                                </span>
+                              )}
+                            </span>
                           </div>
                         )}
                       </div>

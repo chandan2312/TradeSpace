@@ -188,14 +188,49 @@ export async function GET() {
         const isSessionActive = Boolean(livePermitted.permitted);
 
         let pairStatus = rest.status;
-        let pairVetoes = rest.vetoes || [];
-        if (isSessionActive && (pairStatus === "OFF_SESSION_DEAD_ZONE" || pairStatus === "BLOCKED_TIMING" || pairStatus === "BLOCKED_DEAD_ZONE")) {
-          pairStatus = rest.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
-          pairVetoes = pairVetoes.filter((v) => v.code !== "TIMING" && v.code !== "DEAD_ZONE" && v.code !== "OFF_SESSION");
+        let pairStatusReason = rest.statusReason;
+        let pairVetoes = Array.isArray(rest.vetoes) ? [...rest.vetoes] : [];
+        let pairStagedLevel = rest.stagedLevel ? { ...rest.stagedLevel } : null;
+        let pairPermitted = rest.permitted;
+
+        const isTimingStatus = /OFF_SESSION|DEAD_ZONE|TIMING|SESSION_RESTRICTED/i.test(pairStatus || "");
+        const hasTimingVeto = pairVetoes.some((v) => ["TIMING", "DEAD_ZONE", "OFF_SESSION", "SESSION_RESTRICTED"].includes(v.code));
+
+        if (isSessionActive) {
+          if (isTimingStatus || hasTimingVeto) {
+            pairVetoes = pairVetoes.filter((v) => !["TIMING", "DEAD_ZONE", "OFF_SESSION", "SESSION_RESTRICTED"].includes(v.code));
+            if (pairStagedLevel) {
+              const stagedVetoes = (pairStagedLevel.vetoes || []).filter((v) => !["TIMING", "DEAD_ZONE", "OFF_SESSION", "SESSION_RESTRICTED"].includes(v.code));
+              pairStagedLevel.vetoes = stagedVetoes;
+              if (stagedVetoes.length === 0 && inMain) {
+                pairStagedLevel.permitted = true;
+                pairPermitted = true;
+                pairStatus = "PRIME_QUALIFIED";
+                pairStatusReason = "Causal model, macro/DOL, fresh closed frames and all execution vetoes approved.";
+              } else {
+                pairStatus = rest.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
+                pairStatusReason = rest.dir !== 0 ? "Monitoring 15M/5M order flow for institutional retracement." : "Market structure in consolidation equilibrium.";
+              }
+            } else {
+              pairStatus = rest.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
+              pairStatusReason = rest.dir !== 0 ? "Monitoring 15M/5M order flow for institutional retracement." : "Market structure in consolidation equilibrium.";
+            }
+          }
+        } else {
+          // If session is NOT active, ensure status and reason truthfully reflect off-session
+          if (!/BLOCKED_DATA|RESTRICTED_CONTEXT/i.test(pairStatus || "")) {
+            pairStatus = livePermitted.isDeadZone ? "OFF_SESSION_DEAD_ZONE" : "BLOCKED_TIMING";
+            pairStatusReason = livePermitted.reason || "Outside Permitted Execution Hours";
+            pairPermitted = false;
+            if (pairStagedLevel) pairStagedLevel.permitted = false;
+            if (!hasTimingVeto) {
+              pairVetoes.unshift({ code: livePermitted.isDeadZone ? "DEAD_ZONE" : "TIMING", reason: pairStatusReason });
+            }
+          }
         }
 
         const trueScore = Math.max(0, Math.min(100, Math.round(
-          rest.stagedLevel?.confluenceScore ??
+          pairStagedLevel?.confluenceScore ??
           rest.rawScore ??
           rest.confluenceBreakdown?.netScore ??
           rest.opportunityScore ??
@@ -215,6 +250,9 @@ export async function GET() {
             reason: livePermitted.reason,
           },
           status: pairStatus,
+          statusReason: pairStatusReason,
+          stagedLevel: pairStagedLevel,
+          permitted: pairPermitted,
           vetoes: pairVetoes,
         };
       });

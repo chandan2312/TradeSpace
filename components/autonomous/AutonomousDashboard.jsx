@@ -801,6 +801,7 @@ export default function AutonomousDashboard() {
           <BrainInspectorModal
             pair={rankedPairs.find((pair) => (pair.radarKey && inspectedPair.radarKey ? pair.radarKey === inspectedPair.radarKey : pair.symbol === inspectedPair.symbol)) || inspectedPair}
             ticks={ticks}
+            config={config}
             onClose={closeInspector}
           />
         )}

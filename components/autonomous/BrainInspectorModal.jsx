@@ -12,7 +12,7 @@ import { resolveRadarTradeIdeaPricing } from "../../lib/autonomous/tradeDrawing"
 import ModelBadge from "./ModelBadge";
 import SessionLedDot from "./SessionLedDot";
 
-export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
+export default function BrainInspectorModal({ pair, onClose, ticks = {}, config = {} }) {
   const dialogRef = useRef(null);
   const [activeTab, setActiveTab] = useState("chart"); // "chart" | "structure" | "confluence" | "all"
 
@@ -215,7 +215,7 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {} }) {
                   >
                     {pair.tradeableSymbol || pair.symbol}
                   </h2>
-                  <SessionLedDot pair={pair} size={8} />
+                  <SessionLedDot pair={pair} config={config} size={8} />
 
                   <span
                     style={{

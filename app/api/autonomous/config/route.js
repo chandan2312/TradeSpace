@@ -38,16 +38,54 @@ export async function POST(req) {
         const live = isTradingPermittedNow(now, config, sym);
         const profile = getSymbolSessionProfile(sym, config);
         let status = p.status;
-        let vetoes = p.vetoes || [];
-        if (live.permitted && (status === "OFF_SESSION_DEAD_ZONE" || status === "BLOCKED_TIMING" || status === "BLOCKED_DEAD_ZONE")) {
-          status = p.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
-          vetoes = vetoes.filter((v) => v.code !== "TIMING" && v.code !== "DEAD_ZONE" && v.code !== "OFF_SESSION");
+        let statusReason = p.statusReason;
+        let vetoes = Array.isArray(p.vetoes) ? [...p.vetoes] : [];
+        let stagedLevel = p.stagedLevel ? { ...p.stagedLevel } : null;
+        let permitted = p.permitted;
+
+        const isTimingStatus = /OFF_SESSION|DEAD_ZONE|TIMING|SESSION_RESTRICTED/i.test(status || "");
+        const hasTimingVeto = vetoes.some((v) => ["TIMING", "DEAD_ZONE", "OFF_SESSION", "SESSION_RESTRICTED"].includes(v.code));
+
+        if (live.permitted) {
+          if (isTimingStatus || hasTimingVeto) {
+            vetoes = vetoes.filter((v) => !["TIMING", "DEAD_ZONE", "OFF_SESSION", "SESSION_RESTRICTED"].includes(v.code));
+            if (stagedLevel) {
+              const stagedVetoes = (stagedLevel.vetoes || []).filter((v) => !["TIMING", "DEAD_ZONE", "OFF_SESSION", "SESSION_RESTRICTED"].includes(v.code));
+              stagedLevel.vetoes = stagedVetoes;
+              if (stagedVetoes.length === 0 && p.isInMainWatchlist) {
+                stagedLevel.permitted = true;
+                permitted = true;
+                status = "PRIME_QUALIFIED";
+                statusReason = "Causal model, macro/DOL, fresh closed frames and all execution vetoes approved.";
+              } else {
+                status = p.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
+                statusReason = p.dir !== 0 ? "Monitoring 15M/5M order flow for institutional retracement." : "Market structure in consolidation equilibrium.";
+              }
+            } else {
+              status = p.dir !== 0 ? "WATCHING_RETRACE" : "SCANNING_NEUTRAL";
+              statusReason = p.dir !== 0 ? "Monitoring 15M/5M order flow for institutional retracement." : "Market structure in consolidation equilibrium.";
+            }
+          }
+        } else {
+          if (!/BLOCKED_DATA|RESTRICTED_CONTEXT/i.test(status || "")) {
+            status = live.isDeadZone ? "OFF_SESSION_DEAD_ZONE" : "BLOCKED_TIMING";
+            statusReason = live.reason || "Outside Permitted Execution Hours";
+            permitted = false;
+            if (stagedLevel) stagedLevel.permitted = false;
+            if (!hasTimingVeto) {
+              vetoes.unshift({ code: live.isDeadZone ? "DEAD_ZONE" : "TIMING", reason: statusReason });
+            }
+          }
         }
+
         return {
           ...p,
           activeTimeSlot: currentSlot,
           sessionProfile: { ...profile, isCurrentlyActive: Boolean(live.permitted), reason: live.reason },
           status,
+          statusReason,
+          stagedLevel,
+          permitted,
           vetoes,
         };
       });

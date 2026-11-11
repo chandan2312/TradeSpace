@@ -85,7 +85,32 @@ function RadarCardComponent({
   tick = null,
   scannedAt = null,
 }) {
-  const status = pair.status || "UNAVAILABLE";
+  const sessionInfo = checkSessionAllowed(pair, config, currentNow);
+
+  // Harmonize status with live clock and user session config
+  let status = pair.status || "UNAVAILABLE";
+  let statusReason = pair.statusReason || "";
+  const isTimingOrOffSession = /OFF_SESSION|DEAD_ZONE|TIMING|SESSION_RESTRICTED/.test(status);
+
+  if (sessionInfo.allowed) {
+    if (isTimingOrOffSession) {
+      status = (pair.stagedLevel?.permitted || pair.permitted)
+        ? "PRIME_QUALIFIED"
+        : pair.dir !== 0
+        ? "WATCHING_RETRACE"
+        : "SCANNING_NEUTRAL";
+      if (!statusReason || /Outside|Trading Blocked|Session|Dead Zone/i.test(statusReason)) {
+        statusReason = pair.dir !== 0 ? "Monitoring order flow for institutional retracement." : "Market structure in equilibrium.";
+      }
+    }
+  } else {
+    // Strictly outside allowed session
+    if (!/BLOCKED_DATA|RESTRICTED_CONTEXT/.test(status)) {
+      status = sessionInfo.tooltip?.includes("Dead Zone") ? "OFF_SESSION_DEAD_ZONE" : "BLOCKED_TIMING";
+      statusReason = sessionInfo.tooltip?.replace(/^[🔴🟢]\s*/, "") || "Outside Permitted Execution Hours";
+    }
+  }
+
   const prime = status === "PRIME_QUALIFIED";
   const isBlocked = status.startsWith("BLOCKED");
   const isWatching = status.startsWith("WATCHING");
@@ -316,7 +341,6 @@ function RadarCardComponent({
       ? "rgba(249, 115, 22, 0.12)"
       : "var(--panel)";
 
-  const sessionInfo = checkSessionAllowed(pair, config, currentNow);
   const pairTimestamp = pair.scannedAt || pair.at || pair.snapshot?.updatedAt || scannedAt;
   const timeAgoText = formatTimeAgo(pairTimestamp, currentNow);
 
@@ -760,7 +784,7 @@ function RadarCardComponent({
               {isWatching
                 ? "Awaiting Retracement Level (FVG/OTE)"
                 : isBlocked
-                ? (pair.status === "BLOCKED_DATA_ERROR" ? (pair.statusReason || "MT5 Bridge Data Offline") : (pair.statusReason?.slice(0, 48) || "Execution Veto Active"))
+                ? (status === "BLOCKED_DATA_ERROR" ? (statusReason || "MT5 Bridge Data Offline") : (statusReason?.slice(0, 48) || "Execution Veto Active"))
                 : "Scanning Order Flow..."}
             </span>
           </div>
@@ -862,7 +886,7 @@ function RadarCardComponent({
             flex: 1,
           }}
         >
-          {typeof pair.statusReason === "string" && (
+          {typeof statusReason === "string" && statusReason.length > 0 && (
             <span
               style={{
                 overflow: "hidden",
@@ -871,9 +895,9 @@ function RadarCardComponent({
                 color: isBlocked ? "var(--red)" : "var(--muted)",
                 fontSize: 9.5,
               }}
-              title={pair.statusReason}
+              title={statusReason}
             >
-              {pair.statusReason}
+              {statusReason}
             </span>
           )}
         </div>
