@@ -27,10 +27,10 @@ async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey
   // For live stream (off === 0), always fetch at least 500 bars so cache remains a rich superset
   // for all consumers (charts, radar cards, staged cards, bias engine, indicators).
   const fetchCount = off === 0 ? Math.max(n, 500) : n;
-  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 3_000 });
+  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 10_000 });
   if (!d?.ok && !d?.circuitOpen) {
     await new Promise((r) => setTimeout(r, 200));
-    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 3_000 });
+    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 10_000 });
   }
   if (d?.ok && Array.isArray(d.bars)) {
     d.bars = d.bars.map((b) => ({

@@ -101,6 +101,19 @@ _STATE_CACHE = None
 _TICK_CACHE = {}
 _SYMBOLS_CACHE = None
 _IN_FLIGHT_RATES = {}
+_SELECTED_SYMBOLS = set()
+
+def _tf_cache_ttl(tf_name: str) -> float:
+    t = str(tf_name).upper()
+    if t in ("D1", "1D"):
+        return 60.0
+    if t in ("H4", "4H"):
+        return 30.0
+    if t in ("H1", "1H"):
+        return 15.0
+    if t in ("M30", "30M", "M15", "15M"):
+        return 8.0
+    return 3.0
 
 # A write is journaled before order_send. After a crash/timeout its request id
 # remains unresolved and is never replayed; orders/deals reconcile the outcome.
@@ -324,8 +337,9 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
     symbol = resolve_symbol(app_symbol, payload)
     if not symbol:
         return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
-    info = mt5.symbol_info(symbol)
-    tick = mt5.symbol_info_tick(symbol)
+    with LOCK:
+        info = mt5.symbol_info(symbol)
+        tick = mt5.symbol_info_tick(symbol)
     if not info or not tick:
         return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
     point = float(getattr(info, "point", 0.0) or 0.0)
@@ -502,16 +516,17 @@ def handle_rates(payload):
 
     cache_key = (app_symbol, tf_name, count, offset)
     now_mono = time.monotonic()
+    ttl = _tf_cache_ttl(tf_name)
     with CACHE_LOCK:
         # 1. Exact cache match
         cached = _RATES_CACHE.get(cache_key)
-        if cached and (now_mono - cached[0] < 5.0):
+        if cached and (now_mono - cached[0] < ttl):
             return cached[1]
 
         # 2. Dynamic cache slicing: if an existing cached entry with offset 0 has >= count bars, slice and serve directly
         if offset == 0:
             for (k_sym, k_tf, k_cnt, k_off), (c_time, c_res) in list(_RATES_CACHE.items()):
-                if k_sym == app_symbol and k_tf == tf_name and k_off == 0 and (now_mono - c_time < 5.0):
+                if k_sym == app_symbol and k_tf == tf_name and k_off == 0 and (now_mono - c_time < ttl):
                     bars = c_res.get("bars", [])
                     if len(bars) >= count:
                         sliced_bars = bars[-count:]
@@ -537,7 +552,7 @@ def handle_rates(payload):
             is_leader = False
 
     if not is_leader:
-        flight_event.wait(timeout=2.5)
+        flight_event.wait(timeout=8.0)
         with CACHE_LOCK:
             cached = _RATES_CACHE.get(cache_key)
             if cached:
@@ -553,19 +568,24 @@ def handle_rates(payload):
 
         rates = None
         now_ts = int(datetime.now(timezone.utc).timestamp())
-        try:
-            mt5.symbol_select(symbol, True)
-        except Exception:
-            pass
+        
+        if symbol not in _SELECTED_SYMBOLS:
+            with LOCK:
+                try:
+                    if mt5.symbol_select(symbol, True):
+                        _SELECTED_SYMBOLS.add(symbol)
+                except Exception:
+                    pass
 
         for attempt in (
             lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
             lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
         ):
-            try:
-                rates = attempt()
-            except Exception:
-                rates = None
+            with LOCK:
+                try:
+                    rates = attempt()
+                except Exception:
+                    rates = None
             if rates is not None and len(rates) > 0:
                 break
 
@@ -577,10 +597,11 @@ def handle_rates(payload):
                     lambda: mt5.copy_rates_from_pos(symbol, tf_const, offset, count),
                     lambda: mt5.copy_rates_from(symbol, tf_const, now_ts + 86400, count) if offset == 0 else None,
                 ):
-                    try:
-                        rates = attempt()
-                    except Exception:
-                        rates = None
+                    with LOCK:
+                        try:
+                            rates = attempt()
+                        except Exception:
+                            rates = None
                     if rates is not None and len(rates) > 0:
                         break
                 if rates is not None and len(rates) > 0:
@@ -1240,6 +1261,7 @@ ROUTES = {
 class RobustThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    request_queue_size = 64
 
     def handle_error(self, request, client_address):
         exc_type, exc_val, _ = sys.exc_info()
