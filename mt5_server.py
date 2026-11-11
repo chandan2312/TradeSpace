@@ -101,21 +101,27 @@ _STATE_CACHE = None
 _TICK_CACHE = {}
 _SYMBOLS_CACHE = None
 _IN_FLIGHT_RATES = {}
-_IN_FLIGHT_TICKS = {}
 
 # A write is journaled before order_send. After a crash/timeout its request id
 # remains unresolved and is never replayed; orders/deals reconcile the outcome.
-def journal_connection():
-    path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
-    conn = sqlite3.connect(path, timeout=30.0)
+def init_journal():
+    """Run one-time journal initialization at server startup to prevent thread lock contention."""
     try:
+        path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
+        conn = sqlite3.connect(path, timeout=10.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-    except Exception:
-        pass
-    conn.execute("CREATE TABLE IF NOT EXISTS requests (request_id TEXT PRIMARY KEY, digest TEXT NOT NULL, state TEXT NOT NULL, response TEXT, created REAL NOT NULL)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_requests_created ON requests (created)")
-    return conn
+        conn.execute("CREATE TABLE IF NOT EXISTS requests (request_id TEXT PRIMARY KEY, digest TEXT NOT NULL, state TEXT NOT NULL, response TEXT, created REAL NOT NULL)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_requests_created ON requests (created)")
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print(f"[journal] init warning: {exc}", flush=True)
+
+
+def journal_connection():
+    path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
+    return sqlite3.connect(path, timeout=5.0)
 
 
 def durable_write(handler, payload):
@@ -314,56 +320,37 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
         cached = _TICK_CACHE.get(app_upper)
         if cached and (now_mono - cached[0] < 0.5):
             return cached[1]
-        flight_event = _IN_FLIGHT_TICKS.get(app_upper)
-        if flight_event is None:
-            flight_event = threading.Event()
-            _IN_FLIGHT_TICKS[app_upper] = flight_event
-            is_leader = True
-        else:
-            is_leader = False
 
-    if not is_leader:
-        flight_event.wait(timeout=2.0)
-        with CACHE_LOCK:
-            cached = _TICK_CACHE.get(app_upper)
-            if cached:
-                return cached[1]
-
-    try:
-        symbol = resolve_symbol(app_symbol, payload)
-        if not symbol:
-            return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
-        info = mt5.symbol_info(symbol)
-        tick = mt5.symbol_info_tick(symbol)
-        if not info or not tick:
-            return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
-        point = float(getattr(info, "point", 0.0) or 0.0)
-        bid = float(getattr(tick, "bid", 0.0) or 0.0)
-        ask = float(getattr(tick, "ask", 0.0) or 0.0)
-        res = {
-            "ok": True,
-            "status": "tick",
-            "app_symbol": app_symbol,
-            "symbol": symbol,
-            "bid": bid,
-            "ask": ask,
-            "last": float(getattr(tick, "last", 0.0) or 0.0),
-            "time": getattr(tick, "time", None),
-            "time_msc": getattr(tick, "time_msc", None),
-            "point": point,
-            "digits": getattr(info, "digits", None),
-            "spread_points": ((ask - bid) / point) if point else None,
-        }
-        with CACHE_LOCK:
-            _TICK_CACHE[app_upper] = (now_mono, res)
-            if len(_TICK_CACHE) > 200:
-                oldest_k = min(_TICK_CACHE.keys(), key=lambda k: _TICK_CACHE[k][0])
-                _TICK_CACHE.pop(oldest_k, None)
-        return res
-    finally:
-        with CACHE_LOCK:
-            _IN_FLIGHT_TICKS.pop(app_upper, None)
-        flight_event.set()
+    symbol = resolve_symbol(app_symbol, payload)
+    if not symbol:
+        return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
+    info = mt5.symbol_info(symbol)
+    tick = mt5.symbol_info_tick(symbol)
+    if not info or not tick:
+        return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
+    point = float(getattr(info, "point", 0.0) or 0.0)
+    bid = float(getattr(tick, "bid", 0.0) or 0.0)
+    ask = float(getattr(tick, "ask", 0.0) or 0.0)
+    res = {
+        "ok": True,
+        "status": "tick",
+        "app_symbol": app_symbol,
+        "symbol": symbol,
+        "bid": bid,
+        "ask": ask,
+        "last": float(getattr(tick, "last", 0.0) or 0.0),
+        "time": getattr(tick, "time", None),
+        "time_msc": getattr(tick, "time_msc", None),
+        "point": point,
+        "digits": getattr(info, "digits", None),
+        "spread_points": ((ask - bid) / point) if point else None,
+    }
+    with CACHE_LOCK:
+        _TICK_CACHE[app_upper] = (now_mono, res)
+        if len(_TICK_CACHE) > 200:
+            oldest_k = min(_TICK_CACHE.keys(), key=lambda k: _TICK_CACHE[k][0])
+            _TICK_CACHE.pop(oldest_k, None)
+    return res
 
 
 def handle_health(_payload):
@@ -550,7 +537,7 @@ def handle_rates(payload):
             is_leader = False
 
     if not is_leader:
-        flight_event.wait(timeout=10.0)
+        flight_event.wait(timeout=2.5)
         with CACHE_LOCK:
             cached = _RATES_CACHE.get(cache_key)
             if cached:
@@ -1391,6 +1378,7 @@ def main():
 
     print("=" * 60, flush=True)
     print("TradeSpace Institutional MT5 Bridge Server", flush=True)
+    init_journal()
     ok, msg = ensure_mt5()
     if not ok:
         print(f"[warn] MT5 not connected: {msg}", flush=True)

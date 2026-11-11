@@ -1,4 +1,4 @@
-import { bridge, ratesCache, RATES_TTL_MS } from "@/lib/bridge";
+import { bridge, ratesCache, RATES_TTL_MS, getBridgeStatus } from "@/lib/bridge";
 import { json } from "@/lib/http";
 import { normalizeCandles } from "@/lib/candleNormalization";
 import { toCanonicalSymbol, toBrokerSymbol } from "@/lib/symbols/mapping";
@@ -24,10 +24,10 @@ const TF_RATES_TTL_MS = {
 const inFlightRequests = new Map();
 
 async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey) {
-  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 6_000 });
+  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 3_000 });
   if (!d?.ok && !d?.circuitOpen) {
-    await new Promise((r) => setTimeout(r, 350));
-    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 6_000 });
+    await new Promise((r) => setTimeout(r, 200));
+    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 3_000 });
   }
   if (d?.ok && Array.isArray(d.bars)) {
     d.bars = d.bars.map((b) => ({
@@ -68,6 +68,15 @@ export async function GET(req) {
   const cached = ratesCache.get(key) || ratesCache.get(brokerKey);
   const effectiveTtl = off > 0 ? 3600_000 : (TF_RATES_TTL_MS[tf] || RATES_TTL_MS || 60_000);
   const flightKey = `${brokerSym}:${tf}:${n}:${off}`;
+
+  // Circuit breaker 0ms fast-fail: if the MT5 bridge is offline, do NOT hang Next.js sockets
+  const bridgeStatus = getBridgeStatus();
+  if (bridgeStatus.isOpen && !force) {
+    if (cached?.data?.bars?.length) {
+      return json({ ...cached.data, offline: true, circuitOpen: true });
+    }
+    return json({ ok: false, offline: true, circuitOpen: true, error: bridgeStatus.errorMessage || "MT5 Bridge Offline" }, 503);
+  }
 
   // Stale-While-Revalidate:
   // For historical pagination (off > 0): past history never changes, serve cached immediately
