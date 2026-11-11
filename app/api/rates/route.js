@@ -24,10 +24,13 @@ const TF_RATES_TTL_MS = {
 const inFlightRequests = new Map();
 
 async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey) {
-  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 3_000 });
+  // For live stream (off === 0), always fetch at least 500 bars so cache remains a rich superset
+  // for all consumers (charts, radar cards, staged cards, bias engine, indicators).
+  const fetchCount = off === 0 ? Math.max(n, 500) : n;
+  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 3_000 });
   if (!d?.ok && !d?.circuitOpen) {
     await new Promise((r) => setTimeout(r, 200));
-    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: n, offset: off }, { timeoutMs: 3_000 });
+    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 3_000 });
   }
   if (d?.ok && Array.isArray(d.bars)) {
     d.bars = d.bars.map((b) => ({
@@ -67,13 +70,17 @@ export async function GET(req) {
   const force = sp.get("refresh") === "1" || sp.get("force") === "1";
   const cached = ratesCache.get(key) || ratesCache.get(brokerKey);
   const effectiveTtl = off > 0 ? 3600_000 : (TF_RATES_TTL_MS[tf] || RATES_TTL_MS || 60_000);
-  const flightKey = `${brokerSym}:${tf}:${n}:${off}`;
+  const flightKey = off === 0 ? `${brokerSym}:${tf}:live` : `${brokerSym}:${tf}:${n}:${off}`;
 
   // Circuit breaker 0ms fast-fail: if the MT5 bridge is offline, do NOT hang Next.js sockets
   const bridgeStatus = getBridgeStatus();
   if (bridgeStatus.isOpen && !force) {
     if (cached?.data?.bars?.length) {
-      return json({ ...cached.data, offline: true, circuitOpen: true });
+      const responseData =
+        cached.data.bars.length > n && off === 0
+          ? { ...cached.data, count: n, bars: cached.data.bars.slice(-n) }
+          : cached.data;
+      return json({ ...responseData, offline: true, circuitOpen: true });
     }
     return json({ ok: false, offline: true, circuitOpen: true, error: bridgeStatus.errorMessage || "MT5 Bridge Offline" }, 503);
   }
@@ -110,6 +117,9 @@ export async function GET(req) {
     try {
       const flightData = await inFlightRequests.get(flightKey);
       if (flightData?.ok && Array.isArray(flightData.bars)) {
+        if (off === 0 && flightData.bars.length > n) {
+          return json({ ...flightData, count: n, bars: flightData.bars.slice(-n) });
+        }
         return json(flightData);
       }
     } catch (_) {}
@@ -126,26 +136,37 @@ export async function GET(req) {
     }
 
     if (data?.ok && Array.isArray(data.bars)) {
+      if (off === 0 && data.bars.length > n) {
+        return json({ ...data, count: n, bars: data.bars.slice(-n) });
+      }
       return json(data);
     }
 
     // Bridge error / offline:
     // If cached bars exist, serve them cleanly
     if (cached?.data?.bars?.length) {
+      const responseData =
+        cached.data.bars.length > n && off === 0
+          ? { ...cached.data, count: n, bars: cached.data.bars.slice(-n) }
+          : cached.data;
       const cacheAge = Date.now() - cached.at;
       if (cacheAge < 300_000 || off > 0) {
-        return json(cached.data);
+        return json(responseData);
       }
-      return json({ ...cached.data, stale: true, offline: true, error: data?.message || "Bridge unreachable" });
+      return json({ ...responseData, stale: true, offline: true, error: data?.message || "Bridge unreachable" });
     }
     return json(data);
   } catch (err) {
     if (cached?.data?.bars?.length) {
+      const responseData =
+        cached.data.bars.length > n && off === 0
+          ? { ...cached.data, count: n, bars: cached.data.bars.slice(-n) }
+          : cached.data;
       const cacheAge = Date.now() - cached.at;
       if (cacheAge < 300_000 || off > 0) {
-        return json(cached.data);
+        return json(responseData);
       }
-      return json({ ...cached.data, stale: true, offline: true, error: err.message });
+      return json({ ...responseData, stale: true, offline: true, error: err.message });
     }
     return json({ ok: false, error: err.message }, 502);
   }

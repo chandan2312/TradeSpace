@@ -625,8 +625,10 @@ export default function ChartPanel({
 
   // ---------- load and synchronize bars with auto-gap healing & retry ----------
   const fetchGenerationRef = useRef(0);
-  const activeFetchKeyRef = useRef(`${symbol}:${tf}`);
-  const lastSyncTimeRef = useRef(0);
+  const activeFetchKeyRef.current = `${symbol}:${tf}`;
+  const inFlightLoadBarsRef = useRef(new Set());
+  const lastGapReconciledBarTimeRef = useRef(null);
+  const lastSyncTimeRef = useRef(Date.now());
   const lastClientActiveRef = useRef(Date.now());
   const retryTimerRef = useRef(null);
   const retryCountRef = useRef(0);
@@ -693,8 +695,11 @@ export default function ChartPanel({
     }
   }, [symbol, tf]);
 
-  const loadBars = useCallback(async (key, genId, isSilent = false, forceRefresh = false) => {
+  const loadBars = useCallback(async (key, genId, isSilent = false, forceRefresh = false, requestedCount = null) => {
     const [sym, curTf] = key.split(":");
+    if (inFlightLoadBarsRef.current.has(key)) return;
+    inFlightLoadBarsRef.current.add(key);
+    lastSyncTimeRef.current = Date.now();
     try {
       // Wait for seriesRef if chart is mounting
       for (let i = 0; i < 40 && !seriesRef.current; i++) {
@@ -704,14 +709,16 @@ export default function ChartPanel({
       if (fetchGenerationRef.current !== genId) return;
 
       const cached = barsCache.current.get(key);
-      const hasExistingBars = Array.isArray(cached?.bars) && cached.bars.length > 0;
+      const hasExistingBars = (Array.isArray(cached?.bars) && cached.bars.length > 0) || (Array.isArray(barsRef.current) && barsRef.current.length > 0);
 
       // Smart bar counts:
-      // - Silent background gap-heal / refresh: only 80 bars needed! (Transfers in ~10ms)
-      // - Initial fresh load: 500 bars for LTF (M1-M15), 400 bars for HTF (H1-D1)
+      // - Silent background gap-heal / refresh: only 5 bars needed! (Transfers in ~1ms, <500 bytes)
+      // - Initial fresh load / explicit retry: 500 bars for LTF (M1-M15), 400 bars for HTF (H1-D1)
       let count = 500;
-      if (isSilent && hasExistingBars && !forceRefresh) {
-        count = 80;
+      if (requestedCount != null && Number.isFinite(requestedCount) && requestedCount > 0) {
+        count = Math.min(requestedCount, 5000);
+      } else if (isSilent && hasExistingBars) {
+        count = 5;
       } else if (["M1", "M5", "M15"].includes(curTf)) {
         count = 500;
       } else if (["H1", "H4", "D1"].includes(curTf)) {
@@ -744,10 +751,10 @@ export default function ChartPanel({
           // Suppress false popup if ticks are active or on first transient failure
           if (staleStreakRef.current >= 2 && !hasActiveTicks) {
             setBridgeOfflineInfo({ message: data?.message || "Bridge offline", time: cached.at });
-          } else {
+          } else if (!hasActiveTicks) {
             setTimeout(() => {
-              if (fetchGenerationRef.current === genId) loadBars(key, genId, true, true);
-            }, 1500);
+              if (fetchGenerationRef.current === genId) loadBars(key, genId, true, false, 5);
+            }, 10_000);
           }
           setError(null);
           setLoading(false);
@@ -773,8 +780,9 @@ export default function ChartPanel({
       // Seamless delta stitching: merge delta bars with existing historical bars
       let finalBars = newBars;
       if (hasExistingBars && count < 200) {
+        const baseBars = (cached?.bars?.length ? cached.bars : barsRef.current) || [];
         const timeMap = new Map();
-        for (const b of cached.bars) timeMap.set(b.time, b);
+        for (const b of baseBars) timeMap.set(b.time, b);
         for (const b of newBars) timeMap.set(b.time, b);
         finalBars = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
       }
@@ -809,10 +817,10 @@ export default function ChartPanel({
         // Suppress false popup if live ticks are actively streaming or if this is just a single transient hitch
         if (staleStreakRef.current >= 2 && !hasActiveTicks) {
           setBridgeOfflineInfo({ message: data?.error || "Bridge offline (serving cached bars)", time: cached?.at });
-        } else {
+        } else if (!hasActiveTicks) {
           setTimeout(() => {
-            if (fetchGenerationRef.current === genId) loadBars(key, genId, true, true);
-          }, 1500);
+            if (fetchGenerationRef.current === genId) loadBars(key, genId, true, false, 5);
+          }, 10_000);
         }
       } else {
         staleStreakRef.current = 0;
@@ -830,10 +838,10 @@ export default function ChartPanel({
           staleStreakRef.current += 1;
           if (staleStreakRef.current >= 2 && !hasActiveTicks) {
             setBridgeOfflineInfo({ message: err.message || "Connection error", time: cached.at });
-          } else {
+          } else if (!hasActiveTicks) {
             setTimeout(() => {
-              if (fetchGenerationRef.current === genId) loadBars(key, genId, true, true);
-            }, 1500);
+              if (fetchGenerationRef.current === genId) loadBars(key, genId, true, false, 5);
+            }, 10_000);
           }
           setError(null);
           setLoading(false);
@@ -847,6 +855,9 @@ export default function ChartPanel({
           setLoading(false);
         }
       }
+    } finally {
+      inFlightLoadBarsRef.current.delete(key);
+      setLoading(false);
     }
   }, [barsCache, applyBars]);
 
@@ -883,7 +894,7 @@ export default function ChartPanel({
       applyBars(cached.bars, false, key);
       setLoading(false);
       setError(null);
-      loadBars(key, currentGen, true, false);
+      loadBars(key, currentGen, true, false, 5);
       return;
     }
 
@@ -923,10 +934,12 @@ export default function ChartPanel({
     return () => window.removeEventListener("ts_symbol_mapping_updated", onMappingUpdated);
   }, [symbol, tf, loadBars]);
 
-  const reconcileBackgroundGaps = useCallback((forceRefresh = false) => {
+  const reconcileBackgroundGaps = useCallback((forceRefresh = false, barCount = 5) => {
     const key = `${symbol}:${tf}`;
     if (activeFetchKeyRef.current !== key) return;
-    loadBars(key, fetchGenerationRef.current, true, forceRefresh);
+    const now = Date.now();
+    if (now - lastSyncTimeRef.current < 30_000 && !forceRefresh) return;
+    loadBars(key, fetchGenerationRef.current, true, forceRefresh, barCount);
   }, [symbol, tf, loadBars]);
 
   // Automatic gap-healing when switching back to tab, focusing window, or unlocking screen
@@ -936,7 +949,7 @@ export default function ChartPanel({
         const elapsedClientSec = (Date.now() - lastClientActiveRef.current) / 1000;
         // Only trigger gap-healing if user was away for at least 60s
         if (elapsedClientSec >= 60) {
-          reconcileBackgroundGaps();
+          reconcileBackgroundGaps(false, 5);
         }
       }
     };
@@ -962,9 +975,9 @@ export default function ChartPanel({
       const timeSinceLastSync = now - lastSyncTimeRef.current;
       const isVisible = document.visibilityState === "visible";
       if (isVisible && timeSinceLastSync >= intervalMs) {
-        reconcileBackgroundGaps();
+        reconcileBackgroundGaps(false, 5);
       }
-    }, 15_000);
+    }, 30_000);
 
     return () => clearInterval(timer);
   }, [tf, reconcileBackgroundGaps]);
@@ -972,7 +985,7 @@ export default function ChartPanel({
   // Reconnection listener: when WebSocket reconnects or network comes online
   useEffect(() => {
     const onReconnect = () => {
-      reconcileBackgroundGaps(true);
+      reconcileBackgroundGaps(false, 5);
     };
     window.addEventListener("ts_ws_reconnected", onReconnect);
     window.addEventListener("online", onReconnect);
@@ -999,7 +1012,7 @@ export default function ChartPanel({
       return;
     }
 
-    let secondsLeft = 3;
+    let secondsLeft = 10;
     setAutoReconnectCountdown(secondsLeft);
 
     autoReconnectTimerRef.current = setInterval(async () => {
@@ -1011,12 +1024,12 @@ export default function ChartPanel({
         setIsAutoReconnecting(true);
         const key = `${symbol}:${tf}`;
         try {
-          await loadBars(key, fetchGenerationRef.current, true, true);
+          await loadBars(key, fetchGenerationRef.current, true, false, 5);
         } catch (e) {
           // ignore background errors; watchdog retries
         } finally {
           setIsAutoReconnecting(false);
-          secondsLeft = 3;
+          secondsLeft = 10;
           setAutoReconnectCountdown(secondsLeft);
         }
       }
@@ -1072,10 +1085,14 @@ export default function ChartPanel({
 
     // If a new candle arrives across a gap (e.g. background tab / session break / weekend):
     // Trigger background reconciliation to fetch intermediate bars, BUT never block the active candle!
+    // Guarded: only attempt ONCE per bar timestamp, with a 30s cooldown, requesting only 5 delta bars.
     if (isNewBar && !isNextConsecutive) {
-      const now = Date.now();
-      if (now - lastSyncTimeRef.current > 2000) {
-        reconcileBackgroundGaps();
+      if (lastGapReconciledBarTimeRef.current !== barTime) {
+        lastGapReconciledBarTimeRef.current = barTime;
+        const now = Date.now();
+        if (now - lastSyncTimeRef.current > 30_000) {
+          reconcileBackgroundGaps(false, 5);
+        }
       }
     }
 
