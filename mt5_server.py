@@ -587,7 +587,10 @@ def handle_rates(payload):
                     break
 
         if rates is None or len(rates) == 0:
-            return {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}
+            err_res = {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {mt5.last_error()}", "symbol": symbol}
+            with CACHE_LOCK:
+                _RATES_CACHE[cache_key] = (now_mono, err_res)
+            return err_res
 
         bars = []
         for row in rates:
