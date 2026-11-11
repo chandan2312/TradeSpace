@@ -483,7 +483,7 @@ def handle_rates(payload):
     now_mono = time.monotonic()
     with CACHE_LOCK:
         cached = _RATES_CACHE.get(cache_key)
-        if cached and (now_mono - cached[0] < 2.0):
+        if cached and (now_mono - cached[0] < 5.0):
             return cached[1]
 
     ok, msg = ensure_mt5()
@@ -1165,13 +1165,16 @@ class RobustThreadingHTTPServer(ThreadingHTTPServer):
         if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             return  # Suppress normal client disconnection / abort
         if exc_type and issubclass(exc_type, socket.error):
-            if getattr(exc_val, "winerror", None) in (10054, 10053, 10060):
+            if getattr(exc_val, "winerror", None) in (10054, 10053, 10060, 10058):
                 return  # Suppress Windows socket connection resets
+        err_str = str(exc_val)
+        if any(code in err_str for code in ("10054", "10053", "10060", "10058")):
+            return
         super().handle_error(request, client_address)
 
 
 class Handler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
+    protocol_version = "HTTP/1.0"
 
     def handle_one_request(self):
         try:

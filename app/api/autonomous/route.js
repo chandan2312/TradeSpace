@@ -271,7 +271,7 @@ export async function GET() {
 
       // Check if scan is stale or missing watchlist symbols
       const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
-      const scanIntervalMs = Number(config?.scanIntervalMs || 180000);
+      const scanIntervalMs = Number(config?.scanIntervalMs || 300000);
       const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
       const hasMissingSymbols = missingMainSymbols.length > 0;
 
