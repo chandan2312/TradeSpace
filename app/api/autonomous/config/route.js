@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 import { getConfig, setConfig, autonomousCols } from "../../../../lib/autonomous/store.js";
-import { runAutonomousScan } from "../../../../lib/autonomous/engine.js";
+import { runAutonomousScan, startAutonomousLoop, stopAutonomousLoop } from "../../../../lib/autonomous/engine.js";
 import { broadcast } from "../../../../lib/realtime.js";
 import { getCurrentTimeSlot, isTradingPermittedNow, getSymbolSessionProfile } from "../../../../lib/autonomous/timeslots.js";
 
@@ -23,6 +23,12 @@ export async function POST(req) {
   try {
     const patch = await req.json();
     const config = await setConfig(patch);
+
+    if (patch.enabled === false || config.enabled === false) {
+      stopAutonomousLoop();
+    } else if (patch.enabled === true) {
+      startAutonomousLoop();
+    }
 
     // Invalidate route-level HTTP response cache
     if (typeof g._tsInvalidateAutonomousRouteCache === "function") {
@@ -133,8 +139,10 @@ export async function POST(req) {
       }
     }
 
-    // Trigger an immediate background scan with the new configuration
-    runAutonomousScan("config_model_updated").catch(() => {});
+    // Trigger an immediate background scan with the new configuration ONLY IF ENABLED
+    if (config.enabled) {
+      runAutonomousScan("config_model_updated").catch(() => {});
+    }
 
     broadcast({ type: "autonomous_changed" });
     broadcast({ type: "autonomous_scan" });

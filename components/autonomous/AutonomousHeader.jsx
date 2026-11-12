@@ -173,6 +173,39 @@ export default function AutonomousHeader({
 
       {/* Row 2: Center badges (Mode, MT5 Live, Horizon, Killzone, Session) */}
       <div className="autonomous-header-badges">
+        {/* Engine Operational State (Active vs Full Stopped) */}
+        <div
+          className="autonomous-badge-chip"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "4px 8px",
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            background: isRunning ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.12)",
+            color: isRunning ? "var(--green)" : "#f87171",
+            border: `1px solid ${isRunning ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+          }}
+          title={
+            isRunning
+              ? "Autonomous Engine is ACTIVE: Processing ticks, re-arming setups, and scanning universe."
+              : "Autonomous Engine is FULL STOPPED: 0 calculations, 0 data requests, 0 background scans."
+          }
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: isRunning ? "var(--green)" : "#ef4444",
+              boxShadow: isRunning ? "0 0 8px var(--green)" : "none",
+            }}
+          />
+          {isRunning ? "ENGINE ACTIVE" : "ENGINE FULL STOPPED"}
+        </div>
+
         {/* Execution Mode */}
         <div
           className="autonomous-badge-chip"

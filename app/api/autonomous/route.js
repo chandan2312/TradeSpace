@@ -20,6 +20,7 @@ import {
   modifyTradeTarget,
   pollBroker,
   startAutonomousLoop,
+  stopAutonomousLoop,
 } from "../../../lib/autonomous/engine.js";
 import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES, isTradingPermittedNow, getSymbolSessionProfile } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
@@ -77,21 +78,29 @@ export async function GET() {
 
   inFlightGetPromise = (async () => {
     try {
-      startAutonomousLoop();
-      // Non-blocking background sync of MT5 history so page loads instantly
-      syncMT5HistoryToJournalThrottled().catch(() => {});
+      const config = await getConfig();
+      const isEnabled = Boolean(config?.enabled);
+
+      if (isEnabled) {
+        startAutonomousLoop();
+        // Non-blocking background sync of MT5 history so page loads instantly
+        syncMT5HistoryToJournalThrottled().catch(() => {});
+      } else {
+        stopAutonomousLoop();
+      }
 
       const { tradesCol, logsCol, controlCol } = await autonomousCols();
 
       // Fetch independent data sources concurrently (with 1500ms safety timeout on remote broker bridge)
-      // Only query latest_autonomous_scan if leaderboard is not already hydrated in memory
-      const [config, metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan, mainWatchlistSymbols, userWatchlists] = await Promise.all([
-        getConfig(),
+      // If autonomous is disabled, bypass remote broker account fetch to maintain zero MT5 load
+      const [metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan, mainWatchlistSymbols, userWatchlists] = await Promise.all([
         getMetrics(),
-        Promise.race([
-          getMT5Account().catch(() => null),
-          new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
-        ]),
+        isEnabled
+          ? Promise.race([
+              getMT5Account().catch(() => null),
+              new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+            ])
+          : Promise.resolve(null),
         tradesCol.find({
           status: { $in: OPEN_STATES },
           brokerComment: { $not: { $regex: /^MQ:/i } },
@@ -313,9 +322,9 @@ export async function GET() {
       const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
       const hasMissingSymbols = missingMainSymbols.length > 0;
 
-      // If scan is stale or missing watchlist symbols, trigger scan immediately
+      // If scan is stale or missing watchlist symbols, trigger scan immediately ONLY IF ENABLED
       const scanNow = Date.now();
-      if ((isScanStale || hasMissingSymbols) && !g._tsAutonomousScanning && (config?.enabled || hasMissingSymbols) && (scanNow - lastBackgroundScanTriggerAt > (hasMissingSymbols ? 10000 : 60000))) {
+      if (isEnabled && (isScanStale || hasMissingSymbols) && !g._tsAutonomousScanning && (scanNow - lastBackgroundScanTriggerAt > (hasMissingSymbols ? 10000 : 60000))) {
         lastBackgroundScanTriggerAt = scanNow;
         runAutonomousScan(hasMissingSymbols ? "watchlist_symbol_added" : "interval").catch(() => {});
       }
@@ -433,7 +442,25 @@ export async function POST(req) {
 
     if (action === "toggle") {
       const cfg = await getConfig();
-      const updated = await setConfig({ enabled: !cfg.enabled });
+      const nextEnabled = !cfg.enabled;
+      const updated = await setConfig({ enabled: nextEnabled });
+      if (!nextEnabled) {
+        stopAutonomousLoop();
+      } else {
+        startAutonomousLoop();
+      }
+      return NextResponse.json({ ok: true, config: updated });
+    }
+
+    if (action === "stop" || action === "pause") {
+      const updated = await setConfig({ enabled: false });
+      stopAutonomousLoop();
+      return NextResponse.json({ ok: true, config: updated });
+    }
+
+    if (action === "start" || action === "resume") {
+      const updated = await setConfig({ enabled: true });
+      startAutonomousLoop();
       return NextResponse.json({ ok: true, config: updated });
     }
 
