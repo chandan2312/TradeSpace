@@ -53,6 +53,7 @@ import threading
 import math
 import sqlite3
 import hashlib
+from contextlib import contextmanager
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -138,9 +139,18 @@ def init_journal():
         print(f"[journal] init warning: {exc}", flush=True)
 
 
+@contextmanager
 def journal_connection():
     path = os.getenv("MT5_REQUEST_JOURNAL") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mt5_requests.sqlite3")
-    return sqlite3.connect(path, timeout=5.0)
+    conn = sqlite3.connect(path, timeout=5.0)
+    try:
+        with conn:
+            yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def durable_write(handler, payload):
@@ -301,14 +311,16 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
 
     # Fast cache hit (if no custom request-specific broker_mapping override)
     with CACHE_LOCK:
-        if not (payload and "broker_mapping" in payload) and app_upper in _RESOLVED_CACHE:
-            return _RESOLVED_CACHE[app_upper]
+        cached_sym = _RESOLVED_CACHE.get(app_upper)
+        if not (payload and "broker_mapping" in payload) and cached_sym:
+            return cached_sym
 
     with LOCK:
         # Double-check cache inside mutex in case another worker resolved it while waiting
         with CACHE_LOCK:
-            if not (payload and "broker_mapping" in payload) and app_upper in _RESOLVED_CACHE:
-                return _RESOLVED_CACHE[app_upper]
+            cached_sym = _RESOLVED_CACHE.get(app_upper)
+            if not (payload and "broker_mapping" in payload) and cached_sym:
+                return cached_sym
 
         # 1. Explicit broker mapping from request payload
         if payload and "broker_mapping" in payload:
@@ -377,8 +389,7 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
                 except Exception:
                     pass
 
-        with CACHE_LOCK:
-            _RESOLVED_CACHE[app_upper] = None
+        # Do not cache None permanently so subsequent retries can resolve once terminal connects
         return None
 
 
