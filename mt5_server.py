@@ -1638,6 +1638,35 @@ def main():
 
     threading.Thread(target=_periodic_gc, daemon=True).start()
 
+    # Active internal anti-hang & deadlock watchdog
+    def _health_watchdog():
+        import os
+        while True:
+            time.sleep(10)
+            try:
+                # Test mutex lock acquisition with 15s timeout
+                acquired = LOCK.acquire(timeout=15.0)
+                if not acquired:
+                    print("\n[CRITICAL AUTO-HEAL] Mutex lock acquisition timed out (15s deadlock/freeze detected)!", flush=True)
+                    print("[CRITICAL AUTO-HEAL] Forcibly terminating process to allow supervisor auto-revival...", flush=True)
+                    os._exit(42)
+                else:
+                    LOCK.release()
+
+                # Memory guard for 1GB VPS: force GC if memory exceeds 400MB
+                try:
+                    import psutil
+                    rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
+                    if rss_mb > 400.0:
+                        print(f"\n[CRITICAL AUTO-HEAL] Process memory high ({rss_mb:.1f} MB > 400 MB). Forcibly recycling...", flush=True)
+                        os._exit(43)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    threading.Thread(target=_health_watchdog, daemon=True).start()
+
     try:
         RobustThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
     except KeyboardInterrupt:

@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title TradeSpace MT5 Bridge Server (Port 8765)
+title TradeSpace MT5 Bridge Server (Port 8765) - Auto-Healing Supervisor
 
 cd /d "%~dp0"
 chcp 65001 >nul
@@ -9,6 +9,7 @@ set PYTHONUNBUFFERED=1
 
 echo ============================================================
 echo   TradeSpace Institutional MT5 Bridge Server Launcher
+echo   [Auto-Healing 24/7 Supervisor Active]
 echo ============================================================
 
 REM 1. Detect Python executable
@@ -53,26 +54,102 @@ if errorlevel 1 (
     )
 )
 
-REM 3. Run MT5 Server with 24/7 Watchdog Auto-Restart
-echo.
-echo [Launcher] Starting mt5_server.py on http://0.0.0.0:8765 ...
-echo [Launcher] Press Ctrl+C in this window if you wish to stop the bridge.
-echo ============================================================
-
-:mt5_watchdog
-!PY_CMD! mt5_server.py --host 0.0.0.0 --port 8765
-set "EXIT_CODE=!errorlevel!"
-
-echo.
-echo ============================================================
-echo [WATCHDOG] MT5 Bridge Server exited (Exit Code: !EXIT_CODE!).
-if "!EXIT_CODE!"=="-1073741819" (
-    echo [CRITICAL] Memory Access Violation (0xC0000005) detected.
-    echo Ensure MetaTrader 5 (terminal64.exe) is open and logged into broker account.
-) else if "!EXIT_CODE!"=="1" (
-    echo [ERROR] Script error encountered. Inspect output above for details.
+REM 3. Check if MetaTrader 5 Terminal [terminal64.exe] is running
+tasklist /FI "IMAGENAME eq terminal64.exe" 2>nul | find /I "terminal64.exe" >nul
+if errorlevel 1 (
+    echo.
+    echo ------------------------------------------------------------
+    echo [WARNING] MetaTrader 5 terminal [terminal64.exe] is NOT running!
+    echo [WARNING] Please ensure MetaTrader 5 is launched and logged into your broker.
+    echo ------------------------------------------------------------
+    echo.
+) else (
+    echo [Launcher] MetaTrader 5 terminal detected [terminal64.exe is running].
 )
-echo [WATCHDOG] Automatically reviving MT5 Bridge Server in 3 seconds...
+
+echo.
 echo ============================================================
-timeout /t 3 /nobreak >nul
-goto mt5_watchdog
+echo [Auto-Heal] Initializing clean state before starting...
+call :auto_heal_cleanse
+echo ============================================================
+
+:mt5_supervise_loop
+echo.
+echo [Supervisor] Launching mt5_server.py on http://0.0.0.0:8765 ...
+echo [Supervisor] Active health sentinel monitoring http://127.0.0.1:8765/health every 5s
+echo ============================================================
+
+REM Launch mt5_server.py in the background of this console
+start "TradeSpace MT5 Engine" /b !PY_CMD! mt5_server.py --host 0.0.0.0 --port 8765
+
+REM Allow 4 seconds for server socket binding and initialization
+ping 127.0.0.1 -n 5 >nul
+
+set /a FAIL_STREAK=0
+set /a HEARTBEAT_TICKS=0
+
+:health_sentinel_loop
+ping 127.0.0.1 -n 6 >nul
+
+REM Check 1: Is Port 8765 currently listening?
+netstat -aon | findstr ":8765" | findstr "LISTENING" >nul
+if errorlevel 1 (
+    echo.
+    echo ============================================================
+    echo [ALERT] Port 8765 is no longer listening. Server process exited or died.
+    goto :recover_and_restart
+)
+
+REM Check 2: Probe HTTP /health with 4s timeout using built-in curl.exe
+curl.exe -s -m 4 http://127.0.0.1:8765/health >nul 2>&1
+if errorlevel 1 (
+    set /a FAIL_STREAK+=1
+    echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/3]...
+    if !FAIL_STREAK! geq 3 (
+        echo.
+        echo ============================================================
+        echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [3 consecutive failed probes].
+        echo [CRITICAL AUTO-HEAL] Forcibly terminating clogged process and reviving...
+        goto :recover_and_restart
+    )
+) else (
+    set /a FAIL_STREAK=0
+)
+
+set /a HEARTBEAT_TICKS+=1
+if !HEARTBEAT_TICKS! geq 12 (
+    echo [Watchdog] MT5 Bridge Server active and healthy [Port 8765 responding].
+    set /a HEARTBEAT_TICKS=0
+)
+
+goto :health_sentinel_loop
+
+
+:recover_and_restart
+echo [Auto-Heal] Initiating deep process and socket purge...
+call :auto_heal_cleanse
+echo [Auto-Heal] Cooling down for 3 seconds before revival...
+ping 127.0.0.1 -n 4 >nul
+echo [Auto-Heal] Reviving MT5 Bridge Server now.
+echo ============================================================
+goto :mt5_supervise_loop
+
+
+:auto_heal_cleanse
+REM 1. Forcibly terminate any process listening on port 8765
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr ":8765" ^| findstr "LISTENING"') do (
+    echo [Auto-Heal] Found process PID %%p holding port 8765. Terminating...
+    taskkill /F /PID %%p >nul 2>&1
+)
+
+REM 2. Forcibly terminate any lingering python.exe running mt5_server.py
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name = 'python.exe'\" | Where-Object { $_.CommandLine -like '*mt5_server.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
+REM 3. Remove orphaned temporary SQLite shared memory locks if process crashed
+if exist "%~dp0mt5_requests.sqlite3-shm" (
+    del /f /q "%~dp0mt5_requests.sqlite3-shm" >nul 2>&1
+)
+
+REM 4. Flush unused system memory / GC on Windows VPS
+powershell -NoProfile -Command "[System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers()" >nul 2>&1
+goto :eof
