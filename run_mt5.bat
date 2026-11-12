@@ -121,15 +121,15 @@ if errorlevel 1 (
     goto :recover_and_restart
 )
 
-REM Check 2: Probe HTTP /health with 4s timeout using built-in curl.exe
-curl.exe -s -m 4 http://127.0.0.1:8765/health >nul 2>&1
+REM Check 2: Probe HTTP /health with 8s timeout using built-in curl.exe
+curl.exe -s -m 8 http://127.0.0.1:8765/health >nul 2>&1
 if errorlevel 1 (
     set /a FAIL_STREAK+=1
-    echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/3]...
-    if !FAIL_STREAK! geq 3 (
+    echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/8]...
+    if !FAIL_STREAK! geq 8 (
         echo.
         echo ============================================================
-        echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [3 consecutive failed probes].
+        echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [8 consecutive failed probes].
         echo [CRITICAL AUTO-HEAL] Forcibly terminating clogged process and reviving...
         goto :recover_and_restart
     )

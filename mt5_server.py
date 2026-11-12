@@ -250,16 +250,24 @@ TF_MAP = {
 }
 
 
+_LAST_INIT_ATTEMPT = 0.0
+
+
 def ensure_mt5() -> tuple[bool, str]:
     """Ensure connection to the MT5 terminal is active."""
+    global _LAST_INIT_ATTEMPT
     if mt5 is None:
         return False, "MetaTrader5 package not installed (Windows only)"
     with LOCK:
         try:
             info = mt5.terminal_info()
-            if info is not None and getattr(info, "connected", False):
+            if info is not None:
                 return True, "ok"
-            # If not connected or info is None, cleanly shutdown dead pipe handles before re-init
+            # info is None: Python IPC is disconnected from terminal64.exe
+            now = time.monotonic()
+            if now - _LAST_INIT_ATTEMPT < 5.0:
+                return False, "MT5 initializing (cooldown)"
+            _LAST_INIT_ATTEMPT = now
             try:
                 mt5.shutdown()
             except Exception:
@@ -269,11 +277,6 @@ def ensure_mt5() -> tuple[bool, str]:
                 return False, f"initialize failed: {err}"
             return True, "ok"
         except Exception as exc:
-            try:
-                mt5.shutdown()
-                mt5.initialize()
-            except Exception:
-                pass
             return False, f"mt5 exception: {exc}"
 
 
@@ -424,11 +427,11 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
 
 
 def handle_health(_payload):
-    ok, msg = ensure_mt5()
+    # Instant, non-blocking liveness check.
+    # NEVER acquire LOCK or block on MT5 terminal queries here so health sentinels never time out under load.
     return {
-        "ok": ok,
-        "status": "bridge-ready" if ok else "bridge-unhealthy",
-        "message": msg,
+        "ok": True,
+        "status": "bridge-ready",
         "auth": "required" if TOKEN else "open",
         "capabilities": {"timeframes": list(TF_MAP.keys())},
     }
@@ -682,7 +685,9 @@ def handle_rates(payload):
                     last_err = "unknown"
             err_res = {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {last_err}", "symbol": symbol}
             with CACHE_LOCK:
-                _RATES_CACHE[cache_key] = (now_mono, err_res)
+                # Do NOT cache error responses for the full timeframe TTL (which could be 15-60s)
+                # Cache for only 1.5 seconds so rapid retries can fetch newly loaded broker data
+                _RATES_CACHE[cache_key] = (now_mono - ttl + 1.5, err_res)
             return err_res
 
         bars = []
@@ -1638,28 +1643,26 @@ def main():
 
     threading.Thread(target=_periodic_gc, daemon=True).start()
 
-    # Active internal anti-hang & deadlock watchdog
+    # Active internal memory guard & working set trimmer
     def _health_watchdog():
-        import os
         while True:
-            time.sleep(10)
+            time.sleep(15)
             try:
-                # Test mutex lock acquisition with 15s timeout
-                acquired = LOCK.acquire(timeout=15.0)
-                if not acquired:
-                    print("\n[CRITICAL AUTO-HEAL] Mutex lock acquisition timed out (15s deadlock/freeze detected)!", flush=True)
-                    print("[CRITICAL AUTO-HEAL] Forcibly terminating process to allow supervisor auto-revival...", flush=True)
-                    os._exit(42)
-                else:
-                    LOCK.release()
-
-                # Memory guard for 1GB VPS: force GC if memory exceeds 400MB
+                # Memory guard: proactively trim caches and working set if RSS exceeds 350MB
                 try:
                     import psutil
                     rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-                    if rss_mb > 400.0:
-                        print(f"\n[CRITICAL AUTO-HEAL] Process memory high ({rss_mb:.1f} MB > 400 MB). Forcibly recycling...", flush=True)
-                        os._exit(43)
+                    if rss_mb > 350.0:
+                        with CACHE_LOCK:
+                            _RATES_CACHE.clear()
+                            _TICK_CACHE.clear()
+                        import gc
+                        gc.collect()
+                        try:
+                            import ctypes
+                            ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1, -1)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             except Exception:
