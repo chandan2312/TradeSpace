@@ -2,10 +2,14 @@
 import { useState, useEffect, Fragment } from "react";
 import { Activity } from "lucide-react";
 
-export default function CurrencyHeatmap() {
-  const [data, setData] = useState(null);
+export default function CurrencyHeatmap({ initialData = null }) {
+  const [data, setData] = useState(() => initialData);
 
   useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      return;
+    }
     fetch(`/api/bias?symbols=ALL`)
       .then(r => r.json())
       .then(d => {
@@ -14,7 +18,7 @@ export default function CurrencyHeatmap() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [initialData]);
 
   if (!data) return null;
 

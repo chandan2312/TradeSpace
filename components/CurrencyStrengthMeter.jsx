@@ -3,66 +3,84 @@
 import { useState, useEffect } from "react";
 import { Activity, TrendingUp, TrendingDown, Minus, Zap, Sparkles, Target, Compass, Shield } from "lucide-react";
 
-export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbols = [] }) {
-  const [data, setData] = useState(null);
-  const [symbolsMap, setSymbolsMap] = useState({});
+function parseStrengthPayload(d) {
+  if (!d || !d.currencyStrength) return null;
+  const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
+  const finalCurrencies = {};
+  
+  // Determine scale max (40 represents a powerful macro-bias edge)
+  const CAP = 40; 
+  let absMax = 1;
+  d.currencyStrength.forEach((c) => {
+    const capped = Math.max(-CAP, Math.min(CAP, c.score));
+    if (Math.abs(capped) > absMax) absMax = Math.abs(capped);
+  });
+  absMax = Math.max(15, absMax);
+
+  CURRENCIES.forEach((cName) => {
+    const cData = d.currencyStrength.find((c) => c.ccy === cName);
+    const raw = cData ? cData.score : 0;
+    const capped = Math.max(-CAP, Math.min(CAP, raw));
+    
+    let n = capped / absMax;
+    n = Math.max(-1, Math.min(1, n));
+    
+    finalCurrencies[cName] = {
+      name: cName,
+      score: parseFloat(n.toFixed(2)),
+      rawScore: raw,
+      conviction: cData?.conviction ?? 60,
+      stability: cData?.stability ?? 60,
+      agreement: cData?.agreement ?? 60,
+      orderFlowState: cData?.orderFlowState || "EQUILIBRIUM_CHOP",
+      status: cData?.status || "Neutral Equilibrium",
+      dominantDrivers: cData?.dominantDrivers || [],
+      pairsCount: cData?.pairsCount || 0,
+      at: d.at,
+    };
+  });
+
+  // Store evaluated symbols map for smart pair cross-referencing
+  const sMap = {};
+  if (Array.isArray(d.symbols)) {
+    d.symbols.forEach((s) => {
+      if (s && s.symbol) sMap[s.symbol] = s;
+    });
+  }
+
+  // Convert to array and sort descending by score
+  const sorted = Object.values(finalCurrencies).sort((a, b) => b.score - a.score);
+  return { sorted, sMap };
+}
+
+export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbols = [], biasData = null }) {
+  const [data, setData] = useState(() => parseStrengthPayload(biasData)?.sorted || null);
+  const [symbolsMap, setSymbolsMap] = useState(() => parseStrengthPayload(biasData)?.sMap || {});
   const [hoveredCcy, setHoveredCcy] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !parseStrengthPayload(biasData));
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (biasData?.currencyStrength) {
+      const parsed = parseStrengthPayload(biasData);
+      if (parsed) {
+        setData(parsed.sorted);
+        setSymbolsMap(parsed.sMap);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+    }
+
     setLoading(true);
     fetch(`/api/bias?symbols=ALL`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok && d.currencyStrength) {
-          const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
-          const finalCurrencies = {};
-          
-          // Determine scale max (40 represents a powerful macro-bias edge)
-          const CAP = 40; 
-          let absMax = 1;
-          d.currencyStrength.forEach((c) => {
-            const capped = Math.max(-CAP, Math.min(CAP, c.score));
-            if (Math.abs(capped) > absMax) absMax = Math.abs(capped);
-          });
-          absMax = Math.max(15, absMax);
-
-          CURRENCIES.forEach((cName) => {
-            const cData = d.currencyStrength.find((c) => c.ccy === cName);
-            const raw = cData ? cData.score : 0;
-            const capped = Math.max(-CAP, Math.min(CAP, raw));
-            
-            let n = capped / absMax;
-            n = Math.max(-1, Math.min(1, n));
-            
-            finalCurrencies[cName] = {
-              name: cName,
-              score: parseFloat(n.toFixed(2)),
-              rawScore: raw,
-              conviction: cData?.conviction ?? 60,
-              stability: cData?.stability ?? 60,
-              agreement: cData?.agreement ?? 60,
-              orderFlowState: cData?.orderFlowState || "EQUILIBRIUM_CHOP",
-              status: cData?.status || "Neutral Equilibrium",
-              dominantDrivers: cData?.dominantDrivers || [],
-              pairsCount: cData?.pairsCount || 0,
-              at: d.at,
-            };
-          });
-
-          // Store evaluated symbols map for smart pair cross-referencing
-          const sMap = {};
-          if (Array.isArray(d.symbols)) {
-            d.symbols.forEach((s) => {
-              if (s && s.symbol) sMap[s.symbol] = s;
-            });
-          }
-          setSymbolsMap(sMap);
-
-          // Convert to array and sort descending by score
-          const sorted = Object.values(finalCurrencies).sort((a, b) => b.score - a.score);
-          setData(sorted);
+        const parsed = parseStrengthPayload(d);
+        if (parsed) {
+          setData(parsed.sorted);
+          setSymbolsMap(parsed.sMap);
+          setError(null);
         } else {
           setError(d.error || "Failed to load structural data");
         }
@@ -72,7 +90,7 @@ export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbol
         setError(e.message);
         setLoading(false);
       });
-  }, []);
+  }, [biasData]);
 
   if (loading && !data) {
     return (

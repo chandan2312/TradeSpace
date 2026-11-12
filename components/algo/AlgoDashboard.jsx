@@ -37,7 +37,7 @@ export default function AlgoDashboard() {
     } catch {}
   }, []);
 
-  useEffect(() => { load(); const iv = setInterval(load, 15_000); return () => clearInterval(iv); }, [load]);
+  useEffect(() => { load(); const iv = setInterval(load, 60_000); return () => clearInterval(iv); }, [load]);
 
   // live ticks for open-trade distances + algo_changed push
   useEffect(() => {
@@ -137,9 +137,12 @@ export default function AlgoDashboard() {
         {/* left column: strength + config */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: "1 1 320px", maxWidth: 420 }}>
           <div style={{ ...panel, padding: 0, overflow: "hidden" }}>
-            <CurrencyStrengthMeter onSelectSuggested={() => {}} />
+            <CurrencyStrengthMeter 
+              biasData={state?.lastScan?.currencyStrength ? { currencyStrength: state.lastScan.currencyStrength, at: state.lastScan.at } : null}
+              onSelectSuggested={() => {}} 
+            />
           </div>
-          <CurrencyHeatmap />
+          <CurrencyHeatmap initialData={state?.lastScan?.currencyStrength} />
           {cfg && <ConfigPanel cfg={cfg} onPatch={patchConfig} />}
         </div>
 

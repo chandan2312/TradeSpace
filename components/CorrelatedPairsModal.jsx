@@ -5,6 +5,7 @@ import { X, LayoutGrid, CheckSquare, Square, TrendingUp, TrendingDown, Minus, Ma
 import ChartPanel from "./ChartPanel";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 import SessionLedDot from "./autonomous/SessionLedDot";
+import { toCanonicalSymbol } from "../lib/symbols/mapping.js";
 
 // Hardcoded correlation map for major pairs & indices
 const CORRELATIONS = {
@@ -59,10 +60,18 @@ function guessCorrelations(symbol) {
   return groups;
 }
 
-function MiniBiasScore({ symbol, tf }) {
+function MiniBiasScore({ symbol, tf, biasData }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
+    if (biasData?.symbols && Array.isArray(biasData.symbols)) {
+      const canon = toCanonicalSymbol(symbol);
+      const found = biasData.symbols.find(s => s?.symbol === symbol || toCanonicalSymbol(s?.symbol) === canon);
+      if (found) {
+        setData(found);
+        return;
+      }
+    }
     fetch(`/api/bias?symbols=${symbol}&tf=${tf}`)
       .then(r => r.json())
       .then(d => {
@@ -71,7 +80,7 @@ function MiniBiasScore({ symbol, tf }) {
         }
       })
       .catch(() => {});
-  }, [symbol, tf]);
+  }, [symbol, tf, biasData]);
 
   if (!data) return <div className="muted" style={{ fontSize: 11 }}>Loading Bias...</div>;
 
@@ -100,6 +109,9 @@ function MiniBiasScore({ symbol, tf }) {
 export default function CorrelatedPairsModal({ 
   symbol, indicators, onClose,
   alerts = [],
+  ticks = {},
+  biasData = null,
+  onVisibleSymbolsChange,
   onAddAlert, onAddAlertLayer, onDeleteAlert, onDeleteAlertsBySymbol,
   onMoveAlert, onRearmAlert, onRateAlert, onCreateChainAlert, onJoinChainAlert
 }) {
@@ -139,6 +151,12 @@ export default function CorrelatedPairsModal({
 
   const selectedArr = Array.from(selected);
   const displaySymbols = fullScreenSym ? [fullScreenSym] : selectedArr;
+
+  useEffect(() => {
+    if (step === 2 && displaySymbols.length > 0) {
+      onVisibleSymbolsChange?.(displaySymbols);
+    }
+  }, [step, displaySymbols, onVisibleSymbolsChange]);
 
   const targetCount = Math.min(selectedArr.length, 8);
   const normalizedTargetCount = targetCount === 7 ? 8 : targetCount;
@@ -382,7 +400,7 @@ export default function CorrelatedPairsModal({
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span className="num" style={{ fontWeight: 700, fontSize: 13 }}>{sym}</span>
-                      <MiniBiasScore symbol={sym} tf={tf} />
+                      <MiniBiasScore symbol={sym} tf={tf} biasData={biasData} />
                     </div>
 
                     <button 
@@ -403,7 +421,7 @@ export default function CorrelatedPairsModal({
                       alerts={alerts.filter(a => a.symbol === sym && (a.status === "active" || a.status === "triggered" || a.status === "pending_chain"))}
                       setAlerts={() => {}} 
                       indicators={indicators || {}}
-                      tick={null}
+                      tick={ticks[sym] || ticks[sym?.toUpperCase()] || ticks[toCanonicalSymbol(sym)] || null}
                       barsCache={barsCache}
                       paneId={sym}
                       onAddAlert={(price) => onAddAlert?.(sym, price)}

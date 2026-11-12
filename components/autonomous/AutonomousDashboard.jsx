@@ -120,7 +120,7 @@ export default function AutonomousDashboard() {
     loadState(false);
     const iv = setInterval(() => {
       loadState(false);
-    }, 12_000);
+    }, 60_000);
     return () => {
       clearInterval(iv);
       clearTimeout(debounceTimerRef.current);

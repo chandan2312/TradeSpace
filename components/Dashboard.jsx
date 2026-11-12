@@ -130,6 +130,7 @@ export default function Dashboard() {
   const [alertsOpen, setAlertsOpen] = useState(false); // Global modal now
   const [marketBiasOpen, setMarketBiasOpen] = useState(false);
   const [correlatedOpen, setCorrelatedOpen] = useState(false);
+  const [correlatedSymbols, setCorrelatedSymbols] = useState([]);
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [autoCockpitOpen, setAutoCockpitOpen] = useState(false);
   const [biasEnabled, setBiasEnabled] = useState(false); // default off to save RAM on RDP
@@ -750,16 +751,18 @@ export default function Dashboard() {
   useEffect(() => {
     const paneSymbols = panes.map(p => p.symbol).filter(Boolean);
     const autoSymbols = (autonomousTrades || []).map(t => t.symbol).filter(Boolean);
-    const unique = [...new Set([...paneSymbols, ...autoSymbols])];
+    const activeCorrelated = correlatedOpen ? correlatedSymbols : [];
+    const chartList = [...new Set([...paneSymbols, ...activeCorrelated])];
+    const unique = [...new Set([...chartList, ...autoSymbols])];
     symbolsRef.current = unique;
     if (wsRef.current?.readyState === 1) {
       wsRef.current.send(JSON.stringify({
         type: "subscribe",
         symbols: unique,
-        chartSymbols: paneSymbols,
+        chartSymbols: chartList,
       }));
     }
-  }, [panes, autonomousTrades]);
+  }, [panes, autonomousTrades, correlatedOpen, correlatedSymbols]);
 
   const showToast = useCallback((text, type = "default") => {
     if (type === "success") sonnerToast.success(text);
@@ -898,7 +901,7 @@ export default function Dashboard() {
     loadWatchlists();
     loadSavedLayouts();
     loadAutonomousTrades();
-    const iv = setInterval(loadAutonomousTrades, 12000);
+    const iv = setInterval(loadAutonomousTrades, 60000);
     const alertIv = setInterval(loadAlerts, 60000);
     return () => {
       clearInterval(iv);
@@ -2006,6 +2009,7 @@ export default function Dashboard() {
         <BiasPanel
           enabled={biasEnabled}
           symbols={biasSymbols}
+          biasData={biasData}
           onJump={(s) => { setMarketBiasOpen(false); changeSymbol(s); }}
           onClose={() => setMarketBiasOpen(false)}
           onOpenCorrelated={() => { setMarketBiasOpen(false); setCorrelatedOpen(true); }}
@@ -2021,6 +2025,9 @@ export default function Dashboard() {
           symbol={panes.find(p => p.id === activePaneId)?.symbol || Object.keys(symbolFlags)[0] || "EURUSD"}
           indicators={indicators}
           alerts={alerts}
+          ticks={ticks}
+          biasData={biasData}
+          onVisibleSymbolsChange={setCorrelatedSymbols}
           onAddAlert={(sym, price) => setAlertDraft({ symbol: sym, price })}
           onAddAlertLayer={addAlertLayer}
           onDeleteAlert={deleteAlert}
@@ -2040,6 +2047,7 @@ export default function Dashboard() {
           <div style={{ position: "relative", zIndex: 111, width: 400, maxWidth: "90vw" }}>
             <CurrencyStrengthMeter 
               allowedSymbols={watchlists.find(w => w._id === activeListId)?.symbols || []}
+              biasData={biasData}
               onSelectSuggested={(sym) => {
                 setLayout("1");
                 setPanes([{ id: 1, symbol: sym, tf: panes[0]?.tf || "H1" }]);

@@ -20,25 +20,32 @@ const PHASE = {
 const scoreColor = (s) =>
   s > 15 ? "var(--green)" : s < -15 ? "var(--red)" : "var(--muted)";
 
-export default function BiasPanel({ enabled = true, symbols, onJump, onClose, onOpenCorrelated }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
+export default function BiasPanel({ enabled = true, symbols, onJump, onClose, onOpenCorrelated, biasData = null }) {
+  const [data, setData] = useState(() => biasData || null);
+  const [loading, setLoading] = useState(() => !biasData);
   const [filter, setFilter] = useState("ALL");
   const timer = useRef(null);
+
+  useEffect(() => {
+    if (biasData) {
+      setData(biasData);
+      setLoading(false);
+    }
+  }, [biasData]);
 
   const load = useCallback(async () => {
     if (!enabled) {
       setData(null);
       return;
     }
-    setLoading(true);
+    if (!biasData) setLoading(true);
     try {
       const res = await fetch(`/api/bias?symbols=ALL`);
       const body = await res.json();
       if (body.ok) setData(body);
     } catch { /* keep last read */ }
     setLoading(false);
-  }, [enabled]);
+  }, [enabled, biasData]);
 
   useEffect(() => {
     load();

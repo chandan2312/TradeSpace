@@ -37,7 +37,7 @@ export default function ExecutorDashboard() {
     } catch {}
   }, []);
 
-  useEffect(() => { load(); const iv = setInterval(load, 15_000); return () => clearInterval(iv); }, [load]);
+  useEffect(() => { load(); const iv = setInterval(load, 60_000); return () => clearInterval(iv); }, [load]);
 
   useEffect(() => {
     let dead = false;
