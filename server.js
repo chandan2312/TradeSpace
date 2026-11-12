@@ -18,6 +18,7 @@ import { startPollLoop } from "./lib/alert-engine.js";
 import { startAlgoLoop } from "./lib/algo/engine.js";
 import { startExecutorLoop } from "./lib/executor/engine.js";
 import { startAutonomousLoop } from "./lib/autonomous/engine.js";
+import { startMaintenanceLoop } from "./lib/maintenance.js";
 
 // Default to production unless explicitly started with NODE_ENV=development or dev script
 const dev = process.env.NODE_ENV === "development";
@@ -106,6 +107,7 @@ async function main() {
         if (msg.type === "subscribe") {
           if (msg.symbol) ws.symbol = String(msg.symbol).toUpperCase();
           if (Array.isArray(msg.symbols)) ws.symbols = new Set(msg.symbols.map(s => String(s).toUpperCase()));
+          if (Array.isArray(msg.chartSymbols)) ws.chartSymbols = new Set(msg.chartSymbols.map(s => String(s).toUpperCase()));
         } else if (msg.type === "ping") {
           ws.isAlive = true;
           try { ws.send(JSON.stringify({ type: "pong" })); } catch {}
@@ -152,6 +154,9 @@ async function main() {
 
   // ---- Autonomous Brain Trader engine (scanner 3min; rides the tick stream) ---
   startAutonomousLoop();
+
+  // ---- Automated Background Maintenance (hourly temp purge, RAM compaction, alert prune) ---
+  startMaintenanceLoop();
 
   server.listen(PORT, "0.0.0.0", () => {
     const proto = useHttps ? "https" : "http";

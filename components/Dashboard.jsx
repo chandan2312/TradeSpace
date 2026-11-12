@@ -748,12 +748,16 @@ export default function Dashboard() {
 
   // ---------- WebSockets Subscriptions ----------
   useEffect(() => {
-    const paneSymbols = panes.map(p => p.symbol);
-    const autoSymbols = (autonomousTrades || []).map(t => t.symbol);
-    const unique = [...new Set([...paneSymbols, ...autoSymbols].filter(Boolean))];
+    const paneSymbols = panes.map(p => p.symbol).filter(Boolean);
+    const autoSymbols = (autonomousTrades || []).map(t => t.symbol).filter(Boolean);
+    const unique = [...new Set([...paneSymbols, ...autoSymbols])];
     symbolsRef.current = unique;
     if (wsRef.current?.readyState === 1) {
-      wsRef.current.send(JSON.stringify({ type: "subscribe", symbols: unique }));
+      wsRef.current.send(JSON.stringify({
+        type: "subscribe",
+        symbols: unique,
+        chartSymbols: paneSymbols,
+      }));
     }
   }, [panes, autonomousTrades]);
 
