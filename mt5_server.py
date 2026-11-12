@@ -97,7 +97,7 @@ TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
 CACHE_LOCK = threading.Lock()
 try:
-    threading.stack_size(512 * 1024)  # 512 KB per thread stack (saves ~75% RAM on 1GB VPS)
+    threading.stack_size(256 * 1024)  # 256 KB per thread stack (saves ~85% RAM on low-spec VPS)
 except Exception:
     pass
 
@@ -1725,6 +1725,12 @@ def main():
                         pass
 
                 gc.collect()
+                if gc_counter % 2 == 0:  # Every 60 seconds flush unreferenced memory back to OS
+                    try:
+                        import ctypes
+                        ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1, -1)
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -1735,11 +1741,11 @@ def main():
         while True:
             time.sleep(15)
             try:
-                # Memory guard: proactively trim caches and working set if RSS exceeds 350MB
+                # Memory guard: proactively trim caches and working set if RSS exceeds 180MB
                 try:
                     import psutil
                     rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-                    if rss_mb > 350.0:
+                    if rss_mb > 180.0:
                         with CACHE_LOCK:
                             _RATES_CACHE.clear()
                             _TICK_CACHE.clear()

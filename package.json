@@ -4,9 +4,9 @@
   "description": "MT5 live charts with TradingView-style alerts -> Telegram",
   "type": "module",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development node --max-old-space-size=2048 server.js",
+    "dev": "cross-env NODE_ENV=development node --expose-gc --max-old-space-size=1024 server.js",
     "build": "next build",
-    "start": "node --max-old-space-size=2048 server.js"
+    "start": "node --expose-gc --max-old-space-size=768 --optimize_for_size server.js"
   },
   "dependencies": {
     "ag-grid-community": "^36.2.0",
