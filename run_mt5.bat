@@ -132,11 +132,11 @@ REM Check 2: Probe HTTP /health with 8s timeout using built-in curl.exe
 curl.exe -s -m 8 http://127.0.0.1:8765/health >nul 2>&1
 if errorlevel 1 (
     set /a FAIL_STREAK+=1
-    echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/8]...
-    if !FAIL_STREAK! geq 8 (
+    echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/15]...
+    if !FAIL_STREAK! geq 15 (
         echo.
         echo ============================================================
-        echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [8 consecutive failed probes].
+        echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [15 consecutive failed probes, ~90s].
         echo [CRITICAL AUTO-HEAL] Forcibly terminating clogged process and reviving...
         goto :recover_and_restart
     )

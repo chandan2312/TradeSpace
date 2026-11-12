@@ -272,7 +272,34 @@ def ensure_mt5() -> tuple[bool, str]:
         try:
             info = mt5.terminal_info()
             if info is not None:
-                return True, "ok"
+                # Terminal IPC is connected. Now verify if account is authorized.
+                acc = mt5.account_info()
+                if acc is not None:
+                    return True, "ok"
+
+                # Terminal is running, but account is NOT authorized or logged in!
+                mt5_login = os.getenv("MT5_LOGIN")
+                now = time.monotonic()
+                if mt5_login and (now - _LAST_INIT_ATTEMPT >= 5.0):
+                    _LAST_INIT_ATTEMPT = now
+                    login_kw = {"login": int(mt5_login)}
+                    mt5_password = os.getenv("MT5_PASSWORD")
+                    mt5_server = os.getenv("MT5_SERVER")
+                    if mt5_password:
+                        login_kw["password"] = mt5_password
+                    if mt5_server:
+                        login_kw["server"] = mt5_server
+                    try:
+                        if mt5.login(**login_kw):
+                            print(f"[mt5] auto-login succeeded for account {mt5_login}", flush=True)
+                            return True, "ok"
+                        err = mt5.last_error()
+                        return False, f"login to {mt5_login} failed: {err}"
+                    except Exception as lex:
+                        return False, f"login exception: {lex}"
+
+                return False, "Terminal: Authorization failed (no account logged in - set MT5_LOGIN in .env or login in terminal64.exe)"
+
             # info is None: Python IPC is disconnected from terminal64.exe
             now = time.monotonic()
             if now - _LAST_INIT_ATTEMPT < 5.0:
@@ -431,6 +458,12 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
         except Exception as exc:
             return {"ok": False, "status": "symbol-error", "message": f"tick exception: {exc}", "app_symbol": app_symbol, "symbol": symbol}
     if not info or not tick:
+        with CACHE_LOCK:
+            cached_entry = _TICK_CACHE.get(app_upper)
+            if cached_entry and isinstance(cached_entry[1], dict) and cached_entry[1].get("ok"):
+                stale_tick = dict(cached_entry[1])
+                stale_tick["stale"] = True
+                return stale_tick
         return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
     point = float(getattr(info, "point", 0.0) or 0.0)
     bid = float(getattr(tick, "bid", 0.0) or 0.0)
@@ -714,6 +747,17 @@ def handle_rates(payload):
                     last_err = str(mt5.last_error())
                 except Exception:
                     last_err = "unknown"
+
+            # Resilient Stale-While-Revalidate: Return previously cached bars during transient broker blips
+            # Prevents charts and radars from freezing or showing blank state
+            with CACHE_LOCK:
+                stale_entry = _RATES_CACHE.get(cache_key)
+                if stale_entry and isinstance(stale_entry[1], dict) and stale_entry[1].get("ok") and stale_entry[1].get("bars"):
+                    stale_res = dict(stale_entry[1])
+                    stale_res["stale"] = True
+                    stale_res["status"] = "rates-cached"
+                    return stale_res
+
             err_res = {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {last_err}", "symbol": symbol}
             with CACHE_LOCK:
                 # Do NOT cache error responses for the full timeframe TTL (which could be 15-60s)
