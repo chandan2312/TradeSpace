@@ -77,7 +77,7 @@ export default function Watchlist({
     if (sweeps.length > 0) virtualWatchlists.push({ _id: "auto-sweeps", name: "🧹 Sweeps", symbols: sweeps.sort(), isVirtual: true, type: "auto", style: { color: "#e040fb", background: "rgba(224, 64, 251, 0.15)" } });
     if (uptrend.length > 0) virtualWatchlists.push({ _id: "auto-uptrend", name: "📈 Uptrend", symbols: uptrend.sort(), isVirtual: true, type: "auto", style: { color: "var(--green)", background: "rgba(76, 175, 80, 0.15)" } });
     if (downtrend.length > 0) virtualWatchlists.push({ _id: "auto-downtrend", name: "📉 Downtrend", symbols: downtrend.sort(), isVirtual: true, type: "auto", style: { color: "var(--red)", background: "rgba(244, 67, 54, 0.15)" } });
-    if (retracing.length > 0) virtualWatchlists.push({ _id: "auto-retracing", name: "↩️ Retracing", symbols: retracing.sort(), isVirtual: true, type: "auto", style: { color: "var(--accent)", background: "rgba(41, 98, 255, 0.15)" } });
+    if (retracing.length > 0) virtualWatchlists.push({ _id: "auto-retracing", name: "↩️ Retracing", symbols: retracing.sort(), isVirtual: true, type: "auto", style: { color: "var(--accent)", background: "var(--accent-soft)" } });
     if (reversals.length > 0) virtualWatchlists.push({ _id: "auto-reversal", name: "🔄 Reversals", symbols: reversals.sort(), isVirtual: true, type: "auto", style: { color: "var(--orange)", background: "rgba(255, 152, 0, 0.15)" } });
     if (sideways.length > 0) virtualWatchlists.push({ _id: "auto-sideways", name: "➖ Chop", symbols: sideways.sort(), isVirtual: true, type: "auto", style: { color: "var(--muted)", background: "var(--panel-2)" } });
   }
@@ -596,11 +596,11 @@ export default function Watchlist({
               style={{
                 display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", fontSize: 11, fontWeight: 600,
                 color: autoLists.some(w => w._id === activeListId) ? "var(--accent)" : "var(--muted)",
-                background: autoLists.some(w => w._id === activeListId) ? "rgba(41, 98, 255, 0.15)" : "transparent",
+                background: autoLists.some(w => w._id === activeListId) ? "var(--accent-soft)" : "transparent",
                 borderRadius: 4
               }}
             >
-              <Zap size={14} style={{ fill: autoLists.some(w => w._id === activeListId) ? "var(--accent)" : "none" }} />
+              <Zap size={14} style={{ fill: autoLists.some(w => w._id === activeListId) ? "currentColor" : "none" }} />
               <ChevronDown size={14} />
             </button>
             {autoMenuOpen && (
@@ -633,7 +633,7 @@ export default function Watchlist({
                         textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center",
                         borderRadius: 4,
                         color: w._id === activeListId ? "var(--accent)" : "inherit",
-                        background: w._id === activeListId ? "rgba(41, 98, 255, 0.15)" : "transparent"
+                        background: w._id === activeListId ? "var(--accent-soft)" : "transparent"
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -662,7 +662,7 @@ export default function Watchlist({
                         textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center",
                         borderRadius: 4,
                         color: w._id === activeListId ? "var(--accent)" : "inherit",
-                        background: w._id === activeListId ? "rgba(41, 98, 255, 0.15)" : "transparent"
+                        background: w._id === activeListId ? "var(--accent-soft)" : "transparent"
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -691,7 +691,7 @@ export default function Watchlist({
                         textAlign: "left", padding: "6px 10px", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center",
                         borderRadius: 4,
                         color: w._id === activeListId ? "var(--accent)" : "inherit",
-                        background: w._id === activeListId ? "rgba(41, 98, 255, 0.15)" : "transparent"
+                        background: w._id === activeListId ? "var(--accent-soft)" : "transparent"
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
