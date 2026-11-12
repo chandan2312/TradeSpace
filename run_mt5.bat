@@ -103,22 +103,29 @@ echo ============================================================
 REM Launch mt5_server.py in the background of this console
 start "TradeSpace MT5 Engine" /b !PY_CMD! mt5_server.py --host 0.0.0.0 --port 8765
 
-REM Allow 4 seconds for server socket binding and initialization
-ping 127.0.0.1 -n 5 >nul
+REM Allow 6 seconds for server socket binding and initialization
+ping 127.0.0.1 -n 7 >nul
 
 set /a FAIL_STREAK=0
+set /a PORT_FAIL_STREAK=0
 set /a HEARTBEAT_TICKS=0
 
 :health_sentinel_loop
 ping 127.0.0.1 -n 6 >nul
 
-REM Check 1: Is Port 8765 currently listening?
+REM Check 1: Is Port 8765 currently listening? (Require 3 consecutive misses to prevent false positives)
 netstat -aon | findstr ":8765" | findstr "LISTENING" >nul
 if errorlevel 1 (
-    echo.
-    echo ============================================================
-    echo [ALERT] Port 8765 is no longer listening. Server process exited or died.
-    goto :recover_and_restart
+    set /a PORT_FAIL_STREAK+=1
+    echo [ALERT] Port 8765 not detected listening [Check: !PORT_FAIL_STREAK!/3]...
+    if !PORT_FAIL_STREAK! geq 3 (
+        echo.
+        echo ============================================================
+        echo [ALERT] Port 8765 is confirmed dead after 3 consecutive checks. Server process exited.
+        goto :recover_and_restart
+    )
+) else (
+    set /a PORT_FAIL_STREAK=0
 )
 
 REM Check 2: Probe HTTP /health with 8s timeout using built-in curl.exe

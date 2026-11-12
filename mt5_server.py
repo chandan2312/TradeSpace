@@ -282,7 +282,27 @@ def ensure_mt5() -> tuple[bool, str]:
                 mt5.shutdown()
             except Exception:
                 pass
-            if not mt5.initialize():
+
+            # Optional credentials support: auto-logins terminal if MT5 credentials are provided in .env
+            init_kwargs = {}
+            mt5_login = os.getenv("MT5_LOGIN")
+            mt5_password = os.getenv("MT5_PASSWORD")
+            mt5_server = os.getenv("MT5_SERVER")
+            mt5_path = os.getenv("MT5_PATH")
+            if mt5_login:
+                try:
+                    init_kwargs["login"] = int(mt5_login)
+                except ValueError:
+                    pass
+            if mt5_password:
+                init_kwargs["password"] = mt5_password
+            if mt5_server:
+                init_kwargs["server"] = mt5_server
+            if mt5_path and os.path.exists(mt5_path):
+                init_kwargs["path"] = mt5_path
+
+            init_ok = mt5.initialize(**init_kwargs) if init_kwargs else mt5.initialize()
+            if not init_ok:
                 err = mt5.last_error()
                 return False, f"initialize failed: {err}"
             return True, "ok"
@@ -1462,17 +1482,6 @@ class Handler(BaseHTTPRequestHandler):
                 raise
 
     def handle(self):
-        acquired = HTTP_SEMAPHORE.acquire(timeout=10.0)
-        if not acquired:
-            try:
-                self.send_response(503)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Connection", "close")
-                self.end_headers()
-                self.wfile.write(b'{"ok":false,"status":503,"message":"server busy"}')
-            except Exception:
-                pass
-            return
         try:
             super().handle()
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
@@ -1482,8 +1491,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
             else:
                 raise
-        finally:
-            HTTP_SEMAPHORE.release()
 
     def _send(self, status, obj):
         try:
@@ -1546,9 +1553,25 @@ class Handler(BaseHTTPRequestHandler):
         if not handler:
             self._send(404, {"ok": False, "status": "not-found", "message": f"unknown route {method} {path}"})
             return
-        if path != "/health" and not self._authorized():
+
+        # /health is a non-blocking liveness probe: zero auth, zero semaphores, zero waiting
+        if path == "/health":
+            try:
+                self._send(200, handler({}))
+            except Exception as exc:
+                self._send(500, {"ok": False, "status": "health-error", "message": str(exc)})
+            return
+
+        if not self._authorized():
             self._send(401, {"ok": False, "status": "unauthorized", "message": "MT5_TOKEN missing or invalid"})
             return
+
+        # Acquire concurrency semaphore for data and execution routes (bounds active threads)
+        acquired = HTTP_SEMAPHORE.acquire(timeout=8.0)
+        if not acquired:
+            self._send(503, {"ok": False, "status": 503, "message": "server busy - worker pool saturated"})
+            return
+
         try:
             payload = self._payload(parsed)
             # Only write operations and state mutations require LOCK; read endpoints execute concurrently
@@ -1561,6 +1584,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, result)
         except Exception as exc:
             self._send(500, {"ok": False, "status": "bridge-exception", "message": str(exc)})
+        finally:
+            HTTP_SEMAPHORE.release()
 
     def address_string(self):
         """Return the client IP directly without blocking reverse DNS lookups (socket.getfqdn)."""
@@ -1588,25 +1613,32 @@ def main():
     print("=" * 60, flush=True)
     print("TradeSpace Institutional MT5 Bridge Server", flush=True)
     init_journal()
-    ok, msg = ensure_mt5()
-    if not ok:
-        print(f"[warn] MT5 not connected: {msg}", flush=True)
-        print("[warn] Make sure MetaTrader 5 terminal is running and logged in.", flush=True)
-    else:
-        with LOCK:
-            try:
-                info = mt5.account_info()
-                term = mt5.terminal_info()
-            except Exception:
-                info, term = None, None
-        if info:
-            print(f"[mt5] account={info.login} server={info.server} balance={info.balance} {info.currency}", flush=True)
-        if term:
-            print(f"[mt5] terminal={term.name} build={term.build} connected={term.connected}", flush=True)
 
+    # Pre-bind the HTTP server on args.port so the port opens immediately (<0.05s)
+    server = RobustThreadingHTTPServer((args.host, args.port), Handler)
     print(f"[bridge] listening on http://{args.host}:{args.port}", flush=True)
     print(f"[bridge] auth: {'required (MT5_TOKEN set)' if TOKEN else 'OPEN - set MT5_TOKEN env var'}", flush=True)
     print("=" * 60, flush=True)
+
+    # Initialize MT5 in a background thread so the HTTP server and port sentinel are never blocked at boot
+    def _async_mt5_init():
+        ok, msg = ensure_mt5()
+        if not ok:
+            print(f"[warn] MT5 not connected: {msg}", flush=True)
+            print("[warn] Make sure MetaTrader 5 terminal is running and logged in.", flush=True)
+        else:
+            with LOCK:
+                try:
+                    info = mt5.account_info()
+                    term = mt5.terminal_info()
+                except Exception:
+                    info, term = None, None
+            if info:
+                print(f"[mt5] account={info.login} server={info.server} balance={info.balance} {info.currency}", flush=True)
+            if term:
+                print(f"[mt5] terminal={term.name} build={term.build} connected={term.connected}", flush=True)
+
+    threading.Thread(target=_async_mt5_init, daemon=True).start()
 
     # Proactive memory release, journal maintenance, and cache pruning for constrained VPS (1GB RAM)
     def _periodic_gc():
@@ -1682,7 +1714,7 @@ def main():
     threading.Thread(target=_health_watchdog, daemon=True).start()
 
     try:
-        RobustThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+        server.serve_forever()
     except KeyboardInterrupt:
         print("\n[bridge] shutting down...", flush=True)
     finally:
