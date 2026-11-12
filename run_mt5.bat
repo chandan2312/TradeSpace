@@ -66,6 +66,12 @@ set "EXIT_CODE=!errorlevel!"
 echo.
 echo ============================================================
 echo [WATCHDOG] MT5 Bridge Server exited (Exit Code: !EXIT_CODE!).
+if "!EXIT_CODE!"=="-1073741819" (
+    echo [CRITICAL] Memory Access Violation (0xC0000005) detected.
+    echo Ensure MetaTrader 5 (terminal64.exe) is open and logged into broker account.
+) else if "!EXIT_CODE!"=="1" (
+    echo [ERROR] Script error encountered. Inspect output above for details.
+)
 echo [WATCHDOG] Automatically reviving MT5 Bridge Server in 3 seconds...
 echo ============================================================
 timeout /t 3 /nobreak >nul

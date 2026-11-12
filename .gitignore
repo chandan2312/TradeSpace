@@ -20,6 +20,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+*.sqlite3
+*.sqlite3-*
 
 # agent & editor caches
 .opencode/
