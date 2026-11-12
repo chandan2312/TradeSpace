@@ -908,6 +908,8 @@ export default function Watchlist({
                 else delete next[sym];
                 return next;
               })}
+              onReorderClick={() => setEditModalOpen(true)}
+              onHorizontalReorder={(dragSym, dropSym) => reorder(list, dragSym, dropSym, onReorder)}
             />
           );
         })}
@@ -916,10 +918,12 @@ export default function Watchlist({
       {editModalOpen && list && (
         <WatchlistEditModal 
           list={list} 
+          symbolFlags={symbolFlags}
           onClose={() => setEditModalOpen(false)} 
           onAddSymbol={onAddSymbol} 
           onRemoveSymbol={onRemoveSymbol} 
           onReorder={onReorder}
+          reorderFn={reorder}
           onDeleteList={() => {
             if (confirm(`Delete list “${list.name}”?`)) {
               onDelete(list._id);
@@ -927,6 +931,129 @@ export default function Watchlist({
             }
           }}
         />
+      )}
+
+      {tabContextMenu && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 1200 }}
+            onClick={() => setTabContextMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setTabContextMenu(null); }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: Math.min(tabContextMenu.y || 100, typeof window !== "undefined" ? window.innerHeight - 250 : 300),
+              left: Math.min(tabContextMenu.x || 100, typeof window !== "undefined" ? window.innerWidth - 220 : 200),
+              zIndex: 1201,
+              background: "var(--panel)",
+              border: "1px solid var(--border-hi)",
+              borderRadius: 8,
+              boxShadow: "0 10px 28px rgba(0,0,0,0.65)",
+              minWidth: 200,
+              padding: 6,
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "6px 10px 8px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>{tabContextMenu.list.name}</span>
+              <span className="muted" style={{ fontSize: 11 }}>{(tabContextMenu.list.symbols || []).length} symbols</span>
+            </div>
+
+            {!tabContextMenu.list.isVirtual && (
+              <button
+                className="ghost"
+                onClick={() => {
+                  const l = tabContextMenu.list;
+                  setTabContextMenu(null);
+                  startRename(l);
+                }}
+                style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+              >
+                <Settings2 size={14} /> Rename Watchlist
+              </button>
+            )}
+
+            {!tabContextMenu.list.isVirtual && (
+              <button
+                className="ghost"
+                onClick={() => {
+                  const l = tabContextMenu.list;
+                  setTabContextMenu(null);
+                  onCreate?.(`${l.name} (Copy)`, l.symbols || []);
+                }}
+                style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+              >
+                <Copy size={14} /> Duplicate Watchlist
+              </button>
+            )}
+
+            <button
+              className="ghost"
+              onClick={() => {
+                const l = tabContextMenu.list;
+                setTabContextMenu(null);
+                if (confirm(`Clear all ${(l.symbols || []).length} symbols from “${l.name}”?`)) {
+                  onReorder(l._id, []);
+                }
+              }}
+              style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+            >
+              <Eraser size={14} /> Clear All Symbols
+            </button>
+
+            {!tabContextMenu.list.isVirtual && (
+              <button
+                className="ghost"
+                onClick={() => {
+                  const l = tabContextMenu.list;
+                  setActiveListId(l._id);
+                  setTabContextMenu(null);
+                  setEditModalOpen(true);
+                }}
+                style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+              >
+                <LayoutGrid size={14} /> Edit & Reorder Symbols
+              </button>
+            )}
+
+            {(() => {
+              const isDefault = tabContextMenu.list._id === "main" ||
+                                tabContextMenu.list.isDefault ||
+                                tabContextMenu.list.name?.toLowerCase() === "main" ||
+                                (watchlists.length <= 1 && watchlists[0]?._id === tabContextMenu.list._id);
+              if (isDefault) {
+                return (
+                  <div
+                    className="muted"
+                    title="Default watchlist cannot be deleted"
+                    style={{ padding: "8px 10px", fontSize: 12, opacity: 0.35, cursor: "not-allowed", display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <Trash2 size={14} /> Delete (Default Protected)
+                  </div>
+                );
+              }
+              return (
+                <button
+                  className="ghost danger"
+                  onClick={() => {
+                    const l = tabContextMenu.list;
+                    setTabContextMenu(null);
+                    if (confirm(`Delete watchlist “${l.name}”?`)) {
+                      onDelete(l._id);
+                    }
+                  }}
+                  style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+                >
+                  <Trash2 size={14} /> Delete Watchlist
+                </button>
+              );
+            })()}
+          </div>
+        </>
       )}
 
       {gridifyOpen && list && (
@@ -1113,28 +1240,96 @@ async function reorder(list, fromSym, toSym, onReorder) {
 function WatchRow({
   sym, tick, dailyOpen, fallbackPriceProp, current, hasAlert, onJump, onDoubleClick, onRemove,
   dragging, dropTarget, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
-  onGripPointerDown, flag, onFlag, isMobile
+  onGripPointerDown, flag, onFlag, isMobile, onReorderClick, onHorizontalReorder
 }) {
   const [showPalette, setShowPalette] = useState(false);
+  const [isHoldingToDrag, setIsHoldingToDrag] = useState(false);
+  const [horizontalOver, setHorizontalOver] = useState(null);
   const paletteRef = useRef(null);
   const rowRef = useRef(null);
   const longPressTimer = useRef(null);
-
-  const handleTouchStart = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = setTimeout(() => {
-      setShowPalette(true);
-      longPressTimer.current = null;
-      if (typeof navigator !== "undefined" && navigator.vibrate) {
-        try { navigator.vibrate(50); } catch {}
-      }
-    }, 500);
-  };
+  const dragTouchStart = useRef({ x: 0, y: 0 });
+  const hasDraggedHorizontally = useRef(false);
 
   const cancelLongPress = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    const touch = e.touches[0];
+    dragTouchStart.current = { x: touch.clientX, y: touch.clientY };
+    hasDraggedHorizontally.current = false;
+
+    longPressTimer.current = setTimeout(() => {
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try { navigator.vibrate(50); } catch {}
+      }
+      setIsHoldingToDrag(true);
+      longPressTimer.current = null;
+
+      const onTouchMove = (ev) => {
+        const t = ev.touches[0];
+        const dx = Math.abs(t.clientX - dragTouchStart.current.x);
+        const dy = Math.abs(t.clientY - dragTouchStart.current.y);
+        if (dx > 6 || dy > 6) {
+          hasDraggedHorizontally.current = true;
+        }
+
+        const rowEls = document.querySelectorAll(".wl-row-item");
+        for (const el of rowEls) {
+          const rect = el.getBoundingClientRect();
+          if (t.clientX >= rect.left && t.clientX <= rect.right && t.clientY >= rect.top - 20 && t.clientY <= rect.bottom + 20) {
+            const hSym = el.dataset.sym;
+            if (hSym && hSym !== sym) {
+              setHorizontalOver(hSym);
+            }
+            break;
+          }
+        }
+
+        const container = document.querySelector(".wl-rows");
+        if (container) {
+          const cRect = container.getBoundingClientRect();
+          if (t.clientX < cRect.left + 40) {
+            container.scrollLeft -= 10;
+          } else if (t.clientX > cRect.right - 40) {
+            container.scrollLeft += 10;
+          }
+        }
+      };
+
+      const onTouchEnd = () => {
+        window.removeEventListener("touchmove", onTouchMove);
+        window.removeEventListener("touchend", onTouchEnd);
+        setIsHoldingToDrag(false);
+
+        setHorizontalOver((currentOver) => {
+          if (hasDraggedHorizontally.current && currentOver && currentOver !== sym) {
+            if (onHorizontalReorder) onHorizontalReorder(sym, currentOver);
+          } else if (!hasDraggedHorizontally.current) {
+            setShowPalette(true);
+          }
+          return null;
+        });
+      };
+
+      window.addEventListener("touchmove", onTouchMove, { passive: true });
+      window.addEventListener("touchend", onTouchEnd);
+    }, 350);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isHoldingToDrag) {
+      const touch = e.touches[0];
+      const dx = Math.abs(touch.clientX - dragTouchStart.current.x);
+      const dy = Math.abs(touch.clientY - dragTouchStart.current.y);
+      if (dx > 8 || dy > 8) {
+        cancelLongPress();
+      }
     }
   };
 
@@ -1161,15 +1356,17 @@ function WatchRow({
   const bid = tick?.bid;
   const spreadPips = tick?.bid && tick?.ask ? (tick.ask - tick.bid) * Math.pow(10, digits === 3 || digits === 5 ? digits - 1 : 0) : null;
   const dir = tick?.dir;
-  let bgColor = "var(--bg)"; // Darker background to make rows/pills stand out more
-  if (dropTarget) {
+  let bgColor = "var(--bg)";
+  if (dropTarget || horizontalOver === sym) {
     bgColor = "var(--accent-soft)";
+  } else if (isHoldingToDrag) {
+    bgColor = "var(--panel-2)";
   } else if (current) {
     if (flag === "red") bgColor = "rgba(239, 83, 80, 0.15)";
     else if (flag === "blue") bgColor = "rgba(41, 98, 255, 0.15)";
     else if (flag === "green") bgColor = "rgba(38, 166, 154, 0.15)";
     else if (flag === "yellow") bgColor = "rgba(255, 235, 59, 0.15)";
-    else bgColor = "rgba(41,98,255,.08)";
+    else bgColor = "var(--accent-soft)";
   } else if (flag) {
     if (flag === "red") bgColor = "rgba(239, 83, 80, 0.06)";
     else if (flag === "blue") bgColor = "rgba(41, 98, 255, 0.06)";
@@ -1211,7 +1408,7 @@ function WatchRow({
       onDoubleClick={onDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setShowPalette(true); }}
       onTouchStart={handleTouchStart}
-      onTouchMove={cancelLongPress}
+      onTouchMove={handleTouchMove}
       onTouchEnd={cancelLongPress}
       onTouchCancel={cancelLongPress}
       title={current ? "Current chart" : `Switch to ${sym}`}
@@ -1219,7 +1416,16 @@ function WatchRow({
         background: bgColor,
         opacity: dragging ? 0.4 : 1,
         borderLeft: current ? "2px solid var(--accent)" : "2px solid transparent",
-        WebkitTouchCallout: "none", // Prevent iOS default popup
+        WebkitTouchCallout: "none",
+        ...(isHoldingToDrag ? {
+          transform: "scale(1.06)",
+          zIndex: 50,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+          borderColor: "var(--accent)",
+        } : (horizontalOver === sym || dropTarget) ? {
+          borderColor: "var(--accent)",
+          boxShadow: "0 0 0 1px var(--accent)",
+        } : {})
       }}
     >
       {Boolean(onGripPointerDown) && (
@@ -1255,9 +1461,6 @@ function WatchRow({
           <div className={effectivePrice > dailyOpen ? "up" : effectivePrice < dailyOpen ? "down" : ""}>
             {effectivePrice > dailyOpen ? "+" : ""}{(((effectivePrice - dailyOpen) / dailyOpen) * 100).toFixed(2)}%
           </div>
-          {bid == null && (
-            <div className="muted" style={{ fontSize: 8, opacity: 0.6 }} title="Cached close (Offline)">cached</div>
-          )}
         </div>
       ) : (
         <div className="muted" style={{ fontSize: 10 }}>—</div>
@@ -1285,7 +1488,10 @@ function WatchRow({
             <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag("yellow"); setShowPalette(false); }} style={{color: "#ffeb3b", padding: 8}}><Flag size={14} fill="currentColor" strokeWidth={0} /></button>
             <button className="ghost" onClick={(e) => { e.stopPropagation(); onFlag(null); setShowPalette(false); }} style={{padding: 8}}><Flag size={14} strokeWidth={2} /></button>
             <div style={{width: 1, height: 16, background: "var(--border)", margin: "0 4px"}}></div>
-            <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onRemove(); setShowPalette(false); }} style={{padding: 8}}><Trash2 size={14} /></button>
+            {onReorderClick && (
+              <button className="ghost" onClick={(e) => { e.stopPropagation(); onReorderClick(); setShowPalette(false); }} style={{padding: 8}} title="Reorder Watchlist"><GripVertical size={14} /></button>
+            )}
+            <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onRemove(); setShowPalette(false); }} style={{padding: 8}} title="Remove from list"><Trash2 size={14} /></button>
           </div>
         </div>
       )}
@@ -1293,61 +1499,215 @@ function WatchRow({
   );
 }
 
-function WatchlistEditModal({ list, onClose, onAddSymbol, onRemoveSymbol, onDeleteList, onReorder }) {
+function WatchlistEditModal({ list, symbolFlags, onClose, onAddSymbol, onRemoveSymbol, onDeleteList, onReorder, reorderFn }) {
   const syms = list?.symbols || [];
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const listContainerRef = useRef(null);
 
   const moveUp = async (idx) => {
     if (idx === 0) return;
     const fromSym = syms[idx];
     const toSym = syms[idx - 1];
-    await reorder(list, fromSym, toSym, onReorder);
+    if (reorderFn) await reorderFn(list, fromSym, toSym, onReorder);
   };
   const moveDown = async (idx) => {
     if (idx === syms.length - 1) return;
     const fromSym = syms[idx];
     const toSym = syms[idx + 1];
-    await reorder(list, fromSym, toSym, onReorder);
+    if (reorderFn) await reorderFn(list, fromSym, toSym, onReorder);
   };
+
+  const handlePointerDown = (e, index) => {
+    e.preventDefault();
+    setDragIdx(index);
+    setOverIdx(index);
+
+    const onPointerMove = (ev) => {
+      const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      const rowEls = listContainerRef.current?.querySelectorAll(".modal-symbol-row");
+      if (!rowEls) return;
+      for (let i = 0; i < rowEls.length; i++) {
+        const rect = rowEls[i].getBoundingClientRect();
+        if (clientY >= rect.top && clientY <= rect.bottom) {
+          setOverIdx(i);
+          break;
+        }
+      }
+    };
+
+    const onPointerUp = async (ev) => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("touchmove", onPointerMove);
+      window.removeEventListener("touchend", onPointerUp);
+
+      const clientY = ev.changedTouches ? ev.changedTouches[0].clientY : ev.clientY;
+      const rowEls = listContainerRef.current?.querySelectorAll(".modal-symbol-row");
+      let targetIdx = null;
+      if (rowEls) {
+        for (let i = 0; i < rowEls.length; i++) {
+          const rect = rowEls[i].getBoundingClientRect();
+          if (clientY >= rect.top && clientY <= rect.bottom) {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
+      if (targetIdx != null && targetIdx !== index && syms[index] && syms[targetIdx]) {
+        if (reorderFn) await reorderFn(list, syms[index], syms[targetIdx], onReorder);
+      }
+      setDragIdx(null);
+      setOverIdx(null);
+    };
+
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("touchmove", onPointerMove, { passive: true });
+    window.addEventListener("touchend", onPointerUp);
+  };
+
+  const isDefault = list?._id === "main" || list?.isDefault || list?.name?.toLowerCase() === "main";
 
   return (
     <div style={{
       position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-      background: "rgba(0,0,0,0.6)", zIndex: 1500,
+      background: "rgba(0,0,0,0.65)", zIndex: 1500,
       display: "flex", flexDirection: "column", justifyContent: "flex-end"
-    }}>
+    }} onClick={onClose}>
       <div style={{
-        background: "var(--bg)", borderTop: "1px solid var(--border)",
+        background: "var(--bg)", borderTop: "1px solid var(--border-hi)",
         borderTopLeftRadius: 16, borderTopRightRadius: 16,
-        padding: 16, maxHeight: "80vh", display: "flex", flexDirection: "column"
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Edit: {list.name}</div>
-          <button className="ghost" onClick={onClose} style={{ padding: 4 }}><X size={20} /></button>
+        padding: "16px 16px 24px", maxHeight: "85vh", display: "flex", flexDirection: "column"
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>Edit Watchlist: {list.name}</div>
+            <div className="muted" style={{ fontSize: 11 }}>Hold & drag handle to reorder, or use arrows</div>
+          </div>
+          <button className="ghost" onClick={onClose} style={{ padding: 6 }}><X size={20} /></button>
         </div>
 
-        <div style={{ overflowY: "auto", flex: 1, marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-          {syms.map((sym, i) => (
-            <div key={sym} style={{
-              display: "flex", alignItems: "center", padding: "8px 12px",
-              background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)"
-            }}>
-              <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{sym}</div>
-              <div style={{ display: "flex", gap: 4 }}>
-                <button className="ghost" onClick={() => moveUp(i)} disabled={i === 0} style={{ padding: 6 }}><ArrowUp size={16} /></button>
-                <button className="ghost" onClick={() => moveDown(i)} disabled={i === syms.length - 1} style={{ padding: 6 }}><ArrowDown size={16} /></button>
-                <button className="ghost danger" onClick={() => onRemoveSymbol(list._id, sym)} style={{ padding: 6, marginLeft: 8 }}><Trash2 size={16} /></button>
+        <div ref={listContainerRef} style={{ overflowY: "auto", flex: 1, marginBottom: 16, display: "flex", flexDirection: "column", gap: 6, minHeight: 120 }}>
+          {syms.map((sym, i) => {
+            const flag = symbolFlags?.[sym];
+            const isDragging = dragIdx === i;
+            const isTarget = overIdx === i && dragIdx !== null && dragIdx !== i;
+            return (
+              <div
+                key={sym}
+                className="modal-symbol-row"
+                data-idx={i}
+                data-sym={sym}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", String(i));
+                  setDragIdx(i);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (overIdx !== i) setOverIdx(i);
+                }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  if (dragIdx !== null && dragIdx !== i && syms[dragIdx]) {
+                    if (reorderFn) await reorderFn(list, syms[dragIdx], sym, onReorder);
+                  }
+                  setDragIdx(null);
+                  setOverIdx(null);
+                }}
+                onDragEnd={() => {
+                  setDragIdx(null);
+                  setOverIdx(null);
+                }}
+                style={{
+                  display: "flex", alignItems: "center", padding: "8px 12px", gap: 8,
+                  background: isTarget ? "var(--accent-soft)" : "var(--panel)",
+                  borderRadius: 8,
+                  border: isTarget ? "1px solid var(--accent)" : "1px solid var(--border)",
+                  opacity: isDragging ? 0.4 : 1,
+                  transition: "background 100ms, border-color 100ms"
+                }}
+              >
+                {/* Drag Handle */}
+                <div
+                  onPointerDown={(e) => handlePointerDown(e, i)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "grab", touchAction: "none", padding: "4px 6px",
+                    color: "var(--muted)", userSelect: "none"
+                  }}
+                  title="Drag to reorder"
+                >
+                  <GripVertical size={18} />
+                </div>
+
+                {/* Flag Indicator */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18 }}>
+                  {flag ? (
+                    <Flag
+                      size={14}
+                      fill="currentColor"
+                      strokeWidth={0}
+                      style={{
+                        color: flag === "red" ? "#ef5350" : flag === "blue" ? "#2962ff" : flag === "green" ? "#26a69a" : flag === "yellow" ? "#ffeb3b" : "var(--text)"
+                      }}
+                      title={`Flagged: ${flag}`}
+                    />
+                  ) : (
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--border)", opacity: 0.4 }} title="Not flagged" />
+                  )}
+                </div>
+
+                {/* Symbol Name */}
+                <div style={{ flex: 1, fontWeight: 700, fontSize: 13, letterSpacing: 0.2 }}>
+                  {sym}
+                </div>
+
+                {/* Action Buttons: Arrows + Delete */}
+                <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                  <button className="ghost" onClick={() => moveUp(i)} disabled={i === 0} style={{ padding: "5px 6px" }} title="Move Up">
+                    <ArrowUp size={15} />
+                  </button>
+                  <button className="ghost" onClick={() => moveDown(i)} disabled={i === syms.length - 1} style={{ padding: "5px 6px" }} title="Move Down">
+                    <ArrowDown size={15} />
+                  </button>
+                  <button className="ghost danger" onClick={() => onRemoveSymbol(list._id, sym)} style={{ padding: "5px 6px", marginLeft: 4 }} title="Remove symbol">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-          {syms.length === 0 && <div className="muted" style={{ textAlign: "center", padding: 20 }}>List is empty.</div>}
+            );
+          })}
+          {syms.length === 0 && <div className="muted" style={{ textAlign: "center", padding: 28 }}>Watchlist has no symbols yet.</div>}
         </div>
         
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="ghost danger" onClick={onDeleteList} style={{ padding: "12px", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Trash2 size={18} />
-          </button>
-          <button className="primary" onClick={onAddSymbol} style={{ padding: "12px", flex: 1, fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            <Plus size={18} /> Add Symbol
+        <div style={{ display: "flex", gap: 10 }}>
+          {isDefault ? (
+            <button
+              className="ghost"
+              disabled
+              title="Default watchlist cannot be deleted"
+              style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, opacity: 0.35, cursor: "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : (
+            <button
+              className="ghost danger"
+              onClick={onDeleteList}
+              title="Delete this watchlist"
+              style={{ padding: "12px 16px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+          <button
+            className="primary"
+            onClick={onAddSymbol}
+            style={{ padding: "12px", flex: 1, fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 6 }}
+          >
+            <Plus size={16} /> Add Symbol
           </button>
         </div>
       </div>
