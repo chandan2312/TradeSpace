@@ -57,12 +57,33 @@ if errorlevel 1 (
 REM 3. Check if MetaTrader 5 Terminal [terminal64.exe] is running
 tasklist /FI "IMAGENAME eq terminal64.exe" 2>nul | find /I "terminal64.exe" >nul
 if errorlevel 1 (
-    echo.
-    echo ------------------------------------------------------------
-    echo [WARNING] MetaTrader 5 terminal [terminal64.exe] is NOT running!
-    echo [WARNING] Please ensure MetaTrader 5 is launched and logged into your broker.
-    echo ------------------------------------------------------------
-    echo.
+    echo [Launcher] MetaTrader 5 terminal [terminal64.exe] is NOT running.
+    echo [Launcher] Searching for installed MetaTrader 5 terminal to auto-launch...
+    set "FOUND_MT5="
+    if defined MT5_PATH if exist "!MT5_PATH!" set "FOUND_MT5=!MT5_PATH!"
+    if "!FOUND_MT5!"=="" if exist "C:\Program Files\MetaTrader 5\terminal64.exe" set "FOUND_MT5=C:\Program Files\MetaTrader 5\terminal64.exe"
+    if "!FOUND_MT5!"=="" if exist "C:\Program Files (x86)\MetaTrader 5\terminal64.exe" set "FOUND_MT5=C:\Program Files (x86)\MetaTrader 5\terminal64.exe"
+    if "!FOUND_MT5!"=="" (
+        for /d %%D in ("C:\Program Files\*MetaTrader 5*") do (
+            if exist "%%D\terminal64.exe" set "FOUND_MT5=%%D\terminal64.exe"
+        )
+    )
+    if "!FOUND_MT5!"=="" (
+        for /d %%D in ("C:\Program Files (x86)\*MetaTrader 5*") do (
+            if exist "%%D\terminal64.exe" set "FOUND_MT5=%%D\terminal64.exe"
+        )
+    )
+    if not "!FOUND_MT5!"=="" (
+        echo [Launcher] Auto-launching MetaTrader 5: "!FOUND_MT5!" ...
+        start "" "!FOUND_MT5!"
+        echo [Launcher] Waiting 8 seconds for terminal to connect to broker...
+        timeout /t 8 /nobreak >nul
+    ) else (
+        echo ------------------------------------------------------------
+        echo [WARNING] MetaTrader 5 terminal [terminal64.exe] is NOT running!
+        echo [WARNING] Please ensure MetaTrader 5 is launched or set MT5_PATH.
+        echo ------------------------------------------------------------
+    )
 ) else (
     echo [Launcher] MetaTrader 5 terminal detected [terminal64.exe is running].
 )
