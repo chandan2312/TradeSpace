@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid, Zap, ChevronDown } from "lucide-react";
+import { Trash2, Plus, GripVertical, Flag, X, ArrowUp, ArrowDown, Settings2, LayoutGrid, Zap, ChevronDown, Copy, Eraser } from "lucide-react";
 import { LAYOUT_CONFIG, LayoutIcon } from "../lib/layouts";
 import { getSymbolAliases, resolveAliasValue } from "../lib/watchlistAliases.js";
 import SessionLedDot from "./autonomous/SessionLedDot";
+import { getTradingDateString } from "../lib/time";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
@@ -242,10 +243,17 @@ export default function Watchlist({
     setName("");
   };
 
+  const lastTradingDateRef = useRef(getTradingDateString(Date.now()));
+
   const [dailyOpens, setDailyOpens] = useState(() => {
     if (typeof window === "undefined") return {};
     try {
-      return JSON.parse(localStorage.getItem("ts_daily_opens") || "{}");
+      const stored = JSON.parse(localStorage.getItem("ts_daily_opens") || "{}");
+      const today = getTradingDateString(Date.now());
+      if (stored?.tradingDate === today && stored?.opens) {
+        return stored.opens;
+      }
+      return {};
     } catch {
       return {};
     }
@@ -260,15 +268,40 @@ export default function Watchlist({
     }
   });
 
+  const [tabContextMenu, setTabContextMenu] = useState(null); // { list: w, x: number, y: number }
+  const tabLongPressTimer = useRef(null);
+
+  const handleTabTouchStart = (w, e) => {
+    if (tabLongPressTimer.current) clearTimeout(tabLongPressTimer.current);
+    const touch = e.touches[0];
+    const clientX = touch.clientX;
+    const clientY = touch.clientY;
+    tabLongPressTimer.current = setTimeout(() => {
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try { navigator.vibrate(50); } catch {}
+      }
+      setTabContextMenu({ list: w, x: clientX, y: clientY });
+      tabLongPressTimer.current = null;
+    }, 450);
+  };
+
+  const handleTabTouchEnd = () => {
+    if (tabLongPressTimer.current) {
+      clearTimeout(tabLongPressTimer.current);
+      tabLongPressTimer.current = null;
+    }
+  };
+
   const updateSymbolRates = useCallback((sym, openVal, closeVal) => {
     const aliases = getSymbolAliases(sym);
+    const today = getTradingDateString(Date.now());
     if (typeof openVal === "number" && openVal > 0) {
       setDailyOpens((prev) => {
         const next = { ...prev };
         for (const a of aliases) next[a] = openVal;
         try {
           const clean = Object.fromEntries(Object.entries(next).filter(([, v]) => typeof v === "number" && v > 0));
-          localStorage.setItem("ts_daily_opens", JSON.stringify(clean));
+          localStorage.setItem("ts_daily_opens", JSON.stringify({ tradingDate: today, opens: clean }));
         } catch {}
         return next;
       });
@@ -286,6 +319,21 @@ export default function Watchlist({
     }
   }, []);
 
+  // Invalidate and refresh daily opens upon 00:00:00 Europe/Athens daily candle rollover
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentTradingDate = getTradingDateString(Date.now());
+      if (currentTradingDate && currentTradingDate !== lastTradingDateRef.current) {
+        lastTradingDateRef.current = currentTradingDate;
+        setDailyOpens({});
+        try {
+          localStorage.removeItem("ts_daily_opens");
+        } catch {}
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const syms = list?.symbols || [];
     syms.forEach((sym) => {
@@ -295,39 +343,50 @@ export default function Watchlist({
       if (dailyOpens[sym] === "loading") return;
 
       setDailyOpens((prev) => ({ ...prev, [sym]: "loading" }));
-      fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=D1&count=1`)
+      fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=D1&count=2`)
         .then((r) => r.json())
         .then((data) => {
-          if (data.ok && data.bars?.length > 0) {
-            const b = data.bars[0];
-            updateSymbolRates(sym, b.o, b.c);
-          } else {
-            // Check localStorage bars cache as fallback across aliases and timeframes
-            let foundOpen = null;
-            let foundClose = null;
-            try {
-              const bc = JSON.parse(localStorage.getItem("ts_bars_cache") || "{}");
-              const aliases = getSymbolAliases(sym);
-              for (const a of aliases) {
-                const d1Bars = bc[`${a}:D1`]?.bars;
-                if (d1Bars && d1Bars.length > 0 && d1Bars[0].open) {
-                  foundOpen = d1Bars[0].open;
+          if (data.ok && Array.isArray(data.bars) && data.bars.length > 0) {
+            // Newest daily bar is ALWAYS the last element
+            const b = data.bars[data.bars.length - 1];
+            const openVal = b?.o ?? b?.open;
+            const closeVal = b?.c ?? b?.close;
+            if (typeof openVal === "number" && openVal > 0) {
+              updateSymbolRates(sym, openVal, closeVal);
+              return;
+            }
+          }
+          // Check localStorage bars cache as fallback across aliases and timeframes
+          let foundOpen = null;
+          let foundClose = null;
+          try {
+            const bc = JSON.parse(localStorage.getItem("ts_bars_cache") || "{}");
+            const aliases = getSymbolAliases(sym);
+            for (const a of aliases) {
+              const d1Bars = bc[`${a}:D1`]?.bars;
+              if (d1Bars && d1Bars.length > 0) {
+                const lastD1 = d1Bars[d1Bars.length - 1];
+                if (lastD1 && typeof (lastD1.open ?? lastD1.o) === "number") {
+                  foundOpen = lastD1.open ?? lastD1.o;
                 }
-                for (const tf of ["M5", "M1", "M15", "H1", "H4", "D1"]) {
-                  const tfBars = bc[`${a}:${tf}`]?.bars;
-                  if (tfBars && tfBars.length > 0 && tfBars[tfBars.length - 1]?.close) {
-                    foundClose = tfBars[tfBars.length - 1].close;
+              }
+              for (const tf of ["M5", "M1", "M15", "H1", "H4", "D1"]) {
+                const tfBars = bc[`${a}:${tf}`]?.bars;
+                if (tfBars && tfBars.length > 0) {
+                  const lastTf = tfBars[tfBars.length - 1];
+                  if (lastTf && typeof (lastTf.close ?? lastTf.c) === "number") {
+                    foundClose = lastTf.close ?? lastTf.c;
                     break;
                   }
                 }
               }
-            } catch {}
-
-            if (foundOpen || foundClose) {
-              updateSymbolRates(sym, foundOpen, foundClose);
-            } else {
-              setDailyOpens((prev) => (typeof prev[sym] === "number" ? prev : { ...prev, [sym]: null }));
             }
+          } catch {}
+
+          if (foundOpen || foundClose) {
+            updateSymbolRates(sym, foundOpen, foundClose);
+          } else {
+            setDailyOpens((prev) => (typeof prev[sym] === "number" ? prev : { ...prev, [sym]: null }));
           }
         })
         .catch(() => {
@@ -338,14 +397,20 @@ export default function Watchlist({
             const aliases = getSymbolAliases(sym);
             for (const a of aliases) {
               const d1Bars = bc[`${a}:D1`]?.bars;
-              if (d1Bars && d1Bars.length > 0 && d1Bars[0].open) {
-                foundOpen = d1Bars[0].open;
+              if (d1Bars && d1Bars.length > 0) {
+                const lastD1 = d1Bars[d1Bars.length - 1];
+                if (lastD1 && typeof (lastD1.open ?? lastD1.o) === "number") {
+                  foundOpen = lastD1.open ?? lastD1.o;
+                }
               }
               for (const tf of ["M5", "M1", "M15", "H1", "H4", "D1"]) {
                 const tfBars = bc[`${a}:${tf}`]?.bars;
-                if (tfBars && tfBars.length > 0 && tfBars[tfBars.length - 1]?.close) {
-                  foundClose = tfBars[tfBars.length - 1].close;
-                  break;
+                if (tfBars && tfBars.length > 0) {
+                  const lastTf = tfBars[tfBars.length - 1];
+                  if (lastTf && typeof (lastTf.close ?? lastTf.c) === "number") {
+                    foundClose = lastTf.close ?? lastTf.c;
+                    break;
+                  }
                 }
               }
             }
@@ -461,8 +526,16 @@ export default function Watchlist({
                 key={w._id}
                 onClick={() => setActiveListId(w._id)}
                 onDoubleClick={() => !w.isVirtual && startRename(w)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTabContextMenu({ list: w, x: e.clientX, y: e.clientY });
+                }}
+                onTouchStart={(e) => handleTabTouchStart(w, e)}
+                onTouchEnd={handleTabTouchEnd}
+                onTouchCancel={handleTabTouchEnd}
                 className={w._id === activeListId && !w.isVirtual ? "primary" : "ghost"}
-                title={w.isVirtual ? `${w.name} (${(w.symbols || []).length})` : `${w.name} (${(w.symbols || []).length}) — double-click to rename`}
+                title={w.isVirtual ? `${w.name} (${(w.symbols || []).length})` : `${w.name} (${(w.symbols || []).length}) — double-click to rename, long-press for options`}
                 style={{
                   fontSize: 11, padding: "3px 8px", whiteSpace: "nowrap",
                   display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
@@ -478,9 +551,9 @@ export default function Watchlist({
                                 w.color === "yellow" ? "#ffeb3b" : "inherit"
                     }` : "1px solid transparent"
                   } : w.type === "auto" ? {
-                    background: w._id === activeListId ? (w.style?.background || "rgba(41, 98, 255, 0.2)") : "transparent",
-                    color: w._id === activeListId ? (w.style?.color || "var(--accent)") : "var(--muted)",
-                    border: w._id === activeListId ? `1px solid ${w.style?.color || "var(--accent)"}` : "1px solid transparent",
+                    background: w._id === activeListId ? (w.style?.background || "var(--accent-soft)") : "transparent",
+                    color: w._id === activeListId ? (w.style?.color || "var(--fg)") : "var(--muted)",
+                    border: w._id === activeListId ? `1px solid var(--border-hi)` : "1px solid transparent",
                     fontWeight: 600
                   } : {})
                 }}

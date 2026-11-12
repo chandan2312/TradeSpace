@@ -1473,8 +1473,8 @@ export default function Dashboard() {
   }, [loadAlerts, showToast]);
 
   // ---------- watchlist actions ----------
-  const createWatchlist = useCallback(async (name) => {
-    const data = await api("/api/watchlists", { method: "POST", body: JSON.stringify({ name }) });
+  const createWatchlist = useCallback(async (name, symbols = []) => {
+    const data = await api("/api/watchlists", { method: "POST", body: JSON.stringify({ name, symbols }) });
     if (data.ok) {
       setWatchlists(data.watchlists);
       const created = data.watchlists[data.watchlists.length - 1];

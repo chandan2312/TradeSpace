@@ -33,7 +33,7 @@ export default function IndicatorsMenu({ indicators, setIndicators }) {
       >
         <Sparkles size={14} />
         {activeCount > 0 && (
-          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--accent)", color: "#fff", fontWeight: 700 }}>
+          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--text-inverse)", color: "var(--bg-inverse)", fontWeight: 700 }}>
             {activeCount}
           </span>
         )}

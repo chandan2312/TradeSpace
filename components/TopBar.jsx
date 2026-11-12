@@ -159,7 +159,7 @@ export default function TopBar({
       flexWrap: "nowrap", position: "relative", zIndex: 100
     }}>
       <div className="logo-text hide-mobile" style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.2, whiteSpace: "nowrap", flexShrink: 0 }}>
-        Trade<span style={{ color: "var(--accent)" }}>Space</span>
+        Trade<span style={{ opacity: 0.8, fontWeight: 500 }}>Space</span>
       </div>
 
       <button className="primary symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
@@ -406,7 +406,7 @@ export default function TopBar({
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 4, padding: 4 }}>
                 {savedLayouts && savedLayouts.length > 0 ? savedLayouts.map(l => (
-                  <div key={l._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px", background: l._id === loadedLayoutId ? "rgba(41,98,255,0.15)" : "transparent", borderRadius: 4 }}>
+                  <div key={l._id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px", background: l._id === loadedLayoutId ? "var(--accent-soft)" : "transparent", borderRadius: 4 }}>
                     <div onClick={() => { onLoadLayout(l._id); setShowLayoutMenu(false); }} style={{ cursor: "pointer", flex: 1, fontSize: 12, fontWeight: l._id === loadedLayoutId ? 700 : 400 }}>
                       {l.name}
                     </div>
@@ -443,7 +443,7 @@ export default function TopBar({
           flexShrink: 0,
         }}
       >
-        <Zap size={14} style={{ color: indicators?.autoTrades !== false ? "#fff" : "var(--accent)" }} />
+        <Zap size={14} style={{ color: indicators?.autoTrades !== false ? "var(--text-inverse)" : "var(--muted)" }} />
       </button>
 
       {/* Desktop Taskbar: Staged Trades Indicator Toggle */}
@@ -646,20 +646,20 @@ export default function TopBar({
               background: displayAutoTrades.length > 0
                 ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
                 : stagedAutoTrades.length > 0
-                ? "var(--accent)"
+                ? "var(--muted)"
                 : "var(--muted)",
               boxShadow: displayAutoTrades.length > 0
                 ? (isAutoNetProfit ? "0 0 6px var(--green)" : "0 0 6px var(--red)")
                 : "none",
             }}
           />
-          <Zap size={13} style={{ color: displayAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
+          <Zap size={13} style={{ color: displayAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--muted)" }} />
           {displayAutoTrades.length > 0 ? (
             <span style={{ fontFamily: "monospace", fontSize: 11 }}>
               {displayAutoTrades.length}A{hasAutoR ? ` · ${formatR(autoNetR)}` : ""}
             </span>
           ) : stagedAutoTrades.length > 0 ? (
-            <span style={{ fontSize: 11, color: "var(--accent)" }}>{stagedAutoTrades.length}S</span>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>{stagedAutoTrades.length}S</span>
           ) : null}
         </button>
 
@@ -677,7 +677,7 @@ export default function TopBar({
         <button className="ghost" onClick={() => onOpenAlerts?.()} title="View Alerts" aria-label="View Alerts" style={{ fontSize: 12, padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
           <Bell size={14} />
           {activeAlertCount > 0 && (
-            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--accent)", color: "#fff", fontWeight: 700 }}>
+            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--bg-inverse)", color: "var(--text-inverse)", fontWeight: 700 }}>
               {activeAlertCount}
             </span>
           )}

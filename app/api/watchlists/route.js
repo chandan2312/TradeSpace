@@ -9,11 +9,15 @@ export async function GET() {
 }
 
 export async function POST(req) {
-  const name = String((await req.json())?.name || "").trim().slice(0, 40);
+  const body = await req.json();
+  const name = String(body?.name || "").trim().slice(0, 40);
   if (!name) return json({ ok: false, error: "name required" }, 400);
 
+  const rawSymbols = Array.isArray(body?.symbols) ? body.symbols : [];
+  const symbols = rawSymbols.map(String).map((s) => s.trim().toUpperCase()).filter(Boolean);
+
   const { watchlistsCol } = await getCols();
-  await watchlistsCol.insertOne({ name, symbols: [], createdAt: new Date() });
+  await watchlistsCol.insertOne({ name, symbols, createdAt: new Date() });
 
   invalidateWatchlistsCache();
   if (typeof globalThis._tsInvalidateAutonomousRouteCache === "function") {
