@@ -41,7 +41,7 @@ if not exist ".next\server\app\page.js" (
 
 REM 3. Launch TradeSpace with 24/7 Watchdog Supervisor
 echo [Launcher] Starting TradeSpace Server on port 3000...
-echo [Launcher] Memory allocation: 768 MB heap (VPS optimized).
+echo [Launcher] Memory allocation: 256 MB heap (VPS optimized).
 echo [Launcher] Auto-revives if process ever exits.
 echo [Launcher] Auto-reboots VPS if stuck in consecutive crash loop.
 echo [Launcher] Server URL: http://localhost:3000
@@ -55,7 +55,7 @@ set /a MAX_CRASH_STREAK=5
 set "START_SEC="
 for /f %%A in ('powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" 2^>nul') do set "START_SEC=%%A"
 
-node --expose-gc --max-old-space-size=768 --optimize_for_size server.js
+node --expose-gc --max-old-space-size=256 --optimize_for_size server.js
 set "EXIT_CODE=%errorlevel%"
 
 set "END_SEC="
