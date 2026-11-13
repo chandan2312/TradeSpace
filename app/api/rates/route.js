@@ -24,9 +24,9 @@ const TF_RATES_TTL_MS = {
 const inFlightRequests = new Map();
 
 async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey) {
-  // For live stream (off === 0), always fetch at least 500 bars so cache remains a rich superset
-  // for all consumers (charts, radar cards, staged cards, bias engine, indicators).
-  const fetchCount = off === 0 ? Math.max(n, 500) : n;
+  // For live stream (off === 0), prefetch 500 bars if requested count is > 10 (intraday charting).
+  // For small requests (n <= 10, e.g. D1 daily open or gap healing), fetch only requested n bars.
+  const fetchCount = (off === 0 && n > 10) ? Math.max(n, 500) : n;
   let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 10_000 });
   if (!d?.ok && !d?.circuitOpen) {
     await new Promise((r) => setTimeout(r, 200));
@@ -72,6 +72,8 @@ export async function GET(req) {
   const effectiveTtl = off > 0 ? 3600_000 : (TF_RATES_TTL_MS[tf] || RATES_TTL_MS || 60_000);
   const flightKey = off === 0 ? `${brokerSym}:${tf}:live` : `${brokerSym}:${tf}:${n}:${off}`;
 
+  const historyHeaders = off > 0 ? { headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" } } : undefined;
+
   // Circuit breaker 0ms fast-fail: if the MT5 bridge is offline, do NOT hang Next.js sockets
   const bridgeStatus = getBridgeStatus();
   if (bridgeStatus.isOpen && !force) {
@@ -80,7 +82,7 @@ export async function GET(req) {
         cached.data.bars.length > n && off === 0
           ? { ...cached.data, count: n, bars: cached.data.bars.slice(-n) }
           : cached.data;
-      return json({ ...responseData, offline: true, circuitOpen: true });
+      return json({ ...responseData, offline: true, circuitOpen: true }, 200, historyHeaders);
     }
     return json({ ok: false, offline: true, circuitOpen: true, error: bridgeStatus.errorMessage || "MT5 Bridge Offline" }, 503);
   }
@@ -88,7 +90,7 @@ export async function GET(req) {
   // Stale-While-Revalidate:
   // For historical pagination (off > 0): past history never changes, serve cached immediately
   // For live candles (off === 0): serve cached if reasonably complete, and refresh in background if stale
-  if (!force && cached?.data?.bars?.length) {
+  if (!force && cached?.data && Array.isArray(cached.data.bars)) {
     const age = Date.now() - cached.at;
     const isSufficientCount = off > 0 || cached.data.bars.length >= Math.min(n, 500);
 
@@ -99,7 +101,7 @@ export async function GET(req) {
           : cached.data;
 
       if (age < effectiveTtl) {
-        return json(responseData);
+        return json(responseData, 200, historyHeaders);
       }
       if (age < 300_000) {
         if (!inFlightRequests.has(flightKey)) {
@@ -108,7 +110,7 @@ export async function GET(req) {
             .finally(() => inFlightRequests.delete(flightKey));
           inFlightRequests.set(flightKey, bg);
         }
-        return json(responseData);
+        return json(responseData, 200, historyHeaders);
       }
     }
   }
@@ -118,9 +120,9 @@ export async function GET(req) {
       const flightData = await inFlightRequests.get(flightKey);
       if (flightData?.ok && Array.isArray(flightData.bars)) {
         if (off === 0 && flightData.bars.length > n) {
-          return json({ ...flightData, count: n, bars: flightData.bars.slice(-n) });
+          return json({ ...flightData, count: n, bars: flightData.bars.slice(-n) }, 200, historyHeaders);
         }
-        return json(flightData);
+        return json(flightData, 200, historyHeaders);
       }
     } catch (_) {}
   }
@@ -137,9 +139,9 @@ export async function GET(req) {
 
     if (data?.ok && Array.isArray(data.bars)) {
       if (off === 0 && data.bars.length > n) {
-        return json({ ...data, count: n, bars: data.bars.slice(-n) });
+        return json({ ...data, count: n, bars: data.bars.slice(-n) }, 200, historyHeaders);
       }
-      return json(data);
+      return json(data, 200, historyHeaders);
     }
 
     // Bridge error / offline:
@@ -151,7 +153,7 @@ export async function GET(req) {
           : cached.data;
       const cacheAge = Date.now() - cached.at;
       if (cacheAge < 300_000 || off > 0) {
-        return json(responseData);
+        return json(responseData, 200, historyHeaders);
       }
       return json({ ...responseData, stale: true, offline: true, error: data?.message || "Bridge unreachable" });
     }
@@ -164,7 +166,7 @@ export async function GET(req) {
           : cached.data;
       const cacheAge = Date.now() - cached.at;
       if (cacheAge < 300_000 || off > 0) {
-        return json(responseData);
+        return json(responseData, 200, historyHeaders);
       }
       return json({ ...responseData, stale: true, offline: true, error: err.message });
     }

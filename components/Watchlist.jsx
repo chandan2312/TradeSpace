@@ -270,6 +270,7 @@ export default function Watchlist({
 
   const [tabContextMenu, setTabContextMenu] = useState(null); // { list: w, x: number, y: number }
   const tabLongPressTimer = useRef(null);
+  const attemptedDailyOpensRef = useRef(new Set());
 
   const handleTabTouchStart = (w, e) => {
     if (tabLongPressTimer.current) clearTimeout(tabLongPressTimer.current);
@@ -325,6 +326,7 @@ export default function Watchlist({
       const currentTradingDate = getTradingDateString(Date.now());
       if (currentTradingDate && currentTradingDate !== lastTradingDateRef.current) {
         lastTradingDateRef.current = currentTradingDate;
+        attemptedDailyOpensRef.current.clear();
         setDailyOpens({});
         try {
           localStorage.removeItem("ts_daily_opens");
@@ -336,16 +338,20 @@ export default function Watchlist({
 
   useEffect(() => {
     const syms = list?.symbols || [];
-    syms.forEach((sym) => {
+    syms.forEach((sym, index) => {
       const existingOpen = resolveAliasValue(sym, dailyOpens);
       const existingPrice = resolveAliasValue(sym, fallbackPrices);
       if (typeof existingOpen === "number" && typeof existingPrice === "number") return;
-      if (dailyOpens[sym] === "loading") return;
+      if (dailyOpens[sym] !== undefined || attemptedDailyOpensRef.current.has(sym)) return;
 
+      attemptedDailyOpensRef.current.add(sym);
       setDailyOpens((prev) => ({ ...prev, [sym]: "loading" }));
-      fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=D1&count=2`)
-        .then((r) => r.json())
-        .then((data) => {
+
+      // Stagger requests slightly (40ms per symbol) to prevent hammering Node.js/MT5 with 30 simultaneous calls
+      setTimeout(() => {
+        fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=D1&count=2`)
+          .then((r) => r.json())
+          .then((data) => {
           if (data.ok && Array.isArray(data.bars) && data.bars.length > 0) {
             // Newest daily bar is ALWAYS the last element
             const b = data.bars[data.bars.length - 1];
@@ -422,23 +428,27 @@ export default function Watchlist({
             setDailyOpens((prev) => (typeof prev[sym] === "number" ? prev : { ...prev, [sym]: null }));
           }
         });
+      }, index * 40);
     });
   }, [list?.symbols, dailyOpens, fallbackPrices, updateSymbolRates]);
 
   // Reactive refresh when broker symbol mapping is updated in settings
   useEffect(() => {
     const onMappingUpdated = () => {
+      attemptedDailyOpensRef.current.clear();
       const syms = list?.symbols || [];
-      syms.forEach((sym) => {
-        fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=D1&count=1`)
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.ok && data.bars?.length > 0) {
-              const b = data.bars[0];
-              updateSymbolRates(sym, b.o, b.c);
-            }
-          })
-          .catch(() => {});
+      syms.forEach((sym, index) => {
+        setTimeout(() => {
+          fetch(`/api/rates?symbol=${encodeURIComponent(sym)}&tf=D1&count=1`)
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.ok && data.bars?.length > 0) {
+                const b = data.bars[0];
+                updateSymbolRates(sym, b.o, b.c);
+              }
+            })
+            .catch(() => {});
+        }, index * 40);
       });
     };
     window.addEventListener("ts_symbol_mapping_updated", onMappingUpdated);

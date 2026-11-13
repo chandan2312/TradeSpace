@@ -628,6 +628,8 @@ export default function ChartPanel({
   const activeFetchKeyRef = useRef(`${symbol}:${tf}`);
   activeFetchKeyRef.current = `${symbol}:${tf}`;
   const inFlightLoadBarsRef = useRef(new Set());
+  const hasReachedHistoryStartRef = useRef(false);
+  const historyFetchDebounceRef = useRef(null);
   const lastGapReconciledBarTimeRef = useRef(null);
   const lastSyncTimeRef = useRef(Date.now());
   const lastClientActiveRef = useRef(Date.now());
@@ -745,7 +747,9 @@ export default function ChartPanel({
       if (fetchGenerationRef.current !== genId) return;
 
       if (!data?.ok || !data.bars?.length) {
-        if (cached?.bars?.length) {
+        const cacheAge = cached?.at ? Date.now() - cached.at : Infinity;
+        // Strictly prevent stale candle contamination: only fall back to cache if fresh (< 5 minutes)
+        if (cached?.bars?.length && cacheAge < 300_000) {
           applyBars(cached.bars, false, key);
           const hasActiveTicks = lastClientActiveRef.current && (Date.now() - lastClientActiveRef.current < 25_000);
           staleStreakRef.current += 1;
@@ -804,17 +808,17 @@ export default function ChartPanel({
       lastClientActiveRef.current = Date.now();
       retryCountRef.current = 0;
 
-      // Throttled persistence: keep only 8 recent symbols with 250 bars each
+      // Throttled persistence: keep only 6 recent symbols with 150 bars each
       if (typeof window !== "undefined") {
         clearTimeout(window._tsCacheSaveTimer);
         window._tsCacheSaveTimer = setTimeout(() => {
           try {
             const entries = Array.from(barsCache.current.entries())
               .sort((a, b) => (b[1]?.at || 0) - (a[1]?.at || 0))
-              .slice(0, 8);
+              .slice(0, 6);
             const slimCache = {};
             for (const [k, v] of entries) {
-              slimCache[k] = { at: v.at, bars: (v.bars || []).slice(-250) };
+              slimCache[k] = { at: v.at, bars: (v.bars || []).slice(-150) };
             }
             localStorage.setItem("ts_bars_cache", JSON.stringify(slimCache));
           } catch (_) {}
@@ -843,8 +847,10 @@ export default function ChartPanel({
     } catch (err) {
       if (fetchGenerationRef.current !== genId) return;
       const cached = barsCache.current.get(key);
+      const cacheAge = cached?.at ? Date.now() - cached.at : Infinity;
       if (!isSilent) {
-        if (cached?.bars?.length) {
+        // Strictly prevent stale candle contamination: only fall back to cache if fresh (< 5 minutes)
+        if (cached?.bars?.length && cacheAge < 300_000) {
           applyBars(cached.bars, false, key);
           const hasActiveTicks = lastClientActiveRef.current && (Date.now() - lastClientActiveRef.current < 25_000);
           staleStreakRef.current += 1;
@@ -879,6 +885,7 @@ export default function ChartPanel({
     const currentGen = fetchGenerationRef.current;
     const key = `${symbol}:${tf}`;
     activeFetchKeyRef.current = key;
+    hasReachedHistoryStartRef.current = false;
 
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current);
@@ -910,12 +917,12 @@ export default function ChartPanel({
       return;
     }
 
-    // 3. COLD / STALE CACHE (>= 5m): clear stale candles from prior session, show clean loading state, and load fresh bars
+    // 3. COLD / STALE CACHE (>= 5m) or FIRST LOAD:
+    // Non-destructive transition: show smooth loading state and load fresh bars.
+    // NEVER blank the canvas with seriesRef.current.setData([]); atomic applyBars smoothly updates the series!
     lastBarRef.current = null;
-    barsRef.current = [];
     setLoading(true);
     setError(null);
-    if (seriesRef.current) seriesRef.current.setData([]);
     if (patternsRef.current) patternsRef.current.setDrawings([]);
     if (drawingManagerRef.current) {
       drawingManagerRef.current.list = (drawingManagerRef.current.list || []).filter(
@@ -951,6 +958,11 @@ export default function ChartPanel({
     if (activeFetchKeyRef.current !== key) return;
     const now = Date.now();
     if (now - lastSyncTimeRef.current < 30_000 && !forceRefresh) return;
+
+    // Suppress redundant REST polling when live WebSocket ticks are actively flowing
+    const hasActiveTicks = lastClientActiveRef.current && (now - lastClientActiveRef.current < 25_000);
+    if (hasActiveTicks && !forceRefresh) return;
+
     loadBars(key, fetchGenerationRef.current, true, forceRefresh, barCount);
   }, [symbol, tf, loadBars]);
 
@@ -1630,41 +1642,59 @@ export default function ChartPanel({
         if (totalBars > 0) {
           setIsScrolledLeft(range.to < totalBars + 5);
           
-          if (range.from < 50 && !isFetchingHistory.current && totalBars < 5000) {
-            isFetchingHistory.current = true;
-            (async () => {
-              try {
-                const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=500&offset=${totalBars}`);
-                const data = await res.json();
-                if (data.ok && data.bars?.length) {
-                  let newBars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
-                  // Filter out completely anomalous MT5 glitches (0 prices or 100x spikes)
-                  newBars = newBars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+          if (
+            range.from < 30 &&
+            !isFetchingHistory.current &&
+            !hasReachedHistoryStartRef.current &&
+            totalBars < 5000
+          ) {
+            if (historyFetchDebounceRef.current) clearTimeout(historyFetchDebounceRef.current);
+            historyFetchDebounceRef.current = setTimeout(() => {
+              if (isFetchingHistory.current || hasReachedHistoryStartRef.current) return;
+              isFetchingHistory.current = true;
+              (async () => {
+                try {
+                  const curTotal = barsRef.current?.length || 0;
+                  const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=300&offset=${curTotal}`);
+                  const data = await res.json();
+                  if (data?.ok && Array.isArray(data.bars) && data.bars.length > 0) {
+                    let newBars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+                    // Filter out completely anomalous MT5 glitches (0 prices or 100x spikes)
+                    newBars = newBars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
 
-                  // MT5 might return the current bars if offset is too far, ensure we don't overlap time
-                  const oldestExistingTime = barsRef.current[0].time;
-                  const filteredNewBars = newBars.filter(b => b.time < oldestExistingTime);
-                  
-                  if (filteredNewBars.length > 0) {
-                    const combined = normalizeCandles([...filteredNewBars, ...barsRef.current], tf);
-                    barsRef.current = combined;
-                    // Preserve the scroll position by shifting logical indices
-                    const currentRange = chart.timeScale().getVisibleLogicalRange();
-                    seriesRef.current.setData(combined);
-                    if (currentRange) {
-                       chart.timeScale().setVisibleLogicalRange({
-                         from: currentRange.from + filteredNewBars.length,
-                         to: currentRange.to + filteredNewBars.length
-                       });
+                    // MT5 might return the current bars if offset is too far, ensure we don't overlap time
+                    const oldestExistingTime = barsRef.current?.[0]?.time || 0;
+                    const filteredNewBars = newBars.filter(b => b.time < oldestExistingTime);
+                    
+                    if (filteredNewBars.length > 0) {
+                      const combined = normalizeCandles([...filteredNewBars, ...barsRef.current], tf);
+                      barsRef.current = combined;
+                      barsCache.current.set(`${symbol}:${tf}`, { at: Date.now(), bars: combined });
+                      // Preserve the scroll position by shifting logical indices
+                      const currentRange = chart.timeScale().getVisibleLogicalRange();
+                      seriesRef.current.setData(combined);
+                      if (currentRange) {
+                         chart.timeScale().setVisibleLogicalRange({
+                           from: currentRange.from + filteredNewBars.length,
+                           to: currentRange.to + filteredNewBars.length
+                         });
+                      }
+                    } else {
+                      // Broker returned bars but none are older than what we already have: end of history
+                      hasReachedHistoryStartRef.current = true;
                     }
+                  } else {
+                    // Broker returned empty or error: end of history reached
+                    hasReachedHistoryStartRef.current = true;
                   }
+                } catch (e) {
+                  console.error("lazy load failed", e);
+                  hasReachedHistoryStartRef.current = true;
+                } finally {
+                  isFetchingHistory.current = false;
                 }
-              } catch (e) {
-                console.error("lazy load failed", e);
-              } finally {
-                isFetchingHistory.current = false;
-              }
-            })();
+              })();
+            }, 150);
           }
         }
       }
@@ -1680,7 +1710,10 @@ export default function ChartPanel({
       }
     };
     timeScale.subscribeVisibleLogicalRangeChange(handler);
-    return () => timeScale.unsubscribeVisibleLogicalRangeChange(handler);
+    return () => {
+      if (historyFetchDebounceRef.current) clearTimeout(historyFetchDebounceRef.current);
+      timeScale.unsubscribeVisibleLogicalRangeChange(handler);
+    };
   }, [syncOpts?.time, paneId, setSyncedLogicalRange, chartReady, symbol, tf]);
 
   useEffect(() => {

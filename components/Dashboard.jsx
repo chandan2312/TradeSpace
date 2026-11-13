@@ -262,8 +262,17 @@ export default function Dashboard() {
 
         const bc = localStorage.getItem("ts_bars_cache");
         if (bc) {
-          const parsed = JSON.parse(bc);
-          for (const [k, v] of Object.entries(parsed)) barsCache.current.set(k, v);
+          try {
+            const parsed = JSON.parse(bc);
+            const now = Date.now();
+            for (const [k, v] of Object.entries(parsed)) {
+              // Institutional Freshness Gate: strictly discard persistent cache older than 3 minutes.
+              // Never contaminate the chart with hours-old candles from a prior session!
+              if (v && v.at && (now - v.at < 180_000) && Array.isArray(v.bars) && v.bars.length > 0) {
+                barsCache.current.set(k, v);
+              }
+            }
+          } catch {}
         }
         
         const lsrc = localStorage.getItem("ts_loop_source");
@@ -1833,7 +1842,7 @@ export default function Dashboard() {
                       paneId={pane.id}
                       symbol={pane.symbol}
                       tf={pane.tf}
-                      tick={ticks[pane.symbol]}
+                      tick={ticks[pane.symbol] || (pane.symbol ? ticks[pane.symbol.toUpperCase()] : null) || (pane.symbol ? ticks[canonOf(pane.symbol)] : null)}
                       alerts={alerts.filter(a => a.symbol === pane.symbol && (a.status === "active" || a.status === "triggered" || a.status === "pending_chain"))}
                       barsCache={barsCache}
                       autonomousTrades={autonomousTrades.filter(t => {
