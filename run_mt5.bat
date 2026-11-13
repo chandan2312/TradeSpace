@@ -115,10 +115,14 @@ set /a HEARTBEAT_TICKS=0
 :health_sentinel_loop
 ping 127.0.0.1 -n 6 >nul
 
-REM Fast probe HTTP /health with 4s timeout (negligible CPU overhead)
-curl.exe -s -m 4 http://127.0.0.1:8765/health >nul 2>&1
-if not errorlevel 1 (
+REM Fast probe HTTP /health with 10s timeout (force IPv4, 4s connect timeout)
+curl.exe -4 -s -m 10 --connect-timeout 4 http://127.0.0.1:8765/health >nul 2>&1
+set "CURL_CODE=!ERRORLEVEL!"
+if "!CURL_CODE!"=="0" (
     REM Fast path: Server is active and healthy
+    if !FAIL_STREAK! gtr 0 (
+        echo [Watchdog] MT5 Bridge Server recovered and healthy [Port 8765 responding].
+    )
     set /a FAIL_STREAK=0
     set /a PORT_FAIL_STREAK=0
     set /a HEARTBEAT_TICKS+=1
@@ -131,7 +135,7 @@ if not errorlevel 1 (
 
 REM Probe failed: Investigate whether server exited or is unresponsive
 set /a FAIL_STREAK+=1
-echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/15]...
+echo [Watchdog] Health probe slow/failed (curl code: !CURL_CODE!) [Streak: !FAIL_STREAK!/15]...
 
 REM Check if Port 8765 is listening
 netstat -aon | findstr ":8765" | findstr "LISTENING" >nul

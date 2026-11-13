@@ -148,27 +148,13 @@ except Exception:
 
 
 def trim_working_set():
-    """Flush working set memory back to OS on 64-bit Windows. Safe no-op on other platforms."""
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        kernel32.SetProcessWorkingSetSize.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t]
-        kernel32.SetProcessWorkingSetSize.restype = ctypes.c_int
-        size_t_neg1 = ctypes.c_size_t(-1).value
-        kernel32.SetProcessWorkingSetSize(kernel32.GetCurrentProcess(), size_t_neg1, size_t_neg1)
-    except Exception:
-        pass
+    """No-op: Paging working set memory to disk on Windows causes severe page-fault latency spikes."""
+    pass
 
 
 TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
 CACHE_LOCK = threading.Lock()
-try:
-    threading.stack_size(256 * 1024)  # 256 KB per thread stack (saves ~85% RAM on low-spec VPS)
-except Exception:
-    pass
 
 HTTP_SEMAPHORE = threading.Semaphore(24)  # Bound concurrent active connections to protect VPS RAM
 _RATES_CACHE = {}
@@ -610,6 +596,8 @@ def handle_health(_payload):
         "status": "bridge-ready",
         "auth": "required" if TOKEN else "open",
         "capabilities": {"timeframes": list(TF_MAP.keys())},
+        "version": "2026.11.13.v2",
+        "time": time.time(),
     }
 
 
@@ -1607,8 +1595,9 @@ ROUTES = {
 
 class RobustThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
+    block_on_close = False
     allow_reuse_address = True
-    request_queue_size = 64
+    request_queue_size = 128
     timeout = 10.0
 
     def get_request(self):
@@ -1670,6 +1659,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
             self.wfile.write(body)
+            try:
+                self.wfile.flush()
+            except Exception:
+                pass
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, socket.timeout):
             pass
         except socket.error as e:
@@ -1847,19 +1840,17 @@ def main():
                         pass
 
                 gc.collect()
-                if gc_counter % 2 == 0:  # Every 60 seconds flush unreferenced memory back to OS
-                    trim_working_set()
             except Exception:
                 pass
 
     threading.Thread(target=_periodic_gc, daemon=True).start()
 
-    # Active internal memory guard & working set trimmer
+    # Active internal memory guard
     def _health_watchdog():
         while True:
             time.sleep(15)
             try:
-                # Memory guard: proactively trim caches and working set if RSS exceeds 180MB
+                # Memory guard: proactively trim caches if RSS exceeds 180MB
                 try:
                     import psutil
                     rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
@@ -1869,15 +1860,12 @@ def main():
                             _TICK_CACHE.clear()
                         import gc
                         gc.collect()
-                        trim_working_set()
                 except Exception:
                     pass
             except Exception:
                 pass
 
     threading.Thread(target=_health_watchdog, daemon=True).start()
-
-    trim_working_set()
 
     _SHUTDOWN_REQUESTED = False
     while not _SHUTDOWN_REQUESTED:
