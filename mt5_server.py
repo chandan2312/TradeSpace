@@ -426,15 +426,19 @@ def ensure_mt5(force: bool = False) -> tuple[bool, str]:
 
 
 _RESOLVED_CACHE: dict[str, str | None] = {}
+_NEGATIVE_RESOLVED_CACHE: dict[str, float] = {}
+_AVAILABLE_SYMBOLS_CACHE: list | None = None
+_AVAILABLE_SYMBOLS_TIME: float = 0.0
+_NEGATIVE_CACHE_TTL: float = 60.0
 
 
 def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
     """
     Resolve requested symbol to the broker's exact Market Watch symbol name.
     1. Check memory cache (thread-safe)
-    2. Check payload broker_mapping
+    2. Check negative cache (suppresses repeated failed lookups for 60s)
     3. Check candidate aliases
-    4. Check fuzzy prefix/suffix against broker Market Watch
+    4. Check fuzzy prefix/suffix against broker Market Watch (cached 60s)
     """
     if not app_symbol:
         return None
@@ -443,19 +447,29 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
 
     app_clean = app_symbol.strip()
     app_upper = app_clean.upper()
+    now_mono = time.monotonic()
 
     # Fast cache hit (if no custom request-specific broker_mapping override)
     with CACHE_LOCK:
-        cached_sym = _RESOLVED_CACHE.get(app_upper)
-        if not (payload and "broker_mapping" in payload) and cached_sym:
-            return cached_sym
+        if not (payload and "broker_mapping" in payload):
+            cached_sym = _RESOLVED_CACHE.get(app_upper)
+            if cached_sym:
+                return cached_sym
+            neg_time = _NEGATIVE_RESOLVED_CACHE.get(app_upper)
+            if neg_time and (now_mono - neg_time < _NEGATIVE_CACHE_TTL):
+                return None
 
     with LOCK:
-        # Double-check cache inside mutex in case another worker resolved it while waiting
+        # Double-check caches inside mutex in case another worker resolved or failed while waiting
+        now_mono = time.monotonic()
         with CACHE_LOCK:
-            cached_sym = _RESOLVED_CACHE.get(app_upper)
-            if not (payload and "broker_mapping" in payload) and cached_sym:
-                return cached_sym
+            if not (payload and "broker_mapping" in payload):
+                cached_sym = _RESOLVED_CACHE.get(app_upper)
+                if cached_sym:
+                    return cached_sym
+                neg_time = _NEGATIVE_RESOLVED_CACHE.get(app_upper)
+                if neg_time and (now_mono - neg_time < _NEGATIVE_CACHE_TTL):
+                    return None
 
         # 1. Explicit broker mapping from request payload
         if payload and "broker_mapping" in payload:
@@ -481,11 +495,23 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
             except Exception:
                 pass
 
-        # 3. Market Watch fuzzy discovery
-        try:
-            available = mt5.symbols_get() or []
-        except Exception:
-            available = []
+        # 3. Market Watch fuzzy discovery with global 60s cache
+        global _AVAILABLE_SYMBOLS_CACHE, _AVAILABLE_SYMBOLS_TIME
+        with CACHE_LOCK:
+            if _AVAILABLE_SYMBOLS_CACHE and (now_mono - _AVAILABLE_SYMBOLS_TIME < 60.0):
+                available = _AVAILABLE_SYMBOLS_CACHE
+            else:
+                available = None
+
+        if available is None:
+            try:
+                available = mt5.symbols_get() or []
+            except Exception:
+                available = []
+            with CACHE_LOCK:
+                _AVAILABLE_SYMBOLS_CACHE = available
+                _AVAILABLE_SYMBOLS_TIME = now_mono
+
         lowered = {s.name.lower(): s.name for s in available}
 
         # Direct lowercase match
@@ -519,12 +545,14 @@ def resolve_symbol(app_symbol: str, payload: dict = None) -> str | None:
                 try:
                     if mt5.symbol_select(s.name, True):
                         with CACHE_LOCK:
-                            _RESOLVED_CACHE[app_upper] = s.name
-                        return s.name
+                            _RESOLVED_CACHE[app_upper] = s_name
+                        return s_name
                 except Exception:
                     pass
 
-        # Do not cache None permanently so subsequent retries can resolve once terminal connects
+        # Record negative cache hit so subsequent requests don't repeatedly block on MT5 IPC
+        with CACHE_LOCK:
+            _NEGATIVE_RESOLVED_CACHE[app_upper] = now_mono
         return None
 
 
@@ -621,7 +649,83 @@ def handle_ticks(payload):
     symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
     if not symbols:
         return {"ok": False, "status": "bad-request", "message": "symbols required"}
-    ticks = {s: tick_dict(s, payload) for s in dict.fromkeys(symbols)}
+
+    now_mono = time.monotonic()
+    ticks = {}
+    needed = []
+
+    # 1. Fast cache check (0.5s TTL)
+    for s in dict.fromkeys(symbols):
+        with CACHE_LOCK:
+            cached = _TICK_CACHE.get(s)
+            if cached and (now_mono - cached[0] < 0.5):
+                ticks[s] = cached[1]
+                continue
+        needed.append(s)
+
+    # 2. Resolve symbol names for un-cached symbols
+    if needed:
+        resolved_map = {}
+        for s in needed:
+            resolved = resolve_symbol(s, payload)
+            if not resolved:
+                ticks[s] = {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {s}", "app_symbol": s}
+            else:
+                resolved_map[s] = resolved
+
+        # 3. Single-batch mutex acquisition: Query all needed ticks in one pass (<0.5ms lock duration)
+        raw_ticks = {}
+        if resolved_map:
+            with LOCK:
+                for app_sym, mt5_sym in resolved_map.items():
+                    try:
+                        spec = _SYMBOL_SPEC_CACHE.get(mt5_sym)
+                        if spec is None:
+                            info = mt5.symbol_info(mt5_sym)
+                            if info:
+                                spec = (float(getattr(info, "point", 0.0) or 0.0), getattr(info, "digits", None))
+                                _SYMBOL_SPEC_CACHE[mt5_sym] = spec
+                        raw_ticks[app_sym] = (mt5_sym, spec, mt5.symbol_info_tick(mt5_sym))
+                    except Exception:
+                        raw_ticks[app_sym] = (mt5_sym, None, None)
+
+            # 4. Format and cache outside mutex
+            for app_sym, (mt5_sym, spec, tick) in raw_ticks.items():
+                if not spec or not tick:
+                    with CACHE_LOCK:
+                        cached_entry = _TICK_CACHE.get(app_sym)
+                        if cached_entry and isinstance(cached_entry[1], dict) and cached_entry[1].get("ok"):
+                            stale_tick = dict(cached_entry[1])
+                            stale_tick["stale"] = True
+                            ticks[app_sym] = stale_tick
+                            continue
+                    ticks[app_sym] = {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {mt5_sym}", "app_symbol": app_sym, "symbol": mt5_sym}
+                    continue
+
+                point, digits = spec
+                bid = float(getattr(tick, "bid", 0.0) or 0.0)
+                ask = float(getattr(tick, "ask", 0.0) or 0.0)
+                res = {
+                    "ok": True,
+                    "status": "tick",
+                    "app_symbol": app_sym,
+                    "symbol": mt5_sym,
+                    "bid": bid,
+                    "ask": ask,
+                    "last": float(getattr(tick, "last", 0.0) or 0.0),
+                    "time": getattr(tick, "time", None),
+                    "time_msc": getattr(tick, "time_msc", None),
+                    "point": point,
+                    "digits": digits,
+                    "spread_points": ((ask - bid) / point) if point else None,
+                }
+                with CACHE_LOCK:
+                    _TICK_CACHE[app_sym] = (now_mono, res)
+                    if len(_TICK_CACHE) > 200:
+                        oldest_k = min(_TICK_CACHE.keys(), key=lambda k: _TICK_CACHE[k][0])
+                        _TICK_CACHE.pop(oldest_k, None)
+                ticks[app_sym] = res
+
     ok_count = sum(1 for t in ticks.values() if t.get("ok"))
     return {
         "ok": ok_count > 0,

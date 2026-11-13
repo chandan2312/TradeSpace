@@ -920,22 +920,38 @@ export default function Dashboard() {
     let dead = false;
     let sock;
     let pingTimer;
+    let lastMessageTime = Date.now();
     const connect = () => {
       if (dead) return;
       sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
       wsRef.current = sock;
       sock.onopen = () => {
         setConnected(true);
-        sock.send(JSON.stringify({ type: "subscribe", symbols: symbolsRef.current }));
+        lastMessageTime = Date.now();
+        const activeSymbols = symbolsRef.current || [];
+        const chartSymbols = panes.map(p => p.symbol).filter(Boolean);
+        sock.send(JSON.stringify({
+          type: "subscribe",
+          symbols: activeSymbols,
+          chartSymbols: chartSymbols,
+        }));
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("ts_ws_reconnected"));
         }
         clearInterval(pingTimer);
         pingTimer = setInterval(() => {
           if (sock.readyState === WebSocket.OPEN) {
+            const now = Date.now();
+            // Client-side zombie connection watchdog:
+            // If no message/pong received for 30s across proxy/tunnel, close and force clean reconnect
+            if (now - lastMessageTime > 30000) {
+              console.warn("[Dashboard WS] Silent zombie connection detected (>30s silence), reconnecting...");
+              try { sock.close(); } catch {}
+              return;
+            }
             try { sock.send(JSON.stringify({ type: "ping" })); } catch {}
           }
-        }, 15000);
+        }, 10000);
       };
       sock.onclose = () => {
         clearInterval(pingTimer);
@@ -946,7 +962,14 @@ export default function Dashboard() {
         try { sock.close(); } catch {}
       };
       sock.onmessage = (ev) => {
-        const msg = JSON.parse(ev.data);
+        let msg;
+        try {
+          msg = JSON.parse(ev.data);
+        } catch {
+          return;
+        }
+        lastMessageTime = Date.now();
+        if (msg.type === "pong") return;
         if (msg.type === "ticks") {
           setTicks((prev) => {
             const nextTicks = { ...prev };

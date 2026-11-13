@@ -788,6 +788,17 @@ export default function ChartPanel({
         finalBars = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
       }
 
+      // Stale regression guard: Never overwrite newer live bars with older stale/offline bars
+      if ((data?.stale || data?.offline) && hasExistingBars) {
+        const currentBars = (barsRef.current && barsRef.current.length > 0) ? barsRef.current : (cached?.bars || []);
+        const latestExistingTime = currentBars.length > 0 ? currentBars[currentBars.length - 1].time : 0;
+        const latestNewTime = newBars.length > 0 ? newBars[newBars.length - 1].time : 0;
+        if (latestExistingTime > 0 && latestNewTime < latestExistingTime) {
+          console.warn(`[ChartPanel] Suppressed stale candle rollback: current latest=${latestExistingTime}, incoming stale latest=${latestNewTime}`);
+          finalBars = currentBars;
+        }
+      }
+
       barsCache.current.set(key, { at: Date.now(), bars: finalBars });
       lastSyncTimeRef.current = Date.now();
       lastClientActiveRef.current = Date.now();
@@ -888,18 +899,18 @@ export default function ChartPanel({
       return;
     }
 
-    // 2. USABLE (< 30m): 0ms INSTANT SWITCH with SILENT BACKGROUND REFRESH.
+    // 2. USABLE (< 5m): 0ms INSTANT SWITCH with SILENT BACKGROUND REFRESH.
     //    Render cached candles immediately so user never sees a spinner or blank screen.
     //    Then silently fetch fresh delta in background without resetting zoom.
-    if (hasBars && cacheAge < 30 * 60_000) {
+    if (hasBars && cacheAge < 5 * 60_000) {
       applyBars(cached.bars, false, key);
       setLoading(false);
       setError(null);
-      loadBars(key, currentGen, true, false, 5);
+      loadBars(key, currentGen, true, false, 10);
       return;
     }
 
-    // 3. COLD CACHE: clear stale candles from prior symbol, show clean spinner, and load initial bars
+    // 3. COLD / STALE CACHE (>= 5m): clear stale candles from prior session, show clean loading state, and load fresh bars
     lastBarRef.current = null;
     barsRef.current = [];
     setLoading(true);
