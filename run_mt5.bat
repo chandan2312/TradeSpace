@@ -91,12 +91,14 @@ if errorlevel 1 (
 echo.
 echo ============================================================
 echo [Auto-Heal] Initializing clean state before starting...
+if not exist "%~dp0logs" mkdir "%~dp0logs"
 call :auto_heal_cleanse
 echo ============================================================
 
 :mt5_supervise_loop
 echo.
 echo [Supervisor] Launching mt5_server.py on http://0.0.0.0:8765 ...
+echo [Supervisor] Logs streaming to "%~dp0logs\mt5_bridge.log" ...
 echo [Supervisor] Active health sentinel monitoring http://127.0.0.1:8765/health every 5s
 echo ============================================================
 
@@ -113,7 +115,25 @@ set /a HEARTBEAT_TICKS=0
 :health_sentinel_loop
 ping 127.0.0.1 -n 6 >nul
 
-REM Check 1: Is Port 8765 currently listening? (Require 3 consecutive misses to prevent false positives)
+REM Fast probe HTTP /health with 4s timeout (negligible CPU overhead)
+curl.exe -s -m 4 http://127.0.0.1:8765/health >nul 2>&1
+if not errorlevel 1 (
+    REM Fast path: Server is active and healthy
+    set /a FAIL_STREAK=0
+    set /a PORT_FAIL_STREAK=0
+    set /a HEARTBEAT_TICKS+=1
+    if !HEARTBEAT_TICKS! geq 12 (
+        echo [Watchdog] MT5 Bridge Server active and healthy [Port 8765 responding].
+        set /a HEARTBEAT_TICKS=0
+    )
+    goto :health_sentinel_loop
+)
+
+REM Probe failed: Investigate whether server exited or is unresponsive
+set /a FAIL_STREAK+=1
+echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/15]...
+
+REM Check if Port 8765 is listening
 netstat -aon | findstr ":8765" | findstr "LISTENING" >nul
 if errorlevel 1 (
     set /a PORT_FAIL_STREAK+=1
@@ -128,26 +148,12 @@ if errorlevel 1 (
     set /a PORT_FAIL_STREAK=0
 )
 
-REM Check 2: Probe HTTP /health with 8s timeout using built-in curl.exe
-curl.exe -s -m 8 http://127.0.0.1:8765/health >nul 2>&1
-if errorlevel 1 (
-    set /a FAIL_STREAK+=1
-    echo [Watchdog] Health probe failed [Streak: !FAIL_STREAK!/15]...
-    if !FAIL_STREAK! geq 15 (
-        echo.
-        echo ============================================================
-        echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [15 consecutive failed probes, ~90s].
-        echo [CRITICAL AUTO-HEAL] Forcibly terminating clogged process and reviving...
-        goto :recover_and_restart
-    )
-) else (
-    set /a FAIL_STREAK=0
-)
-
-set /a HEARTBEAT_TICKS+=1
-if !HEARTBEAT_TICKS! geq 12 (
-    echo [Watchdog] MT5 Bridge Server active and healthy [Port 8765 responding].
-    set /a HEARTBEAT_TICKS=0
+if !FAIL_STREAK! geq 15 (
+    echo.
+    echo ============================================================
+    echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [15 consecutive failed probes, ~90s].
+    echo [CRITICAL AUTO-HEAL] Forcibly terminating clogged process and reviving...
+    goto :recover_and_restart
 )
 
 goto :health_sentinel_loop

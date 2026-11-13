@@ -93,6 +93,75 @@ def _load_env_file():
 
 _load_env_file()
 
+
+class TeeLogger:
+    """Tee all console output to logs/mt5_bridge.log with automatic 5MB rotation."""
+    def __init__(self, stream, log_path, max_bytes=5 * 1024 * 1024):
+        self.stream = stream
+        self.log_path = log_path
+        self.max_bytes = max_bytes
+        self._lock = threading.Lock()
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+        except Exception:
+            pass
+
+    def write(self, data):
+        try:
+            self.stream.write(data)
+            self.stream.flush()
+        except Exception:
+            pass
+        if not data:
+            return
+        with self._lock:
+            try:
+                if os.path.exists(self.log_path) and os.path.getsize(self.log_path) > self.max_bytes:
+                    bak = self.log_path + ".old"
+                    if os.path.exists(bak):
+                        try:
+                            os.remove(bak)
+                        except Exception:
+                            pass
+                    try:
+                        os.rename(self.log_path, bak)
+                    except Exception:
+                        pass
+                with open(self.log_path, "a", encoding="utf-8", errors="replace") as f:
+                    f.write(data)
+            except Exception:
+                pass
+
+    def flush(self):
+        try:
+            self.stream.flush()
+        except Exception:
+            pass
+
+
+_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "mt5_bridge.log")
+try:
+    sys.stdout = TeeLogger(sys.stdout, _LOG_PATH)
+    sys.stderr = TeeLogger(sys.stderr, _LOG_PATH)
+except Exception:
+    pass
+
+
+def trim_working_set():
+    """Flush working set memory back to OS on 64-bit Windows. Safe no-op on other platforms."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.SetProcessWorkingSetSize.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t]
+        kernel32.SetProcessWorkingSetSize.restype = ctypes.c_int
+        size_t_neg1 = ctypes.c_size_t(-1).value
+        kernel32.SetProcessWorkingSetSize(kernel32.GetCurrentProcess(), size_t_neg1, size_t_neg1)
+    except Exception:
+        pass
+
+
 TOKEN = os.getenv("MT5_TOKEN") or os.getenv("NEXUS_MT5_REMOTE_TOKEN") or ""
 LOCK = threading.RLock()
 CACHE_LOCK = threading.Lock()
@@ -109,6 +178,9 @@ _TICK_CACHE = {}
 _SYMBOLS_CACHE = None
 _IN_FLIGHT_RATES = {}
 _SELECTED_SYMBOLS = set()
+_SYMBOL_SPEC_CACHE: dict[str, tuple[float, int | None]] = {}
+_LAST_MT5_CHECK = 0.0
+_LAST_MT5_STATUS: tuple[bool, str] = (False, "uninitialized")
 
 def _tf_cache_ttl(tf_name: str) -> float:
     t = str(tf_name).upper()
@@ -171,7 +243,7 @@ def durable_write(handler, payload):
     try:
         expected_account = payload.get("account_login")
         if expected_account is not None:
-            ok, msg = ensure_mt5()
+            ok, msg = ensure_mt5(force=True)
             with LOCK:
                 account = mt5.account_info() if ok else None
             result = {"ok": False, "status": "account-mismatch", "message": "Broker account changed or unavailable"} if not account or str(account.login) != str(expected_account) else handler(payload)
@@ -263,23 +335,43 @@ TF_MAP = {
 _LAST_INIT_ATTEMPT = 0.0
 
 
-def ensure_mt5() -> tuple[bool, str]:
-    """Ensure connection to the MT5 terminal is active."""
-    global _LAST_INIT_ATTEMPT
+def mark_mt5_disconnected():
+    """Invalidate MT5 health cache so subsequent requests trigger re-check/re-connect."""
+    global _LAST_MT5_STATUS
+    _LAST_MT5_STATUS = (False, "disconnected")
+
+
+def ensure_mt5(force: bool = False) -> tuple[bool, str]:
+    """Ensure connection to the MT5 terminal is active.
+    Caches verified connection status for 3.0s to eliminate named-pipe IPC lock thrashing.
+    """
+    global _LAST_INIT_ATTEMPT, _LAST_MT5_CHECK, _LAST_MT5_STATUS
     if mt5 is None:
         return False, "MetaTrader5 package not installed (Windows only)"
+
+    now = time.monotonic()
+    # Fast path: Return cached healthy status in 0ms without acquiring mutex
+    if not force and _LAST_MT5_STATUS[0] and (now - _LAST_MT5_CHECK < 3.0):
+        return _LAST_MT5_STATUS
+
     with LOCK:
+        # Re-check under mutex in case another thread already refreshed status
+        now = time.monotonic()
+        if not force and _LAST_MT5_STATUS[0] and (now - _LAST_MT5_CHECK < 3.0):
+            return _LAST_MT5_STATUS
+
         try:
             info = mt5.terminal_info()
             if info is not None:
                 # Terminal IPC is connected. Now verify if account is authorized.
                 acc = mt5.account_info()
                 if acc is not None:
+                    _LAST_MT5_CHECK = now
+                    _LAST_MT5_STATUS = (True, "ok")
                     return True, "ok"
 
                 # Terminal is running, but account is NOT authorized or logged in!
                 mt5_login = os.getenv("MT5_LOGIN")
-                now = time.monotonic()
                 if mt5_login and (now - _LAST_INIT_ATTEMPT >= 5.0):
                     _LAST_INIT_ATTEMPT = now
                     login_kw = {"login": int(mt5_login)}
@@ -292,16 +384,20 @@ def ensure_mt5() -> tuple[bool, str]:
                     try:
                         if mt5.login(**login_kw):
                             print(f"[mt5] auto-login succeeded for account {mt5_login}", flush=True)
+                            _LAST_MT5_CHECK = now
+                            _LAST_MT5_STATUS = (True, "ok")
                             return True, "ok"
                         err = mt5.last_error()
-                        return False, f"login to {mt5_login} failed: {err}"
+                        _LAST_MT5_STATUS = (False, f"login to {mt5_login} failed: {err}")
+                        return _LAST_MT5_STATUS
                     except Exception as lex:
-                        return False, f"login exception: {lex}"
+                        _LAST_MT5_STATUS = (False, f"login exception: {lex}")
+                        return _LAST_MT5_STATUS
 
-                return False, "Terminal: Authorization failed (no account logged in - set MT5_LOGIN in .env or login in terminal64.exe)"
+                _LAST_MT5_STATUS = (False, "Terminal: Authorization failed (no account logged in - set MT5_LOGIN in .env or login in terminal64.exe)")
+                return _LAST_MT5_STATUS
 
             # info is None: Python IPC is disconnected from terminal64.exe
-            now = time.monotonic()
             if now - _LAST_INIT_ATTEMPT < 5.0:
                 return False, "MT5 initializing (cooldown)"
             _LAST_INIT_ATTEMPT = now
@@ -331,10 +427,16 @@ def ensure_mt5() -> tuple[bool, str]:
             init_ok = mt5.initialize(**init_kwargs) if init_kwargs else mt5.initialize()
             if not init_ok:
                 err = mt5.last_error()
-                return False, f"initialize failed: {err}"
+                _LAST_MT5_STATUS = (False, f"initialize failed: {err}")
+                return _LAST_MT5_STATUS
+
+            _SYMBOL_SPEC_CACHE.clear()
+            _LAST_MT5_CHECK = now
+            _LAST_MT5_STATUS = (True, "ok")
             return True, "ok"
         except Exception as exc:
-            return False, f"mt5 exception: {exc}"
+            _LAST_MT5_STATUS = (False, f"mt5 exception: {exc}")
+            return _LAST_MT5_STATUS
 
 
 _RESOLVED_CACHE: dict[str, str | None] = {}
@@ -451,13 +553,22 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
     symbol = resolve_symbol(app_symbol, payload)
     if not symbol:
         return {"ok": False, "status": "symbol-missing", "message": f"no MT5 symbol for {app_symbol}", "app_symbol": app_symbol}
+
     with LOCK:
         try:
-            info = mt5.symbol_info(symbol)
+            # Query static symbol specifications (point, digits) only once per symbol lifetime
+            spec = _SYMBOL_SPEC_CACHE.get(symbol)
+            if spec is None:
+                info = mt5.symbol_info(symbol)
+                if info:
+                    spec = (float(getattr(info, "point", 0.0) or 0.0), getattr(info, "digits", None))
+                    _SYMBOL_SPEC_CACHE[symbol] = spec
             tick = mt5.symbol_info_tick(symbol)
         except Exception as exc:
+            mark_mt5_disconnected()
             return {"ok": False, "status": "symbol-error", "message": f"tick exception: {exc}", "app_symbol": app_symbol, "symbol": symbol}
-    if not info or not tick:
+
+    if not spec or not tick:
         with CACHE_LOCK:
             cached_entry = _TICK_CACHE.get(app_upper)
             if cached_entry and isinstance(cached_entry[1], dict) and cached_entry[1].get("ok"):
@@ -465,7 +576,8 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
                 stale_tick["stale"] = True
                 return stale_tick
         return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
-    point = float(getattr(info, "point", 0.0) or 0.0)
+
+    point, digits = spec
     bid = float(getattr(tick, "bid", 0.0) or 0.0)
     ask = float(getattr(tick, "ask", 0.0) or 0.0)
     res = {
@@ -479,7 +591,7 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
         "time": getattr(tick, "time", None),
         "time_msc": getattr(tick, "time_msc", None),
         "point": point,
-        "digits": getattr(info, "digits", None),
+        "digits": digits,
         "spread_points": ((ask - bid) / point) if point else None,
     }
     with CACHE_LOCK:
@@ -1497,11 +1609,20 @@ class RobustThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     request_queue_size = 64
+    timeout = 10.0
+
+    def get_request(self):
+        sock, addr = super().get_request()
+        try:
+            sock.settimeout(10.0)
+        except Exception:
+            pass
+        return sock, addr
 
     def handle_error(self, request, client_address):
         exc_type, exc_val, _ = sys.exc_info()
-        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-            return  # Suppress normal client disconnection / abort
+        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, socket.timeout):
+            return  # Suppress normal client disconnection / abort / timeout
         if exc_type and issubclass(exc_type, socket.error):
             if getattr(exc_val, "winerror", None) in (10054, 10053, 10060, 10058):
                 return  # Suppress Windows socket connection resets
@@ -1513,11 +1634,12 @@ class RobustThreadingHTTPServer(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
+    timeout = 10.0
 
     def handle_one_request(self):
         try:
             super().handle_one_request()
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, socket.timeout):
             self.close_connection = True
         except socket.error as e:
             if getattr(e, "winerror", None) in (10054, 10053, 10060):
@@ -1528,7 +1650,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle(self):
         try:
             super().handle()
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, socket.timeout):
             self.close_connection = True
         except socket.error as e:
             if getattr(e, "winerror", None) in (10054, 10053, 10060):
@@ -1548,7 +1670,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
             self.wfile.write(body)
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, socket.timeout):
             pass
         except socket.error as e:
             if getattr(e, "winerror", None) in (10054, 10053, 10060):
@@ -1726,11 +1848,7 @@ def main():
 
                 gc.collect()
                 if gc_counter % 2 == 0:  # Every 60 seconds flush unreferenced memory back to OS
-                    try:
-                        import ctypes
-                        ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1, -1)
-                    except Exception:
-                        pass
+                    trim_working_set()
             except Exception:
                 pass
 
@@ -1751,11 +1869,7 @@ def main():
                             _TICK_CACHE.clear()
                         import gc
                         gc.collect()
-                        try:
-                            import ctypes
-                            ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1, -1)
-                        except Exception:
-                            pass
+                        trim_working_set()
                 except Exception:
                     pass
             except Exception:
@@ -1763,17 +1877,27 @@ def main():
 
     threading.Thread(target=_health_watchdog, daemon=True).start()
 
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n[bridge] shutting down...", flush=True)
-    finally:
-        if mt5:
-            with LOCK:
-                try:
-                    mt5.shutdown()
-                except Exception:
-                    pass
+    trim_working_set()
+
+    _SHUTDOWN_REQUESTED = False
+    while not _SHUTDOWN_REQUESTED:
+        try:
+            server.serve_forever(poll_interval=0.5)
+        except KeyboardInterrupt:
+            _SHUTDOWN_REQUESTED = True
+            print("\n[bridge] shutting down on user interrupt...", flush=True)
+            break
+        except Exception as exc:
+            # Handle transient socket/OS errors without dying
+            print(f"[bridge] serve_forever recovered from transient error: {exc}", flush=True)
+            time.sleep(0.5)
+
+    if mt5:
+        with LOCK:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
