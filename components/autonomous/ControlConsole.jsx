@@ -18,6 +18,7 @@ import {
   Activity,
   AlertCircle,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import BrokerSymbolMapping from "../BrokerSymbolMapping";
 
@@ -253,6 +254,15 @@ export default function ControlConsole({
       }
       return merged;
     })(),
+    fastScheduleConfig: {
+      enabled: true,
+      fastIntervalMinutes: 5,
+      standardIntervalMinutes: 15,
+      asianPeakHours: 2,
+      londonPeakHours: 2,
+      newyorkPeakHours: 3,
+      ...(config.fastScheduleConfig || {}),
+    },
   }));
 
   const [symbolSearch, setSymbolSearch] = useState("");
@@ -1520,6 +1530,138 @@ export default function ControlConsole({
                     </div>
                   </div>
                 )}
+                {/* Adaptive Scan Cadence Controls (Fast 5M on Peak / Relaxed 15M on Off-Peak) */}
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--panel-2)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)", display: "flex", alignItems: "center", gap: 6 }}>
+                        <Zap size={14} style={{ color: "var(--accent)" }} />
+                        Dynamic Adaptive Scan &amp; Bias Cadence (Peak vs Off-Peak)
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                        Accelerates bias computation &amp; autonomous scanning to Fast (5M) during major session openings, relaxing to Standard (15M) during lull hours to minimize server CPU &amp; RAM.
+                      </div>
+                    </div>
+
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.fastScheduleConfig?.enabled !== false}
+                        onChange={(e) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            fastScheduleConfig: {
+                              ...(prev.fastScheduleConfig || {}),
+                              enabled: e.target.checked,
+                            },
+                          }));
+                        }}
+                      />
+                      Enable Adaptive Cadence
+                    </label>
+                  </div>
+
+                  {form.fastScheduleConfig?.enabled !== false && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginTop: 4 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 3 }}>Fast Peak Interval (mins)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={form.fastScheduleConfig?.fastIntervalMinutes ?? 5}
+                          onChange={(e) => {
+                            const val = Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 5));
+                            setForm((prev) => ({
+                              ...prev,
+                              fastScheduleConfig: { ...(prev.fastScheduleConfig || {}), fastIntervalMinutes: val },
+                            }));
+                          }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 3 }}>Standard Off-Peak Interval (mins)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={form.fastScheduleConfig?.standardIntervalMinutes ?? 15}
+                          onChange={(e) => {
+                            const val = Math.max(1, Math.min(120, parseInt(e.target.value, 10) || 15));
+                            setForm((prev) => ({
+                              ...prev,
+                              fastScheduleConfig: { ...(prev.fastScheduleConfig || {}), standardIntervalMinutes: val },
+                            }));
+                          }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 3 }}>Asian Peak Window (hours)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={6}
+                          value={form.fastScheduleConfig?.asianPeakHours ?? 2}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(6, parseInt(e.target.value, 10) || 0));
+                            setForm((prev) => ({
+                              ...prev,
+                              fastScheduleConfig: { ...(prev.fastScheduleConfig || {}), asianPeakHours: val },
+                            }));
+                          }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 3 }}>London Peak Window (hours)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={6}
+                          value={form.fastScheduleConfig?.londonPeakHours ?? 2}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(6, parseInt(e.target.value, 10) || 0));
+                            setForm((prev) => ({
+                              ...prev,
+                              fastScheduleConfig: { ...(prev.fastScheduleConfig || {}), londonPeakHours: val },
+                            }));
+                          }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 3 }}>New York Peak Window (hours)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={8}
+                          value={form.fastScheduleConfig?.newyorkPeakHours ?? 3}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(8, parseInt(e.target.value, 10) || 0));
+                            setForm((prev) => ({
+                              ...prev,
+                              fastScheduleConfig: { ...(prev.fastScheduleConfig || {}), newyorkPeakHours: val },
+                            }));
+                          }}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ color: "var(--muted)", fontSize: 10 }}>
                   Times are in Europe/Athens (EET/EEST = UTC+2 in winter / UTC+3 in summer). Changes immediately adjust radar scan windows and execution filters when saved.
                 </div>

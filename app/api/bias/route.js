@@ -6,13 +6,15 @@ import { getNews } from "@/lib/bias/news";
 import { confirmSetups } from "@/lib/bias/group";
 import { json } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
+import { getConfig } from "@/lib/autonomous/store";
+import { isTradingPermittedNow } from "@/lib/autonomous/timeslots";
 
 export const dynamic = "force-dynamic";
 
 const g = globalThis;
 if (!g._tsBiasOut) g._tsBiasOut = new Map();
 const CACHE_MS = 60_000;
-const MAX_SYMBOLS = 16;
+const MAX_SYMBOLS = 24;
 
 const FULL_MARKET_SYMBOLS = [
   "EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDJPY", "USDCHF", "USDCAD",
@@ -24,11 +26,25 @@ const FULL_MARKET_SYMBOLS = [
 
 export async function GET(req) {
   try {
+    const isForce = req.nextUrl.searchParams.get("force") === "1" || req.nextUrl.searchParams.get("refresh") === "1";
     const rawSyms = req.nextUrl.searchParams.get("symbols") || "";
+
+    // Fast-path: If unified lifecycle bias cache exists and is fresh (< 15m), return instantly in 0ms!
+    const sharedCache = g._tsSharedBiasCache;
+    if (sharedCache?.data && !isForce && (Date.now() - (sharedCache.at || 0) < 15 * 60_000)) {
+      if (rawSyms === "ALL" || !rawSyms) {
+        return json(sharedCache.data);
+      }
+      const requested = new Set(rawSyms.split(",").map(s => toCanonicalSymbol(s.trim())).filter(Boolean));
+      const filteredSymbols = sharedCache.data.symbols.filter(s => requested.has(s.symbol || s.canonical));
+      return json({
+        ...sharedCache.data,
+        symbols: filteredSymbols,
+      });
+    }
+
     let symbols = [];
-    
     if (rawSyms === "ALL") {
-      // full market scan + whatever the user watches (so no watchlist symbol vanishes)
       const lists = await allWatchlists().catch(() => []);
       symbols = [...new Set([...FULL_MARKET_SYMBOLS, ...lists.flatMap((w) => w.symbols || [])])];
     } else {
@@ -44,7 +60,40 @@ export async function GET(req) {
 
     const key = symbols.slice().sort().join(",");
     const hit = g._tsBiasOut.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return json(hit.body);
+    if (!isForce && hit && Date.now() - hit.at < CACHE_MS) return json(hit.body);
+
+    const cfg = await getConfig().catch(() => ({}));
+    const bypassSessionFilter = cfg.enforceSymbolSessions === false || cfg.forceAllSymbols === true;
+    const now = Date.now();
+
+    // Session gating: identify in-session symbols and their SMT correlation partners
+    const inSessionSymbols = new Set();
+    const sessionChecks = new Map();
+
+    for (const sym of symbols) {
+      if (bypassSessionFilter) {
+        inSessionSymbols.add(sym);
+        continue;
+      }
+      const check = isTradingPermittedNow(new Date(now), cfg, sym);
+      sessionChecks.set(sym, check);
+      if (check.permitted) {
+        inSessionSymbols.add(sym);
+      }
+    }
+
+    const correlatedPartnersNeeded = new Set();
+    for (const inSessionSym of inSessionSymbols) {
+      for (const p of SMT_PAIRS[inSessionSym] || []) {
+        correlatedPartnersNeeded.add(toCanonicalSymbol(p));
+      }
+    }
+
+    // Active symbols to fetch and calculate: ONLY in-session symbols and their required SMT partners
+    const activeSymbols = new Set([
+      ...inSessionSymbols,
+      ...[...correlatedPartnersNeeded].filter(s => symbols.includes(s)),
+    ]);
 
     const [news, ctx] = await Promise.all([
       getNews().catch(() => []),
@@ -53,20 +102,24 @@ export async function GET(req) {
 
     const framesMap = {};
     const errors = {};
-    
-    // We fetch in chunks of 2 to avoid overwhelming the bridge lock if ALL is requested
+    const activeList = Array.from(activeSymbols);
+
+    // Fetch frames in paced sequential chunks of 2 with 60ms pause
     const CHUNK_SIZE = 2;
-    for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-      const chunk = symbols.slice(i, i + CHUNK_SIZE);
+    for (let i = 0; i < activeList.length; i += CHUNK_SIZE) {
+      const chunk = activeList.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map(async (sym) => {
         try {
           const frames = await getFrames(sym);
-          if (!frames.M15 && !frames.H1) errors[sym] = "no data from bridge";
+          if (!frames.M15 && !frames.H1 && !frames.H4) errors[sym] = "no data from bridge";
           else framesMap[sym] = frames;
         } catch (err) {
           errors[sym] = err.message;
         }
       }));
+      if (i + CHUNK_SIZE < activeList.length) {
+        await new Promise(r => setTimeout(r, 60));
+      }
     }
 
     const have = new Set(Object.keys(framesMap));
@@ -75,8 +128,7 @@ export async function GET(req) {
       const base = sym.replace(/[._-].*$/, "").replace(/m$/, "");
       for (const p of SMT_PAIRS[base] || []) if (!have.has(p)) wanted.add(p);
     }
-    // group partners/basket are fetched lazily inside confirmSetups (setups only)
-    for (const p of [...wanted].slice(0, 6)) {
+    for (const p of [...wanted].slice(0, 4)) {
       try {
         const frames = await getFrames(p);
         if (frames.M15) framesMap[p] = frames;
@@ -85,28 +137,50 @@ export async function GET(req) {
 
     const results = [];
     for (const sym of symbols) {
-      if (!framesMap[sym]) continue;
-      results.push(computeSymbolBias(sym, framesMap[sym], {
-        news,
-        risk: ctx.risk,
-        partnerFrames: framesMap,
-      }));
+      if (activeSymbols.has(sym)) {
+        if (!framesMap[sym]) continue;
+        results.push(computeSymbolBias(sym, framesMap[sym], {
+          news,
+          risk: ctx.risk,
+          partnerFrames: framesMap,
+        }));
+      } else {
+        // Out of session symbol: clean lightweight off-session entry (0 MT5 data requests, 0 heavy math)
+        const check = sessionChecks.get(sym) || isTradingPermittedNow(new Date(now), cfg, sym);
+        results.push({
+          symbol: sym,
+          canonical: sym,
+          score: 0,
+          verdict: "OFF_SESSION",
+          phase: "off_session",
+          action: "STAND_ASIDE",
+          isOffSession: true,
+          session: check.slot?.name || "Off-Session",
+          reason: check.reason || "Outside active trading hours.",
+          drives: [],
+          dampeners: [{ tag: "OFF_SESSION", text: check.reason || "Outside active hours" }],
+          pillars: { htf: 0, intraday: 0, liquidity: 0, context: 0 },
+        });
+      }
     }
 
-    await confirmSetups(results, framesMap); // group check BEFORE aggregate (adjusts dampMult)
+    await confirmSetups(results.filter(r => !r.isOffSession), framesMap).catch(() => {});
     const { categories, currencyStrength } = aggregate(results);
     
     const body = {
       ok: true,
       at: Date.now(),
-      session: results[0]?.session || null,
+      session: results.find(r => !r.isOffSession)?.session || null,
       risk: ctx.risk,
       symbols: results,
       categories,
       currencyStrength,
       errors: Object.keys(errors).length ? errors : undefined,
     };
+
     g._tsBiasOut.set(key, { at: Date.now(), body });
+    g._tsSharedBiasCache = { at: Date.now(), data: body };
+
     return json(body);
   } catch (err) {
     return json({ ok: false, error: err.message }, 502);
