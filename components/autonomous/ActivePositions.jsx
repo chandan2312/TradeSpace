@@ -259,11 +259,7 @@ function StandaloneDefaultTradeCard({
     trade.scenario?.id === "day" ||
     trade.scenario?.horizon === "4H-15M" ||
     trade.horizonCode === 2;
-  const horizonLabel = isSwing
-    ? "1D-1H Swing"
-    : isDay
-    ? "4H-15M Day"
-    : "30M-5M Scalp";
+  const horizonLabel = "4H-15M Day";
 
   return (
     <article
@@ -804,11 +800,7 @@ function StandalonePropTradeCard({
     trade.scenario?.id === "day" ||
     trade.scenario?.horizon === "4H-15M" ||
     trade.horizonCode === 2;
-  const horizonLabel = isSwing
-    ? "1D-1H Swing"
-    : isDay
-    ? "4H-15M Day"
-    : "30M-5M Scalp";
+  const horizonLabel = "4H-15M Day";
 
   return (
     <article

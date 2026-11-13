@@ -32,13 +32,7 @@ function RadarIdeaChart({
   const pairRef = useRef(pair);
   pairRef.current = pair;
 
-  const initialTf =
-    defaultTf ||
-    (pair?.horizon === "swing" || pair?.scenario?.id === "swing"
-      ? "1h"
-      : pair?.horizon === "scalp" || pair?.scenario?.id === "scalp"
-      ? "5m"
-      : "15m");
+  const initialTf = defaultTf || "15m";
 
   const [selectedTf, setSelectedTf] = useState(initialTf);
   const [loading, setLoading] = useState(true);

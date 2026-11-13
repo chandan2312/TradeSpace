@@ -63,12 +63,7 @@ export default function BrainInspectorModal({ pair, onClose, ticks = {}, config 
     (typeof thesisRaw === "object" ? thesisRaw?.name || thesisRaw?.catalyst || thesisRaw?.label : null) ||
     "HTF Structural Expansion";
 
-  const horizonKey =
-    pair.scenario?.id === "swing" || pair.horizon === "swing"
-      ? "SWING"
-      : pair.scenario?.id === "scalp" || pair.horizon === "scalp"
-      ? "SCALP"
-      : "DAY";
+  const horizonKey = "DAY";
 
   const horizonGate = brain.horizons?.[horizonKey]?.gatekeeper;
   const gatekeeperVeto =

@@ -497,35 +497,13 @@ function RadarCardComponent({
               fontWeight: 800,
               padding: "1px 5px",
               borderRadius: 3,
-              background:
-                pair.horizon === "swing" || pair.scenario?.id === "swing"
-                  ? "rgba(192, 132, 252, 0.15)"
-                  : pair.horizon === "scalp" || pair.scenario?.id === "scalp"
-                  ? "rgba(251, 191, 36, 0.15)"
-                  : "rgba(56, 189, 248, 0.15)",
-              color:
-                pair.horizon === "swing" || pair.scenario?.id === "swing"
-                  ? "#c084fc"
-                  : pair.horizon === "scalp" || pair.scenario?.id === "scalp"
-                  ? "#fbbf24"
-                  : "#38bdf8",
-              border: `1px solid ${
-                pair.horizon === "swing" || pair.scenario?.id === "swing"
-                  ? "rgba(192, 132, 252, 0.3)"
-                  : pair.horizon === "scalp" || pair.scenario?.id === "scalp"
-                  ? "rgba(251, 191, 36, 0.3)"
-                  : "rgba(56, 189, 248, 0.3)"
-              }`,
+              background: "rgba(56, 189, 248, 0.15)",
+              color: "#38bdf8",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
               fontFamily: "monospace",
             }}
           >
-            {pair.horizonBadge ||
-              pair.scenario?.badge ||
-              (pair.horizon === "swing"
-                ? "1D-1H"
-                : pair.horizon === "scalp"
-                ? "30M-5M"
-                : "4H-15M")}
+            {pair.horizonBadge || pair.scenario?.badge || "4H-15M"}
           </span>
         </div>
 

@@ -106,10 +106,7 @@ const DIRECTION_ICONS = {
 };
 
 const HORIZON_FILTERS = [
-  ["all", "All Horizons"],
-  ["day", "Day (4H-15M)"],
-  ["swing", "Swing (1D-1H)"],
-  ["scalp", "Scalp (30M-5M)"],
+  ["all", "Day Trade (4H-15M)"],
 ];
 
 const STATUS_FILTERS = [
@@ -512,7 +509,8 @@ export default function PairRadar({
           </div>
         </div>
 
-        {/* Row 1: Horizon Selector Tabs with Counts */}
+        {/* Row 1: Horizon Selector Tabs (Hidden when single Day horizon) */}
+        {HORIZON_FILTERS.length > 1 && (
         <div
           style={{
             display: "flex",
@@ -590,6 +588,7 @@ export default function PairRadar({
             );
           })}
         </div>
+        )}
 
         {/* Row 2: Status & Quality Filter Pills + Direction + Reset */}
         <div

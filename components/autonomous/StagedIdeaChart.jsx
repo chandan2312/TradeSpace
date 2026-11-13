@@ -29,13 +29,7 @@ export default function StagedIdeaChart({
   const tradeRef = useRef(trade);
   tradeRef.current = trade;
 
-  const initialTf =
-    defaultTf ||
-    (trade?.horizon === "swing" || trade?.scenario?.id === "swing"
-      ? "1h"
-      : trade?.horizon === "scalp" || trade?.scenario?.id === "scalp"
-      ? "5m"
-      : "15m");
+  const initialTf = defaultTf || "15m";
 
   const [selectedTf, setSelectedTf] = useState(initialTf);
   const [loading, setLoading] = useState(true);
