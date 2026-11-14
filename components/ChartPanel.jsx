@@ -18,7 +18,7 @@ import {
   resolveRadarTradeIdeaPricing,
 } from "../lib/autonomous/tradeDrawing.js";
 import { normalizeCandles } from "../lib/candleNormalization.js";
-import { getEetTime, getTradingDateString, getEetOffsetSec, getTradingDayKey } from "../lib/time.js";
+import { getEetTime, getTradingDateString, getEetOffsetSec, getTradingDayKey, getEetDayOfWeek } from "../lib/time.js";
 import { BiasEnginePrimitive } from "../lib/bias/primitive.js";
 
 const TF_SEC = {
@@ -271,6 +271,7 @@ export default function ChartPanel({
   const [bridgeOfflineInfo, setBridgeOfflineInfo] = useState(null);
   const [autoReconnectCountdown, setAutoReconnectCountdown] = useState(null);
   const [isAutoReconnecting, setIsAutoReconnecting] = useState(false);
+  const [staleFeedInfo, setStaleFeedInfo] = useState(null); // { isStale: bool, lagBars, lagSec, lastBarTime, expectedBarTime }
   const [hoverBtn, setHoverBtn] = useState(null); // {y, price}
   const [isHoveringBtn, setIsHoveringBtn] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);   // {x, y, price, nearAlerts:[]}
@@ -897,28 +898,28 @@ export default function ChartPanel({
     const hasBars = Array.isArray(cached?.bars) && cached.bars.length > 0;
 
     // Cache Freshness Tiers:
-    // 1. FRESH (< 60s): 0ms INSTANT SWITCH. Cached bars are fresh; live ticks update the current candle.
-    //    Zero network requests!
-    if (hasBars && cacheAge < 60_000) {
+    // 1. FRESH (< 15s): 0ms INSTANT SWITCH. Cached bars are completely up to date.
+    if (hasBars && cacheAge < 15_000) {
       applyBars(cached.bars, false, key);
       setLoading(false);
       setError(null);
       return;
     }
 
-    // 2. USABLE (< 5m): 0ms INSTANT SWITCH with SILENT BACKGROUND REFRESH.
+    // 2. USABLE (< 5m): 0ms INSTANT SWITCH with IMMEDIATE BACKGROUND DELTA FETCH.
     //    Render cached candles immediately so user never sees a spinner or blank screen.
-    //    Then silently fetch fresh delta in background without resetting zoom.
-    if (hasBars && cacheAge < 5 * 60_000) {
+    //    Then immediately fetch fresh delta (50 bars, forceRefresh=true) in background to catch up
+    //    with any candles formed while viewing other timeframes!
+    if (hasBars && cacheAge < 300_000) {
       applyBars(cached.bars, false, key);
       setLoading(false);
       setError(null);
-      loadBars(key, currentGen, true, false, 10);
+      loadBars(key, currentGen, true, true, 50);
       return;
     }
 
     // 3. COLD / STALE CACHE (>= 5m) or FIRST LOAD:
-    // Non-destructive transition: show smooth loading state and load fresh bars.
+    // Non-destructive transition: show smooth loading state and load fresh bars directly from MT5.
     // NEVER blank the canvas with seriesRef.current.setData([]); atomic applyBars smoothly updates the series!
     lastBarRef.current = null;
     setLoading(true);
@@ -931,7 +932,7 @@ export default function ChartPanel({
       drawingManagerRef.current.redraw();
     }
 
-    loadBars(key, currentGen, false, false);
+    loadBars(key, currentGen, false, true);
 
     return () => {
       fetchGenerationRef.current += 1;
@@ -953,17 +954,18 @@ export default function ChartPanel({
     return () => window.removeEventListener("ts_symbol_mapping_updated", onMappingUpdated);
   }, [symbol, tf, loadBars]);
 
-  const reconcileBackgroundGaps = useCallback((forceRefresh = false, barCount = 5) => {
+  const reconcileBackgroundGaps = useCallback((isExplicitGap = false, forceRefresh = false, barCount = 15) => {
     const key = `${symbol}:${tf}`;
     if (activeFetchKeyRef.current !== key) return;
     const now = Date.now();
-    if (now - lastSyncTimeRef.current < 30_000 && !forceRefresh) return;
+    if (!isExplicitGap && !forceRefresh && now - lastSyncTimeRef.current < 20_000) return;
 
-    // Suppress redundant REST polling when live WebSocket ticks are actively flowing
+    // Suppress redundant periodic polling when live WebSocket ticks are actively flowing,
+    // BUT NEVER suppress an explicit gap-heal or forced refresh!
     const hasActiveTicks = lastClientActiveRef.current && (now - lastClientActiveRef.current < 25_000);
-    if (hasActiveTicks && !forceRefresh) return;
+    if (hasActiveTicks && !forceRefresh && !isExplicitGap) return;
 
-    loadBars(key, fetchGenerationRef.current, true, forceRefresh, barCount);
+    loadBars(key, fetchGenerationRef.current, true, forceRefresh || isExplicitGap, barCount);
   }, [symbol, tf, loadBars]);
 
   // Automatic gap-healing when switching back to tab, focusing window, or unlocking screen
@@ -971,9 +973,9 @@ export default function ChartPanel({
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
         const elapsedClientSec = (Date.now() - lastClientActiveRef.current) / 1000;
-        // Only trigger gap-healing if user was away for at least 60s
-        if (elapsedClientSec >= 60) {
-          reconcileBackgroundGaps(false, 5);
+        // Only trigger gap-healing if user was away for at least 30s
+        if (elapsedClientSec >= 30) {
+          reconcileBackgroundGaps(true, true, 25);
         }
       }
     };
@@ -999,7 +1001,7 @@ export default function ChartPanel({
       const timeSinceLastSync = now - lastSyncTimeRef.current;
       const isVisible = document.visibilityState === "visible";
       if (isVisible && timeSinceLastSync >= intervalMs) {
-        reconcileBackgroundGaps(false, 5);
+        reconcileBackgroundGaps(false, false, 10);
       }
     }, 30_000);
 
@@ -1009,7 +1011,7 @@ export default function ChartPanel({
   // Reconnection listener: when WebSocket reconnects or network comes online
   useEffect(() => {
     const onReconnect = () => {
-      reconcileBackgroundGaps(false, 5);
+      reconcileBackgroundGaps(true, true, 30);
     };
     window.addEventListener("ts_ws_reconnected", onReconnect);
     window.addEventListener("online", onReconnect);
@@ -1067,6 +1069,76 @@ export default function ChartPanel({
     };
   }, [bridgeOfflineInfo, symbol, tf, loadBars]);
 
+  // Real-Time Stale Candle Watchdog:
+  // Detects if the current chart is lagging behind live market time.
+  // Respects market hours (Crypto 24/7; Forex/Futures closed on weekends).
+  // Visually alerts the user with an institutional banner and auto-heals the lag!
+  useEffect(() => {
+    const isCrypto = /BTC|ETH|SOL|XRP|DOGE|LTC|BNB|ADA|AVAX|LINK/i.test(symbol);
+
+    const checkFeedFreshness = () => {
+      const nowUtcSec = Math.floor(Date.now() / 1000);
+      const sec = TF_SEC[tf] || 300;
+
+      // Check market open status for non-crypto
+      if (!isCrypto) {
+        const dayOfWeek = getEetDayOfWeek(nowUtcSec);
+        const eetTime = getEetTime(nowUtcSec);
+        // Closed: Saturday all day (day 6), or Sunday before 23:00 EET (day 0)
+        const isWeekendClosed = dayOfWeek === 6 || (dayOfWeek === 0 && eetTime.h < 23);
+        if (isWeekendClosed) {
+          setStaleFeedInfo(null);
+          return;
+        }
+      }
+
+      const currentBars = barsRef.current;
+      if (!currentBars || currentBars.length === 0) {
+        setStaleFeedInfo(null);
+        return;
+      }
+
+      const lastBar = currentBars[currentBars.length - 1];
+      const lastBarTime = lastBar?.time || 0;
+      if (!lastBarTime) {
+        setStaleFeedInfo(null);
+        return;
+      }
+
+      const expectedBarTime = Math.floor(nowUtcSec / sec) * sec;
+      const lagSec = expectedBarTime - lastBarTime;
+      const lagBars = Math.floor(lagSec / sec);
+
+      // Intraday timeframes (M1-H1): Stale if 2 or more candles behind
+      const isIntraday = ["M1", "M5", "M15", "M30", "H1"].includes(tf);
+      const staleThreshold = isIntraday ? 2 : 1;
+
+      if (lagBars >= staleThreshold && lagSec >= Math.max(sec * 1.5, 120)) {
+        setStaleFeedInfo({
+          isStale: true,
+          lagBars,
+          lagSec,
+          lastBarTime,
+          expectedBarTime,
+        });
+
+        // Trigger silent automatic background catchup
+        const key = `${symbol}:${tf}`;
+        if (!inFlightLoadBarsRef.current.has(key)) {
+          const countToFetch = Math.max(lagBars + 10, 50);
+          loadBars(key, fetchGenerationRef.current, true, true, countToFetch);
+        }
+      } else {
+        setStaleFeedInfo(null);
+      }
+    };
+
+    const interval = setInterval(checkFeedFreshness, 8_000);
+    checkFeedFreshness();
+
+    return () => clearInterval(interval);
+  }, [symbol, tf, loadBars]);
+
   // ---------- axis label resolution ----------
   useEffect(() => {
     seriesRef.current?.applyOptions({
@@ -1092,12 +1164,10 @@ export default function ChartPanel({
     const sec = TF_SEC[tf] || 300;
     const rawTime = tick.time != null && tick.time > 0 ? tick.time : null;
     let tickSec = rawTime ? (rawTime > 1e11 ? Math.floor(rawTime / 1000) : rawTime) : entry.bar.time;
-    // Ultra-defensive guard: if incoming tick has un-normalized broker naive time (+2h or +3h ahead of last bar), normalize to UTC
-    if (tickSec && entry.bar && tickSec - entry.bar.time > 6500 && tickSec - entry.bar.time < 12000) {
-      const offsetSec = getEetOffsetSec(tickSec);
-      if (Math.abs(tickSec - offsetSec - entry.bar.time) < Math.max(sec * 10, 7200)) {
-        tickSec -= offsetSec;
-      }
+    const nowUtcSec = Math.floor(Date.now() / 1000);
+    // Sanity fallback: if tickSec is missing or deviates by > 24h, anchor to current wall-clock UTC
+    if (!tickSec || Math.abs(tickSec - nowUtcSec) > 86400) {
+      tickSec = nowUtcSec;
     }
     const barTime = Math.floor(tickSec / sec) * sec;
     const last = entry.bar;
@@ -1107,16 +1177,13 @@ export default function ChartPanel({
       ? (gap >= 86400 && gap <= 86400 * 1.5)
       : (Math.abs(gap - sec) <= 2);
 
-    // If a new candle arrives across a gap (e.g. background tab / session break / weekend):
-    // Trigger background reconciliation to fetch intermediate bars, BUT never block the active candle!
-    // Guarded: only attempt ONCE per bar timestamp, with a 30s cooldown, requesting only 5 delta bars.
+    // If a new candle arrives across a gap (e.g. background tab, dormant timeframe switch, or feed glitch):
+    // Immediately trigger an explicit gap-heal fetch with forceRefresh=true so intermediate candles are retrieved!
     if (isNewBar && !isNextConsecutive) {
       if (lastGapReconciledBarTimeRef.current !== barTime) {
         lastGapReconciledBarTimeRef.current = barTime;
-        const now = Date.now();
-        if (now - lastSyncTimeRef.current > 30_000) {
-          reconcileBackgroundGaps(false, 5);
-        }
+        const missedBars = Math.max(3, Math.min(Math.round(gap / sec) + 5, 200));
+        reconcileBackgroundGaps(true, true, missedBars);
       }
     }
 
@@ -1955,6 +2022,68 @@ export default function ChartPanel({
             onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false)}
           >
             Retry Connection
+          </button>
+        </div>
+      )}
+
+      {/* Institutional Stale Feed Alert Badge: alerts user if candles are behind live market */}
+      {staleFeedInfo?.isStale && !bridgeOfflineInfo && !loading && (
+        <div
+          style={{
+            position: "absolute",
+            top: 38,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 16,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "3px 10px",
+            background: "rgba(249, 115, 22, 0.2)",
+            border: "1px solid rgba(249, 115, 22, 0.5)",
+            borderRadius: 9999,
+            backdropFilter: "blur(8px)",
+            color: "#fb923c",
+            fontSize: 10.5,
+            fontWeight: 600,
+            lineHeight: 1,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.4)",
+            pointerEvents: "auto",
+            userSelect: "none",
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "#f97316",
+              animation: "pulse 1.2s infinite",
+              flexShrink: 0,
+            }}
+          />
+          <span>
+            ⚠️ Stale Feed: {tf} is {staleFeedInfo.lagBars} candle{staleFeedInfo.lagBars > 1 ? "s" : ""} behind (~{Math.round(staleFeedInfo.lagSec / 60)}m)
+          </span>
+          <button
+            className="ghost"
+            style={{
+              fontSize: 9.5,
+              padding: "2px 7px",
+              height: 18,
+              minHeight: 18,
+              lineHeight: "14px",
+              border: "1px solid rgba(249, 115, 22, 0.6)",
+              borderRadius: 4,
+              cursor: "pointer",
+              color: "#ffedd5",
+              background: "rgba(249, 115, 22, 0.3)",
+              fontWeight: 700,
+            }}
+            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true, 500)}
+            title="Force re-sync candles from MT5"
+          >
+            Sync Now
           </button>
         </div>
       )}

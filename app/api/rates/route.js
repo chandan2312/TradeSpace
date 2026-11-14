@@ -87,9 +87,10 @@ export async function GET(req) {
     return json({ ok: false, offline: true, circuitOpen: true, error: bridgeStatus.errorMessage || "MT5 Bridge Offline" }, 503);
   }
 
-  // Stale-While-Revalidate:
-  // For historical pagination (off > 0): past history never changes, serve cached immediately
-  // For live candles (off === 0): serve cached if reasonably complete, and refresh in background if stale
+  // Cache Strategy:
+  // For historical pagination (off > 0): past history is immutable, serve cached immediately.
+  // For live candles (off === 0): serve cached ONLY if fresh (< effectiveTtl).
+  // If cache is expired (age >= effectiveTtl), await fresh bars from MT5 so client never gets stale bars!
   if (!force && cached?.data && Array.isArray(cached.data.bars)) {
     const age = Date.now() - cached.at;
     const isSufficientCount = off > 0 || cached.data.bars.length >= Math.min(n, 500);
@@ -100,16 +101,11 @@ export async function GET(req) {
           ? { ...cached.data, count: n, bars: cached.data.bars.slice(-n) }
           : cached.data;
 
-      if (age < effectiveTtl) {
+      if (off > 0) {
         return json(responseData, 200, historyHeaders);
       }
-      if (age < 300_000) {
-        if (!inFlightRequests.has(flightKey)) {
-          const bg = fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey)
-            .catch(() => null)
-            .finally(() => inFlightRequests.delete(flightKey));
-          inFlightRequests.set(flightKey, bg);
-        }
+
+      if (age < effectiveTtl) {
         return json(responseData, 200, historyHeaders);
       }
     }
