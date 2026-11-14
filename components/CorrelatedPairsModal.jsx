@@ -60,28 +60,7 @@ function guessCorrelations(symbol) {
   return groups;
 }
 
-function MiniBiasScore({ symbol, tf, biasData }) {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    if (biasData?.symbols && Array.isArray(biasData.symbols)) {
-      const canon = toCanonicalSymbol(symbol);
-      const found = biasData.symbols.find(s => s?.symbol === symbol || toCanonicalSymbol(s?.symbol) === canon);
-      if (found) {
-        setData(found);
-        return;
-      }
-    }
-    fetch(`/api/bias?symbols=${symbol}&tf=${tf}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok && d.symbols && d.symbols.length > 0) {
-          setData(d.symbols[0]);
-        }
-      })
-      .catch(() => {});
-  }, [symbol, tf, biasData]);
-
+function MiniBiasScore({ symbol, data }) {
   if (!data) return <div className="muted" style={{ fontSize: 11 }}>Loading Bias...</div>;
 
   const score = data.score || 0;
@@ -134,6 +113,44 @@ export default function CorrelatedPairsModal({
   }, []);
 
   const barsCache = useRef(new Map());
+  const [biasMap, setBiasMap] = useState({});
+  const inFlightBiasFetchRef = useRef(new Set());
+
+  // Batched Bias fetcher: retrieves all missing display symbols in ONE single call
+  useEffect(() => {
+    if (step !== 2 || !displaySymbols.length) return;
+    const missing = displaySymbols.filter((s) => {
+      if (biasMap[s] || biasMap[toCanonicalSymbol(s)]) return false;
+      const foundInProps = biasData?.symbols?.some(
+        (b) => b?.symbol === s || toCanonicalSymbol(b?.symbol) === toCanonicalSymbol(s)
+      );
+      if (foundInProps) return false;
+      if (inFlightBiasFetchRef.current.has(s)) return false;
+      return true;
+    });
+
+    if (!missing.length) return;
+    missing.forEach((s) => inFlightBiasFetchRef.current.add(s));
+
+    fetch(`/api/bias?symbols=${encodeURIComponent(missing.join(","))}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.symbols)) {
+          setBiasMap((prev) => {
+            const next = { ...prev };
+            d.symbols.forEach((b) => {
+              if (b?.symbol) next[b.symbol] = b;
+              if (b?.canonical) next[b.canonical] = b;
+            });
+            return next;
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        missing.forEach((s) => inFlightBiasFetchRef.current.delete(s));
+      });
+  }, [step, displaySymbols, biasData, biasMap]);
 
   useEffect(() => {
     const groups = guessCorrelations(symbol);
@@ -400,7 +417,15 @@ export default function CorrelatedPairsModal({
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span className="num" style={{ fontWeight: 700, fontSize: 13 }}>{sym}</span>
-                      <MiniBiasScore symbol={sym} tf={tf} biasData={biasData} />
+                      <MiniBiasScore 
+                        symbol={sym} 
+                        data={
+                          biasMap[sym] || 
+                          biasMap[toCanonicalSymbol(sym)] || 
+                          biasData?.symbols?.find((s) => s?.symbol === sym || toCanonicalSymbol(s?.symbol) === toCanonicalSymbol(sym)) || 
+                          null
+                        } 
+                      />
                     </div>
 
                     <button 

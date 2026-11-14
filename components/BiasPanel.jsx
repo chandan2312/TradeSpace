@@ -25,32 +25,42 @@ export default function BiasPanel({ enabled = true, symbols, onJump, onClose, on
   const [loading, setLoading] = useState(() => !biasData);
   const [filter, setFilter] = useState("ALL");
   const timer = useRef(null);
+  const lastLoadAtRef = useRef(0);
+  const biasDataRef = useRef(biasData);
 
   useEffect(() => {
+    biasDataRef.current = biasData;
     if (biasData) {
       setData(biasData);
       setLoading(false);
     }
   }, [biasData]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     if (!enabled) {
       setData(null);
       return;
     }
-    if (!biasData) setLoading(true);
+    const now = Date.now();
+    if (!force && (now - lastLoadAtRef.current < 10_000)) return;
+    lastLoadAtRef.current = now;
+
+    if (!biasDataRef.current && !data) setLoading(true);
     try {
-      const res = await fetch(`/api/bias?symbols=ALL`);
+      const res = await fetch(`/api/bias?symbols=ALL${force ? "&force=1" : ""}`);
       const body = await res.json();
       if (body.ok) setData(body);
     } catch { /* keep last read */ }
     setLoading(false);
-  }, [enabled, biasData]);
+  }, [enabled]);
 
   useEffect(() => {
-    load();
+    // Only perform initial fetch if biasData wasn't already passed down from parent
+    if (!biasDataRef.current) {
+      load();
+    }
     clearInterval(timer.current);
-    timer.current = setInterval(load, REFRESH_MS);
+    timer.current = setInterval(() => load(false), REFRESH_MS);
     return () => clearInterval(timer.current);
   }, [load]);
 
@@ -106,7 +116,7 @@ export default function BiasPanel({ enabled = true, symbols, onJump, onClose, on
           )}
           <button
             className="ghost"
-            onClick={load}
+            onClick={() => load(true)}
             title="Refresh now (auto every 300s)"
             style={{ marginLeft: "auto", padding: "2px 6px", display: "flex", alignItems: "center" }}
           >

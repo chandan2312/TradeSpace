@@ -701,7 +701,7 @@ export default function ChartPanel({
 
   const loadBars = useCallback(async (key, genId, isSilent = false, forceRefresh = false, requestedCount = null) => {
     const [sym, curTf] = key.split(":");
-    if (inFlightLoadBarsRef.current.has(key)) return;
+    if (!forceRefresh && inFlightLoadBarsRef.current.has(key)) return;
     inFlightLoadBarsRef.current.add(key);
     lastSyncTimeRef.current = Date.now();
     try {
@@ -828,7 +828,19 @@ export default function ChartPanel({
 
       applyBars(finalBars, isSilent, key);
       setError(null);
-      if (data?.stale || data?.offline) {
+      if (data?.stale) {
+        setStaleFeedInfo({
+          isStale: true,
+          lagBars: Math.max(1, Math.round((data.staleLagSec || 60) / (TF_SEC[curTf] || 300))),
+          lagSec: data.staleLagSec || 60,
+          lastBarTime: finalBars[finalBars.length - 1]?.time || 0,
+          expectedBarTime: Math.floor(Date.now() / 1000),
+        });
+      } else if (!data?.offline) {
+        setStaleFeedInfo(null);
+      }
+
+      if (data?.offline) {
         const hasActiveTicks = lastClientActiveRef.current && (Date.now() - lastClientActiveRef.current < 25_000);
         staleStreakRef.current += 1;
         // Suppress false popup if live ticks are actively streaming or if this is just a single transient hitch
@@ -898,8 +910,8 @@ export default function ChartPanel({
     const hasBars = Array.isArray(cached?.bars) && cached.bars.length > 0;
 
     // Cache Freshness Tiers:
-    // 1. FRESH (< 15s): 0ms INSTANT SWITCH. Cached bars are completely up to date.
-    if (hasBars && cacheAge < 15_000) {
+    // 1. FRESH (< 5s): 0ms INSTANT SWITCH. Cached bars are completely up to date.
+    if (hasBars && cacheAge < 5_000) {
       applyBars(cached.bars, false, key);
       setLoading(false);
       setError(null);
@@ -1109,11 +1121,12 @@ export default function ChartPanel({
       const lagSec = expectedBarTime - lastBarTime;
       const lagBars = Math.floor(lagSec / sec);
 
-      // Intraday timeframes (M1-H1): Stale if 2 or more candles behind
-      const isIntraday = ["M1", "M5", "M15", "M30", "H1"].includes(tf);
-      const staleThreshold = isIntraday ? 2 : 1;
+      // Intraday timeframes (M1-H1): Stale if 1 or more candles behind
+      // Grace period of 25 seconds past candle boundary to allow initial tick to arrive
+      const gracePeriodSec = Math.min(Math.max(Math.floor(sec * 0.1), 15), 45);
+      const isStale = lagBars >= 1 && (nowUtcSec - (lastBarTime + sec) > gracePeriodSec);
 
-      if (lagBars >= staleThreshold && lagSec >= Math.max(sec * 1.5, 120)) {
+      if (isStale) {
         setStaleFeedInfo({
           isStale: true,
           lagBars,
@@ -1122,7 +1135,7 @@ export default function ChartPanel({
           expectedBarTime,
         });
 
-        // Trigger silent automatic background catchup
+        // Trigger automatic background catchup
         const key = `${symbol}:${tf}`;
         if (!inFlightLoadBarsRef.current.has(key)) {
           const countToFetch = Math.max(lagBars + 10, 50);

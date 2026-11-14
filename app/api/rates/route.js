@@ -11,14 +11,19 @@ const TF_NORMALIZE = {
   "M1": "M1", "M5": "M5", "M15": "M15", "M30": "M30", "H1": "H1", "H4": "H4", "D1": "D1",
 };
 
+const TF_SECONDS = {
+  M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400,
+};
+
+// Tight live TTLs: prevent rapid-fire burst hammering while keeping all active chart timeframes synchronized
 const TF_RATES_TTL_MS = {
-  M1: 15_000,
-  M5: 60_000,
-  M15: 120_000,
-  M30: 180_000,
-  H1: 300_000,
-  H4: 600_000,
-  D1: 900_000,
+  M1: 10_000,
+  M5: 15_000,
+  M15: 20_000,
+  M30: 30_000,
+  H1: 30_000,
+  H4: 60_000,
+  D1: 120_000,
 };
 
 const inFlightRequests = new Map();
@@ -41,6 +46,21 @@ async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey
     d.timestampSemantics = "UTC_INSTANT";
     d.symbol = canonicalSym;
     d.brokerSymbol = brokerSym;
+
+    // Detect actual candle staleness: if latest candle timestamp is lagging behind real time
+    if (off === 0 && d.bars.length > 0) {
+      const lastBar = d.bars[d.bars.length - 1];
+      const lastBarTimeMs = lastBar?.t || 0;
+      const tfSec = TF_SECONDS[tf] || 300;
+      const lagSec = Math.floor((Date.now() - lastBarTimeMs) / 1000);
+      if (lastBarTimeMs > 0 && lagSec > (tfSec * 1.5 + 30)) {
+        d.stale = true;
+        d.staleLagSec = lagSec;
+      } else {
+        d.stale = false;
+      }
+    }
+
     ratesCache.set(key, { at: Date.now(), data: d });
     if (brokerKey !== key) ratesCache.set(brokerKey, { at: Date.now(), data: d });
     return d;

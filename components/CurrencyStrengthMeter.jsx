@@ -53,11 +53,40 @@ function parseStrengthPayload(d) {
   return { sorted, sMap };
 }
 
+let clientBiasCache = null;
+let clientBiasCacheAt = 0;
+let inFlightAllBias = null;
+
+export async function fetchFullMarketBias(force = false) {
+  const now = Date.now();
+  if (!force && clientBiasCache && (now - clientBiasCacheAt < 60_000)) {
+    return clientBiasCache;
+  }
+  if (!force && inFlightAllBias) {
+    return inFlightAllBias;
+  }
+  inFlightAllBias = (async () => {
+    try {
+      const res = await fetch(`/api/bias?symbols=ALL${force ? "&force=1" : ""}`);
+      const data = await res.json();
+      if (data?.ok) {
+        clientBiasCache = data;
+        clientBiasCacheAt = Date.now();
+      }
+      return data;
+    } finally {
+      inFlightAllBias = null;
+    }
+  })();
+  return inFlightAllBias;
+}
+
 export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbols = [], biasData = null }) {
-  const [data, setData] = useState(() => parseStrengthPayload(biasData)?.sorted || null);
-  const [symbolsMap, setSymbolsMap] = useState(() => parseStrengthPayload(biasData)?.sMap || {});
+  const initialParsed = biasData ? parseStrengthPayload(biasData) : null;
+  const [data, setData] = useState(() => initialParsed?.sorted || null);
+  const [symbolsMap, setSymbolsMap] = useState(() => initialParsed?.sMap || {});
   const [hoveredCcy, setHoveredCcy] = useState(null);
-  const [loading, setLoading] = useState(() => !parseStrengthPayload(biasData));
+  const [loading, setLoading] = useState(() => !initialParsed);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -73,8 +102,7 @@ export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbol
     }
 
     setLoading(true);
-    fetch(`/api/bias?symbols=ALL`)
-      .then((r) => r.json())
+    fetchFullMarketBias()
       .then((d) => {
         const parsed = parseStrengthPayload(d);
         if (parsed) {
@@ -82,7 +110,7 @@ export default function CurrencyStrengthMeter({ onSelectSuggested, allowedSymbol
           setSymbolsMap(parsed.sMap);
           setError(null);
         } else {
-          setError(d.error || "Failed to load structural data");
+          setError(d?.error || "Failed to load structural data");
         }
         setLoading(false);
       })

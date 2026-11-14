@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, Fragment } from "react";
 import { Activity } from "lucide-react";
+import { fetchFullMarketBias } from "../CurrencyStrengthMeter";
 
 export default function CurrencyHeatmap({ initialData = null }) {
   const [data, setData] = useState(() => initialData);
@@ -10,10 +11,9 @@ export default function CurrencyHeatmap({ initialData = null }) {
       setData(initialData);
       return;
     }
-    fetch(`/api/bias?symbols=ALL`)
-      .then(r => r.json())
+    fetchFullMarketBias()
       .then(d => {
-        if (d.ok && d.currencyStrength) {
+        if (d?.ok && d.currencyStrength) {
           setData(d.currencyStrength);
         }
       })
