@@ -33,6 +33,13 @@ const CLOSED_TRADES_PROJECTION = {
   brainSnapshot: 0,
   brain: 0,
   copierRouting: 0,
+  levelDetails: 0,
+  evidence: 0,
+  topContenders: 0,
+  slAudit: 0,
+  "entryModel.evidence": 0,
+  "entryModel.levelDetails": 0,
+  "entryModel.topContenders": 0,
 };
 
 let lastBackgroundScanTriggerAt = 0;
@@ -135,8 +142,8 @@ export async function GET() {
         !g._tsAutonomousLeaderboard && controlCol
           ? controlCol.findOne({ _id: "latest_autonomous_scan" }, { projection: { "leaderboard.rankedPairs.snapshot": 0, "leaderboard.rankedPairs.ranges": 0 } }).catch(() => null)
           : Promise.resolve(null),
-        getMainWatchlistSymbols(true).catch(() => []),
-        allWatchlists(true).catch(() => []),
+        getMainWatchlistSymbols(false).catch(() => []),
+        allWatchlists(false).catch(() => []),
       ]);
 
       const allWatchlistSymbols = Array.from(new Set([
@@ -156,14 +163,31 @@ export async function GET() {
         }
       }
 
-      // Strip duplicate brain and stagedLevel to cut per-trade network payload in half
+      // Strip heavy analytical/telemetry sub-objects to keep payload ultra-compact and lightning-fast
       const sanitizeTrade = (t) => {
         if (!t) return t;
-        const { brain, stagedLevel, ...rest } = t;
+        const {
+          brainSnapshot,
+          brain,
+          stagedLevel,
+          copierRouting,
+          levelDetails,
+          evidence,
+          topContenders,
+          slAudit,
+          ...rest
+        } = t;
+        if (rest.entryModel) {
+          rest.entryModel = {
+            id: rest.entryModel.id,
+            name: rest.entryModel.name,
+            type: rest.entryModel.type,
+          };
+        }
         return rest;
       };
       const openTrades = rawOpenTrades.filter(isTradeSpaceTrade).map(sanitizeTrade);
-      const cleanRecentClosed = recentClosed.filter(isTradeSpaceTrade);
+      const cleanRecentClosed = recentClosed.filter(isTradeSpaceTrade).map(sanitizeTrade);
 
       const activeTrades = openTrades.filter((trade) => ACTIVE_STATES.includes(trade.status) || trade.status === "pending");
       const currentEnabledModels = config.enabledModels || {};

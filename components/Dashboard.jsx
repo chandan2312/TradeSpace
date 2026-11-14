@@ -107,6 +107,18 @@ export default function Dashboard() {
   const [alertsLoaded, setAlertsLoaded] = useState(false);
   const [autonomousTrades, setAutonomousTrades] = useState([]);
   const [radarPairs, setRadarPairs] = useState([]);
+  const [autonomousState, setAutonomousState] = useState({
+    config: null,
+    brokerAccount: null,
+    logs: [],
+    isScanning: false,
+    executionTrades: [],
+    executionDiagnostics: null,
+    allTimeSlots: [],
+    allSymbolProfiles: {},
+    allEntryModels: {},
+    universe: [],
+  });
   const [watchlists, setWatchlists] = useState([]);
   const [activeListId, setActiveListId] = useState(null);
   const watchlistsRef = useRef(watchlists);
@@ -873,6 +885,20 @@ export default function Dashboard() {
     autonomousLoadingRef.current = true;
     try {
       const autoRes = await api("/api/autonomous");
+      if (autoRes?.ok) {
+        setAutonomousState({
+          config: autoRes.config || null,
+          brokerAccount: autoRes.brokerAccount || null,
+          logs: Array.isArray(autoRes.logs) ? autoRes.logs : [],
+          isScanning: Boolean(autoRes.isScanning),
+          executionTrades: Array.isArray(autoRes.executionTrades) ? autoRes.executionTrades : [],
+          executionDiagnostics: autoRes.executionDiagnostics || null,
+          allTimeSlots: Array.isArray(autoRes.allTimeSlots) ? autoRes.allTimeSlots : [],
+          allSymbolProfiles: autoRes.allSymbolProfiles || {},
+          allEntryModels: autoRes.allEntryModels || {},
+          universe: Array.isArray(autoRes.allWatchlistSymbols) ? autoRes.allWatchlistSymbols : (autoRes.universe || []),
+        });
+      }
       const autoList = autoRes?.ok ? [
         ...(Array.isArray(autoRes.activeTrades) ? autoRes.activeTrades : []),
         ...(Array.isArray(autoRes.stagedTrades) ? autoRes.stagedTrades : []),
@@ -2113,6 +2139,16 @@ export default function Dashboard() {
         trades={autonomousTrades}
         ticks={ticks}
         radarPairs={radarPairs}
+        logs={autonomousState.logs}
+        config={autonomousState.config}
+        brokerAccount={autonomousState.brokerAccount}
+        executionTrades={autonomousState.executionTrades}
+        diagnostics={autonomousState.executionDiagnostics}
+        allTimeSlots={autonomousState.allTimeSlots}
+        allSymbolProfiles={autonomousState.allSymbolProfiles}
+        allEntryModels={autonomousState.allEntryModels}
+        universe={autonomousState.universe}
+        isScanning={autonomousState.isScanning}
         onRefresh={loadAutonomousTrades}
         isOpen={autoCockpitOpen}
         onClose={() => setAutoCockpitOpen(false)}

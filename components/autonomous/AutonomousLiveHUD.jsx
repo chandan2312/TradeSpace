@@ -57,6 +57,15 @@ export default function AutonomousLiveHUD({
   onRefresh,
   isOpen: isOpenProp,
   onClose,
+  config: configProp,
+  brokerAccount: brokerAccountProp,
+  executionTrades: executionTradesProp,
+  diagnostics: diagnosticsProp,
+  allTimeSlots: allTimeSlotsProp,
+  allSymbolProfiles: allSymbolProfilesProp,
+  allEntryModels: allEntryModelsProp,
+  universe: universeProp,
+  isScanning: isScanningProp,
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = typeof isOpenProp === "boolean";
@@ -87,12 +96,16 @@ export default function AutonomousLiveHUD({
   const [auxUniverse, setAuxUniverse] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const inFlightAuxRef = useRef(false);
+  const lastAuxFetchRef = useRef(0);
 
-  const fetchAuxState = useCallback(async () => {
+  const fetchAuxState = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastAuxFetchRef.current < 30_000) return;
     if (inFlightAuxRef.current) return;
     inFlightAuxRef.current = true;
+    lastAuxFetchRef.current = now;
     try {
-      const res = await fetch("/api/autonomous", { cache: "no-store" });
+      const res = await fetch("/api/autonomous");
       if (!res.ok) return;
       const data = await res.json();
       if (data?.ok) {
@@ -146,8 +159,11 @@ export default function AutonomousLiveHUD({
             : "Settings Saved",
       });
       setTimeout(() => setActionMsg(null), 3500);
-      await fetchAuxState();
-      if (onRefresh) onRefresh();
+      if (onRefresh) {
+        onRefresh();
+      } else {
+        await fetchAuxState(true);
+      }
       return result;
     } catch (err) {
       setActionMsg({ type: "error", text: err.message || "Action failed" });
@@ -170,14 +186,24 @@ export default function AutonomousLiveHUD({
   };
   const handleSaveConfig = (patch) => mutate(patch, "/api/autonomous/config");
 
+  // Only fetch auxiliary state if parent did not provide config prop (e.g. standalone mounting)
   useEffect(() => {
-    if (isOpen) {
+    if (!configProp) {
       fetchAuxState();
     }
-  }, [isOpen, fetchAuxState]);
+  }, [configProp, fetchAuxState]);
 
-  const effectiveRadarPairs = radarPairsProp.length > 0 ? radarPairsProp : auxRadarPairs;
-  const effectiveLogs = logsProp.length > 0 ? logsProp : auxLogs;
+  const effectiveRadarPairs = (radarPairsProp && radarPairsProp.length > 0) ? radarPairsProp : auxRadarPairs;
+  const effectiveLogs = (logsProp && logsProp.length > 0) ? logsProp : auxLogs;
+  const effectiveConfig = (configProp && Object.keys(configProp).length > 0) ? configProp : auxConfig;
+  const effectiveBrokerAccount = brokerAccountProp !== undefined ? brokerAccountProp : auxBrokerAccount;
+  const effectiveExecutionTrades = (executionTradesProp && executionTradesProp.length > 0) ? executionTradesProp : auxExecutionTrades;
+  const effectiveDiagnostics = diagnosticsProp || auxDiagnostics;
+  const effectiveAllTimeSlots = (allTimeSlotsProp && allTimeSlotsProp.length > 0) ? allTimeSlotsProp : auxAllTimeSlots;
+  const effectiveAllSymbolProfiles = (allSymbolProfilesProp && Object.keys(allSymbolProfilesProp).length > 0) ? allSymbolProfilesProp : auxAllSymbolProfiles;
+  const effectiveAllEntryModels = (allEntryModelsProp && Object.keys(allEntryModelsProp).length > 0) ? allEntryModelsProp : auxAllEntryModels;
+  const effectiveUniverse = (universeProp && universeProp.length > 0) ? universeProp : auxUniverse;
+  const effectiveIsScanning = typeof isScanningProp === "boolean" ? isScanningProp : isScanning;
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -527,8 +553,8 @@ export default function AutonomousLiveHUD({
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                background: (auxConfig.enabled ?? true) ? "var(--green)" : "var(--muted)",
-                boxShadow: (auxConfig.enabled ?? true) ? "0 0 8px var(--green)" : "none",
+                background: (effectiveConfig.enabled ?? true) ? "var(--green)" : "var(--muted)",
+                boxShadow: (effectiveConfig.enabled ?? true) ? "0 0 8px var(--green)" : "none",
                 flexShrink: 0,
               }}
             />
@@ -539,7 +565,7 @@ export default function AutonomousLiveHUD({
             {/* Power Toggle Button */}
             <button
               onClick={handleTogglePower}
-              title={(auxConfig.enabled ?? true) ? "Click to Pause Autonomous Bot" : "Click to Enable Autonomous Bot"}
+              title={(effectiveConfig.enabled ?? true) ? "Click to Pause Autonomous Bot" : "Click to Enable Autonomous Bot"}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -549,24 +575,24 @@ export default function AutonomousLiveHUD({
                 padding: "2px 7px",
                 borderRadius: 5,
                 cursor: "pointer",
-                border: (auxConfig.enabled ?? true)
+                border: (effectiveConfig.enabled ?? true)
                   ? "1px solid rgba(34, 197, 94, 0.4)"
                   : "1px solid rgba(239, 68, 68, 0.4)",
-                background: (auxConfig.enabled ?? true)
+                background: (effectiveConfig.enabled ?? true)
                   ? "rgba(34, 197, 94, 0.15)"
                   : "rgba(239, 68, 68, 0.15)",
-                color: (auxConfig.enabled ?? true) ? "var(--green)" : "var(--red)",
+                color: (effectiveConfig.enabled ?? true) ? "var(--green)" : "var(--red)",
                 transition: "all 0.15s ease",
               }}
             >
               <Power size={11} />
-              <span>{(auxConfig.enabled ?? true) ? "AUTO ON" : "AUTO OFF"}</span>
+              <span>{(effectiveConfig.enabled ?? true) ? "AUTO ON" : "AUTO OFF"}</span>
             </button>
 
             {/* Live MT5 / Paper Toggle Button */}
             <button
               onClick={handleToggleLiveTrading}
-              title={auxConfig.liveTrading ? "Live MT5 Execution (Click to switch to Paper)" : "Paper Mode (Click to switch to Live MT5)"}
+              title={effectiveConfig.liveTrading ? "Live MT5 Execution (Click to switch to Paper)" : "Paper Mode (Click to switch to Live MT5)"}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -576,23 +602,23 @@ export default function AutonomousLiveHUD({
                 padding: "2px 7px",
                 borderRadius: 5,
                 cursor: "pointer",
-                border: auxConfig.liveTrading
+                border: effectiveConfig.liveTrading
                   ? "1px solid rgba(56, 189, 248, 0.4)"
                   : "1px solid rgba(245, 158, 11, 0.4)",
-                background: auxConfig.liveTrading
+                background: effectiveConfig.liveTrading
                   ? "rgba(56, 189, 248, 0.15)"
                   : "rgba(245, 158, 11, 0.15)",
-                color: auxConfig.liveTrading ? "var(--accent)" : "var(--orange)",
+                color: effectiveConfig.liveTrading ? "var(--accent)" : "var(--orange)",
                 transition: "all 0.15s ease",
               }}
             >
-              <span>{auxConfig.liveTrading ? "LIVE MT5" : "PAPER"}</span>
+              <span>{effectiveConfig.liveTrading ? "LIVE MT5" : "PAPER"}</span>
             </button>
 
             {/* Broker Account Pill (if available) */}
-            {auxBrokerAccount && (
+            {effectiveBrokerAccount && (
               <span
-                title={`Broker: ${auxBrokerAccount.company || "MT5"} · Equity: $${auxBrokerAccount.equity?.toLocaleString() || "-"} · Margin: $${auxBrokerAccount.margin_free?.toLocaleString() || "-"}`}
+                title={`Broker: ${effectiveBrokerAccount.company || "MT5"} · Equity: $${effectiveBrokerAccount.equity?.toLocaleString() || "-"} · Margin: $${effectiveBrokerAccount.margin_free?.toLocaleString() || "-"}`}
                 style={{
                   fontSize: 10,
                   fontFamily: "monospace",
@@ -611,10 +637,10 @@ export default function AutonomousLiveHUD({
                     width: 5,
                     height: 5,
                     borderRadius: "50%",
-                    background: auxBrokerAccount.connected !== false ? "var(--green)" : "var(--red)",
+                    background: effectiveBrokerAccount.connected !== false ? "var(--green)" : "var(--red)",
                   }}
                 />
-                <span>${auxBrokerAccount.equity ? Math.round(auxBrokerAccount.equity).toLocaleString() : "MT5"}</span>
+                <span>${effectiveBrokerAccount.equity ? Math.round(effectiveBrokerAccount.equity).toLocaleString() : "MT5"}</span>
               </span>
             )}
           </div>
@@ -1052,12 +1078,12 @@ export default function AutonomousLiveHUD({
             {/* TAB: ACTIVE POSITIONS */}
             {tab === "active" && (
               <>
-                {auxExecutionTrades.length > 0 && (
+                {effectiveExecutionTrades.length > 0 && (
                   <div style={{ marginBottom: 10 }}>
                     <ExecutionDiagnostics
-                      trades={auxExecutionTrades}
-                      diagnostics={auxDiagnostics}
-                      onRefresh={fetchAuxState}
+                      trades={effectiveExecutionTrades}
+                      diagnostics={effectiveDiagnostics}
+                      onRefresh={onRefresh || fetchAuxState}
                     />
                   </div>
                 )}
@@ -1221,7 +1247,7 @@ export default function AutonomousLiveHUD({
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <strong style={{ fontSize: 14 }}>{trade.symbol}</strong>
-                            <SessionLedDot symbol={trade.symbol} config={auxConfig} size={7} />
+                            <SessionLedDot symbol={trade.symbol} config={effectiveConfig} size={7} />
                             <span
                               style={{
                                 fontSize: 10,
@@ -1651,7 +1677,7 @@ export default function AutonomousLiveHUD({
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <strong style={{ fontSize: 13 }}>{setup.symbol}</strong>
-                            <SessionLedDot symbol={setup.symbol} config={auxConfig} size={7} />
+                            <SessionLedDot symbol={setup.symbol} config={effectiveConfig} size={7} />
                             <span
                               style={{
                                 fontSize: 10,
@@ -1822,7 +1848,7 @@ export default function AutonomousLiveHUD({
                 <PairRadar
                   pairs={effectiveRadarPairs}
                   ticks={ticks}
-                  config={auxConfig}
+                  config={effectiveConfig}
                   scannedAt={auxRadarScannedAt}
                   onInspectPair={(p) => setInspectedPair(p)}
                 />
@@ -1903,12 +1929,12 @@ export default function AutonomousLiveHUD({
 
           {settingsOpen && (
             <ControlConsole
-              config={auxConfig}
-              brokerAccount={auxBrokerAccount}
-              allTimeSlots={auxAllTimeSlots}
-              allSymbolProfiles={auxAllSymbolProfiles}
-              allEntryModels={auxAllEntryModels}
-              universe={auxUniverse.length > 0 ? auxUniverse : (auxConfig.universe || [])}
+              config={effectiveConfig}
+              brokerAccount={effectiveBrokerAccount}
+              allTimeSlots={effectiveAllTimeSlots}
+              allSymbolProfiles={effectiveAllSymbolProfiles}
+              allEntryModels={effectiveAllEntryModels}
+              universe={effectiveUniverse.length > 0 ? effectiveUniverse : (effectiveConfig.universe || [])}
               onSaveConfig={handleSaveConfig}
               onClose={() => setSettingsOpen(false)}
             />
