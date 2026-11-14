@@ -88,24 +88,8 @@ console.log("===================================================================
 
 const overallResults = [];
 
-for (const cfg of ASSET_CONFIGS) {
-  if (!fs.existsSync(cfg.dataPath)) {
-    console.warn(`[WARN] Skipping ${cfg.symbol}: data file not found at ${cfg.dataPath}`);
-    continue;
-  }
-
-  process.stdout.write(`Benchmarking ${cfg.symbol.padEnd(8)} (${cfg.category.padEnd(17)})... `);
-  const t0 = Date.now();
-
+function runAssetBenchmark(cfg) {
   const rawBars = JSON.parse(fs.readFileSync(cfg.dataPath, "utf8"));
-  const bars = rawBars.map((b) => ({
-    time: b.t ?? b.time,
-    open: b.open ?? b.o,
-    high: b.high ?? b.h,
-    low: b.low ?? b.l,
-    close: b.close ?? b.c,
-  }));
-
   const engine = new AutonomousQuantEngine({
     spreadPts: cfg.spreadPts,
     accountBalance: 100000,
@@ -114,14 +98,18 @@ for (const cfg of ASSET_CONFIGS) {
     maxSlPoints: cfg.maxSlPoints,
   });
 
-  for (let i = 0; i < bars.length; i++) {
-    engine.onBar(bars[i]);
+  for (let i = 0; i < rawBars.length; i++) {
+    const b = rawBars[i];
+    engine.onBar({
+      time: b.t ?? b.time,
+      open: b.open ?? b.o,
+      high: b.high ?? b.h,
+      low: b.low ?? b.l,
+      close: b.close ?? b.c,
+    });
   }
 
-  const durationMs = Date.now() - t0;
   const report = engine.getPerformanceReport();
-
-  // Model breakdown
   const modelStats = {};
   for (const t of report.trades) {
     if (!modelStats[t.modelId]) {
@@ -132,11 +120,11 @@ for (const cfg of ASSET_CONFIGS) {
     modelStats[t.modelId].pnl += t.finalPnlDollars;
   }
 
-  const res = {
+  return {
     symbol: cfg.symbol,
     name: cfg.name,
     category: cfg.category,
-    barCount: bars.length,
+    barCount: rawBars.length,
     spreadPts: cfg.spreadPts,
     totalTrades: report.totalTrades,
     winRate: report.winRate,
@@ -146,8 +134,21 @@ for (const cfg of ASSET_CONFIGS) {
     maxDrawdownPct: report.maxDrawdownPct,
     maxDrawdownDollars: report.maxDrawdownDollars,
     modelStats,
-    durationMs,
   };
+}
+
+for (const cfg of ASSET_CONFIGS) {
+  if (!fs.existsSync(cfg.dataPath)) {
+    console.warn(`[WARN] Skipping ${cfg.symbol}: data file not found at ${cfg.dataPath}`);
+    continue;
+  }
+
+  process.stdout.write(`Benchmarking ${cfg.symbol.padEnd(8)} (${cfg.category.padEnd(17)})... `);
+  const t0 = Date.now();
+
+  const res = runAssetBenchmark(cfg);
+  const durationMs = Date.now() - t0;
+  res.durationMs = durationMs;
 
   overallResults.push(res);
   console.log(`Done in ${(durationMs / 1000).toFixed(1)}s! Trades: ${res.totalTrades} | WR: ${res.winRate}% | PF: ${res.profitFactor} | Net: $${res.netProfit.toLocaleString()} | MaxDD: -${res.maxDrawdownPct}%`);
