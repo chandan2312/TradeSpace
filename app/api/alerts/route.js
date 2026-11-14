@@ -11,12 +11,14 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 const g = globalThis;
-if (!g._tsAlertsInFlight) g._tsAlertsInFlight = new Map();
-if (!g._tsAlertsCache) g._tsAlertsCache = new Map();
+if (!g._tsAlertsRouteInFlight) g._tsAlertsRouteInFlight = new Map();
+if (!g._tsAlertsRouteCache) g._tsAlertsRouteCache = new Map();
 let lastPruneAlertsAt = 0;
 
 function invalidateAlertsCache() {
-  if (globalThis._tsAlertsCache) globalThis._tsAlertsCache.clear();
+  if (globalThis._tsAlertsRouteCache) globalThis._tsAlertsRouteCache.clear();
+  globalThis._tsAlertsCache = null;
+  globalThis._tsAlertsAt = 0;
 }
 
 async function pruneStaleTriggeredAlerts() {
@@ -54,14 +56,14 @@ export async function GET(req) {
   }
 
   const cacheKey = rawSymbol ? `sym:${rawSymbol}` : "all";
-  const cached = g._tsAlertsCache.get(cacheKey);
+  const cached = g._tsAlertsRouteCache.get(cacheKey);
   if (cached && now - cached.at < 2000) {
     return json({ ok: true, alerts: cached.alerts });
   }
 
-  if (g._tsAlertsInFlight.has(cacheKey)) {
+  if (g._tsAlertsRouteInFlight.has(cacheKey)) {
     try {
-      const alerts = await g._tsAlertsInFlight.get(cacheKey);
+      const alerts = await g._tsAlertsRouteInFlight.get(cacheKey);
       return json({ ok: true, alerts });
     } catch {}
   }
@@ -91,14 +93,14 @@ export async function GET(req) {
         };
       }
       const alerts = await alertsCol.find(filter).sort({ createdAt: -1 }).toArray();
-      g._tsAlertsCache.set(cacheKey, { at: Date.now(), alerts });
+      g._tsAlertsRouteCache.set(cacheKey, { at: Date.now(), alerts });
       return alerts;
     } finally {
-      g._tsAlertsInFlight.delete(cacheKey);
+      g._tsAlertsRouteInFlight.delete(cacheKey);
     }
   })();
 
-  g._tsAlertsInFlight.set(cacheKey, queryPromise);
+  g._tsAlertsRouteInFlight.set(cacheKey, queryPromise);
   try {
     const alerts = await queryPromise;
     return json({ ok: true, alerts });

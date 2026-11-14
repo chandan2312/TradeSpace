@@ -1,6 +1,7 @@
 import { getCols } from "@/lib/mongo";
 import { broadcast } from "@/lib/realtime";
 import { json, oid } from "@/lib/http";
+import { invalidateAlertsCache } from "@/lib/alert-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,7 @@ export async function PATCH(req, { params }) {
   }
 
   await alertsCol.updateOne({ _id }, { $set: update });
+  invalidateAlertsCache();
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
 }
@@ -92,6 +94,7 @@ export async function DELETE(req, { params }) {
     }
   }
 
+  invalidateAlertsCache();
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
 }
