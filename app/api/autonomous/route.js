@@ -19,13 +19,11 @@ import {
   closeActiveTrade,
   modifyTradeTarget,
   pollBroker,
-  startAutonomousLoop,
-  stopAutonomousLoop,
 } from "../../../lib/autonomous/engine.js";
 import { getCurrentTimeSlot, getAllTimeSlots, SYMBOL_SESSION_PROFILES, isTradingPermittedNow, getSymbolSessionProfile } from "../../../lib/autonomous/timeslots.js";
 import { ENTRY_MODEL_DEFINITIONS } from "../../../lib/autonomous/models.js";
 import { getMT5Account } from "../../../lib/autonomous/mt5.js";
-import { syncMT5HistoryToJournalThrottled, isTradeSpaceTrade, JOURNAL_START_BROKER_SEC } from "../../../lib/journal/store.js";
+import { isTradeSpaceTrade, JOURNAL_START_BROKER_SEC } from "../../../lib/journal/store.js";
 import { getMainWatchlistSymbols, canonOf } from "../../../lib/autonomous/watchlist.js";
 import { allWatchlists } from "../../../lib/mongo.js";
 
@@ -41,7 +39,9 @@ let lastBackgroundScanTriggerAt = 0;
 let cachedResponsePayload = null;
 let cachedResponseAt = 0;
 let inFlightGetPromise = null;
-const CACHE_TTL_MS = 2500; // 2.5s response cache deduplicates rapid client hits
+let cachedBrokerAccount = null;
+let cachedBrokerAccountAt = 0;
+const CACHE_TTL_MS = 4000; // 4s response cache deduplicates rapid client hits
 
 export function invalidateAutonomousRouteCache() {
   cachedResponsePayload = null;
@@ -81,26 +81,32 @@ export async function GET() {
       const config = await getConfig();
       const isEnabled = Boolean(config?.enabled);
 
-      if (isEnabled) {
-        startAutonomousLoop();
-        // Non-blocking background sync of MT5 history so page loads instantly
-        syncMT5HistoryToJournalThrottled().catch(() => {});
-      } else {
-        stopAutonomousLoop();
-      }
-
       const { tradesCol, logsCol, controlCol } = await autonomousCols();
 
-      // Fetch independent data sources concurrently (with 1500ms safety timeout on remote broker bridge)
-      // If autonomous is disabled, bypass remote broker account fetch to maintain zero MT5 load
+      // Broker account fetch: use fast 30s in-memory cache to maintain instant response times
+      let brokerAccountPromise = Promise.resolve(null);
+      if (isEnabled) {
+        const fetchNow = Date.now();
+        if (cachedBrokerAccount && (fetchNow - cachedBrokerAccountAt < 30_000)) {
+          brokerAccountPromise = Promise.resolve({ ok: true, account: cachedBrokerAccount });
+        } else {
+          brokerAccountPromise = Promise.race([
+            getMT5Account().then((res) => {
+              if (res?.ok && res.account) {
+                cachedBrokerAccount = res.account;
+                cachedBrokerAccountAt = Date.now();
+              }
+              return res;
+            }).catch(() => null),
+            new Promise((resolve) => setTimeout(() => resolve(cachedBrokerAccount ? { ok: true, account: cachedBrokerAccount } : null), 800)),
+          ]);
+        }
+      }
+
+      // Fetch independent data sources concurrently (pure read operation, 0 heavy calculation load)
       const [metrics, brokerAccountRes, rawOpenTrades, recentClosed, logs, persistedScan, mainWatchlistSymbols, userWatchlists] = await Promise.all([
         getMetrics(),
-        isEnabled
-          ? Promise.race([
-              getMT5Account().catch(() => null),
-              new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
-            ])
-          : Promise.resolve(null),
+        brokerAccountPromise,
         tradesCol.find({
           status: { $in: OPEN_STATES },
           brokerComment: { $not: { $regex: /^MQ:/i } },
@@ -315,19 +321,6 @@ export async function GET() {
         rankedPairs: sanitizedRanked,
         primeSetups: [],
       };
-
-      // Check if scan is stale or missing watchlist symbols
-      const scannedAtMs = leaderboard?.scannedAt ? new Date(leaderboard.scannedAt).getTime() : 0;
-      const scanIntervalMs = Number(config?.scanIntervalMs || 300000);
-      const isScanStale = !scannedAtMs || (Date.now() - scannedAtMs > scanIntervalMs);
-      const hasMissingSymbols = missingMainSymbols.length > 0;
-
-      // If scan is stale or missing watchlist symbols, trigger scan immediately ONLY IF ENABLED
-      const scanNow = Date.now();
-      if (isEnabled && (isScanStale || hasMissingSymbols) && !g._tsAutonomousScanning && (scanNow - lastBackgroundScanTriggerAt > (hasMissingSymbols ? 10000 : 60000))) {
-        lastBackgroundScanTriggerAt = scanNow;
-        runAutonomousScan(hasMissingSymbols ? "watchlist_symbol_added" : "interval").catch(() => {});
-      }
 
       const events = [...rawOpenTrades.filter(isTradeSpaceTrade), ...cleanRecentClosed].flatMap((trade) =>
         (Array.isArray(trade.events) ? trade.events : []).map((event, index, timeline) => ({

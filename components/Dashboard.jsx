@@ -859,8 +859,12 @@ export default function Dashboard() {
     setBiasLoading(false);
   }, [biasEnabled, biasSymbols.join(",")]);
 
-  const loadAutonomousTrades = useCallback(async () => {
+  const lastAutoLoadTimeRef = useRef(0);
+  const loadAutonomousTrades = useCallback(async (force = false) => {
+    const now = Date.now();
     if (autonomousLoadingRef.current) return;
+    if (!force && (now - lastAutoLoadTimeRef.current < 15_000)) return;
+    lastAutoLoadTimeRef.current = now;
     autonomousLoadingRef.current = true;
     try {
       const autoRes = await api("/api/autonomous");
@@ -900,16 +904,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (autoCockpitOpen) {
-      loadAutonomousTrades();
-    }
-  }, [autoCockpitOpen, loadAutonomousTrades]);
-
-  useEffect(() => {
     loadAlerts();
     loadWatchlists();
     loadSavedLayouts();
-    loadAutonomousTrades();
+    loadAutonomousTrades(true);
     const iv = setInterval(loadAutonomousTrades, 60000);
     const alertIv = setInterval(loadAlerts, 60000);
     return () => {

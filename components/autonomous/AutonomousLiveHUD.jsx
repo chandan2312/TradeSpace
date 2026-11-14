@@ -86,8 +86,11 @@ export default function AutonomousLiveHUD({
   const [auxAllEntryModels, setAuxAllEntryModels] = useState({});
   const [auxUniverse, setAuxUniverse] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const inFlightAuxRef = useRef(false);
 
   const fetchAuxState = useCallback(async () => {
+    if (inFlightAuxRef.current) return;
+    inFlightAuxRef.current = true;
     try {
       const res = await fetch("/api/autonomous", { cache: "no-store" });
       if (!res.ok) return;
@@ -114,7 +117,9 @@ export default function AutonomousLiveHUD({
           setAuxLogs(data.logs);
         }
       }
-    } catch (_) {}
+    } catch (_) {} finally {
+      inFlightAuxRef.current = false;
+    }
   }, []);
 
   const mutate = useCallback(async (body, path = "/api/autonomous") => {
@@ -201,12 +206,7 @@ export default function AutonomousLiveHUD({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
-  // Auto-refresh when drawer opens
-  useEffect(() => {
-    if (isOpen && onRefresh) {
-      onRefresh();
-    }
-  }, [isOpen, onRefresh]);
+
 
   const activeTrades = useMemo(() => {
     return (trades || []).filter((t) =>

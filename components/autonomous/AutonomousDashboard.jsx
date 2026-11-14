@@ -45,6 +45,7 @@ export default function AutonomousDashboard() {
   const stateAbortRef = useRef(null);
   const stateRequestRef = useRef(0);
   const inFlightRef = useRef(false);
+  const lastStateLoadAtRef = useRef(0);
   const debounceTimerRef = useRef(null);
   const symbolsRef = useRef([]);
 
@@ -74,9 +75,14 @@ export default function AutonomousDashboard() {
 
   // Fetch full state from /api/autonomous with in-flight guard to prevent interval abort loops
   const loadState = useCallback(async (isForced = false) => {
+    const now = Date.now();
+    if (!isForced && (now - lastStateLoadAtRef.current < 4000)) {
+      return;
+    }
     if (inFlightRef.current && !isForced) {
       return; // Never abort or stomp an active in-flight request
     }
+    lastStateLoadAtRef.current = now;
     inFlightRef.current = true;
     const requestId = ++stateRequestRef.current;
     if (isForced) {
