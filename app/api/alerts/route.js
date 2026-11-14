@@ -13,12 +13,14 @@ export const fetchCache = "force-no-store";
 const g = globalThis;
 if (!(g._tsAlertsRouteInFlight instanceof Map)) g._tsAlertsRouteInFlight = new Map();
 if (!(g._tsAlertsRouteCache instanceof Map)) g._tsAlertsRouteCache = new Map();
+if (!g._tsAlertsCache || !(g._tsAlertsCache instanceof Map)) g._tsAlertsCache = new Map();
 let lastPruneAlertsAt = 0;
 
 function invalidateAlertsCache() {
   if (g._tsAlertsRouteCache instanceof Map) g._tsAlertsRouteCache.clear();
-  g._tsAlertsCache = null;
-  g._tsAlertsAt = 0;
+  if (g._tsAlertsCache instanceof Map) g._tsAlertsCache.clear();
+  g._tsAlertEngineActiveList = null;
+  g._tsAlertEngineActiveAt = 0;
 }
 
 async function pruneStaleTriggeredAlerts() {
@@ -58,6 +60,7 @@ export async function GET(req) {
   const cacheKey = rawSymbol ? `sym:${rawSymbol}` : "all";
   if (!(g._tsAlertsRouteCache instanceof Map)) g._tsAlertsRouteCache = new Map();
   if (!(g._tsAlertsRouteInFlight instanceof Map)) g._tsAlertsRouteInFlight = new Map();
+  if (!g._tsAlertsCache || !(g._tsAlertsCache instanceof Map)) g._tsAlertsCache = new Map();
 
   const cached = g._tsAlertsRouteCache.get(cacheKey);
   if (cached && now - cached.at < 2000) {
