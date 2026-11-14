@@ -336,13 +336,18 @@ export default function Watchlist({
     return () => clearInterval(interval);
   }, []);
 
+  const dailyOpensRef = useRef(dailyOpens);
+  const fallbackPricesRef = useRef(fallbackPrices);
+  useEffect(() => { dailyOpensRef.current = dailyOpens; }, [dailyOpens]);
+  useEffect(() => { fallbackPricesRef.current = fallbackPrices; }, [fallbackPrices]);
+
   useEffect(() => {
     const syms = list?.symbols || [];
     syms.forEach((sym, index) => {
-      const existingOpen = resolveAliasValue(sym, dailyOpens);
-      const existingPrice = resolveAliasValue(sym, fallbackPrices);
+      const existingOpen = resolveAliasValue(sym, dailyOpensRef.current);
+      const existingPrice = resolveAliasValue(sym, fallbackPricesRef.current);
       if (typeof existingOpen === "number" && typeof existingPrice === "number") return;
-      if (dailyOpens[sym] !== undefined || attemptedDailyOpensRef.current.has(sym)) return;
+      if (dailyOpensRef.current[sym] !== undefined || attemptedDailyOpensRef.current.has(sym)) return;
 
       attemptedDailyOpensRef.current.add(sym);
       setDailyOpens((prev) => ({ ...prev, [sym]: "loading" }));
@@ -430,7 +435,7 @@ export default function Watchlist({
         });
       }, index * 40);
     });
-  }, [list?.symbols, dailyOpens, fallbackPrices, updateSymbolRates]);
+  }, [list?.symbols, updateSymbolRates]);
 
   // Reactive refresh when broker symbol mapping is updated in settings
   useEffect(() => {

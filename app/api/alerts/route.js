@@ -10,9 +10,13 @@ export const dynamicParams = true;
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+const g = globalThis;
+if (!g._tsAlertsInFlight) g._tsAlertsInFlight = new Map();
+if (!g._tsAlertsCache) g._tsAlertsCache = new Map();
+let lastPruneAlertsAt = 0;
+
 function invalidateAlertsCache() {
-  globalThis._tsAlertsCache = null;
-  globalThis._tsAlertsAt = 0;
+  if (globalThis._tsAlertsCache) globalThis._tsAlertsCache.clear();
 }
 
 async function pruneStaleTriggeredAlerts() {
@@ -41,34 +45,66 @@ async function pruneStaleTriggeredAlerts() {
 
 export async function GET(req) {
   const rawSymbol = req.nextUrl.searchParams.get("symbol");
-  const { alertsCol } = await getCols();
+  const now = Date.now();
 
-  // Proactive cleanup: purge any stale triggered alerts from prior trading days
-  await pruneStaleTriggeredAlerts().catch(() => {});
-
-  const todayStartSec = getTradingDayStartSec(new Date());
-  const todayStartDate = new Date(todayStartSec * 1000);
-
-  const staleTriggeredFilter = {
-    $nor: [
-      { status: "triggered", triggeredAt: { $lt: todayStartDate } },
-      { status: "triggered", triggeredAt: null, createdAt: { $lt: todayStartDate } }
-    ]
-  };
-
-  let filter = staleTriggeredFilter;
-  if (rawSymbol) {
-    const canon = toCanonicalSymbol(rawSymbol);
-    const aliases = getSymbolAliases(rawSymbol);
-    filter = {
-      $and: [
-        staleTriggeredFilter,
-        { symbol: { $in: Array.from(new Set([rawSymbol, rawSymbol.toUpperCase(), canon, ...aliases])) } }
-      ]
-    };
+  // Periodic cleanup: purge stale triggered alerts once every 10m (never on every GET)
+  if (now - lastPruneAlertsAt > 600_000) {
+    lastPruneAlertsAt = now;
+    pruneStaleTriggeredAlerts().catch(() => {});
   }
-  const alerts = await alertsCol.find(filter).sort({ createdAt: -1 }).toArray();
-  return json({ ok: true, alerts });
+
+  const cacheKey = rawSymbol ? `sym:${rawSymbol}` : "all";
+  const cached = g._tsAlertsCache.get(cacheKey);
+  if (cached && now - cached.at < 2000) {
+    return json({ ok: true, alerts: cached.alerts });
+  }
+
+  if (g._tsAlertsInFlight.has(cacheKey)) {
+    try {
+      const alerts = await g._tsAlertsInFlight.get(cacheKey);
+      return json({ ok: true, alerts });
+    } catch {}
+  }
+
+  const queryPromise = (async () => {
+    try {
+      const { alertsCol } = await getCols();
+      const todayStartSec = getTradingDayStartSec(new Date());
+      const todayStartDate = new Date(todayStartSec * 1000);
+
+      const staleTriggeredFilter = {
+        $nor: [
+          { status: "triggered", triggeredAt: { $lt: todayStartDate } },
+          { status: "triggered", triggeredAt: null, createdAt: { $lt: todayStartDate } }
+        ]
+      };
+
+      let filter = staleTriggeredFilter;
+      if (rawSymbol) {
+        const canon = toCanonicalSymbol(rawSymbol);
+        const aliases = getSymbolAliases(rawSymbol);
+        filter = {
+          $and: [
+            staleTriggeredFilter,
+            { symbol: { $in: Array.from(new Set([rawSymbol, rawSymbol.toUpperCase(), canon, ...aliases])) } }
+          ]
+        };
+      }
+      const alerts = await alertsCol.find(filter).sort({ createdAt: -1 }).toArray();
+      g._tsAlertsCache.set(cacheKey, { at: Date.now(), alerts });
+      return alerts;
+    } finally {
+      g._tsAlertsInFlight.delete(cacheKey);
+    }
+  })();
+
+  g._tsAlertsInFlight.set(cacheKey, queryPromise);
+  try {
+    const alerts = await queryPromise;
+    return json({ ok: true, alerts });
+  } catch (err) {
+    return json({ ok: false, error: err.message }, 500);
+  }
 }
 
 export async function POST(req) {

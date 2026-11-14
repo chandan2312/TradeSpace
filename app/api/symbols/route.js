@@ -4,6 +4,9 @@ import { toCanonicalSymbol } from "@/lib/symbols/mapping";
 
 export const dynamic = "force-dynamic";
 
+const g = globalThis;
+if (!g._tsSymbolsBridgeInFlight) g._tsSymbolsBridgeInFlight = null;
+
 export async function GET(req) {
   const sp = req.nextUrl.searchParams;
   const q = sp.get("q") || "";
@@ -15,9 +18,14 @@ export async function GET(req) {
 
   try {
     if (stale || force || !symbolsCache.items.length) {
-      const data = await bridge("POST", "/symbols", {});
-      if (data.ok) {
-        symbolsCache.at = now;
+      if (!g._tsSymbolsBridgeInFlight) {
+        g._tsSymbolsBridgeInFlight = bridge("POST", "/symbols", {}).finally(() => {
+          g._tsSymbolsBridgeInFlight = null;
+        });
+      }
+      const data = await g._tsSymbolsBridgeInFlight;
+      if (data?.ok) {
+        symbolsCache.at = Date.now();
         symbolsCache.items = data.symbols || [];
       } else if (!symbolsCache.items.length) {
         return json(data, 502);

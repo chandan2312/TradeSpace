@@ -1,5 +1,6 @@
 "use client";
 
+import "@/lib/clientDeduplicator";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Toaster, toast as sonnerToast } from "sonner";
@@ -332,9 +333,13 @@ export default function Dashboard() {
   }, []);
 
   // ---------- Auto-Sync Drawings on Focus/Tab Switch ----------
+  const lastSyncDrawingsRef = useRef(0);
   useEffect(() => {
     const syncDrawingsFromBackend = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastSyncDrawingsRef.current < 15_000) return;
+      lastSyncDrawingsRef.current = now;
       fetch("/api/settings")
         .then((r) => r.json())
         .then((d) => {

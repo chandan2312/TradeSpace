@@ -5,23 +5,53 @@ import { getServerSymbolMapping, setServerSymbolMapping } from "@/lib/symbols/ma
 export const dynamic = "force-dynamic";
 
 const SETTINGS_DOC_ID = "global_user_settings";
+const g = globalThis;
+if (!g._tsSettingsInFlight) g._tsSettingsInFlight = null;
+let cachedSettings = null;
+let cachedSettingsAt = 0;
+const SETTINGS_CACHE_MS = 2500;
 
 export async function GET() {
+  const now = Date.now();
+  if (cachedSettings && now - cachedSettingsAt < SETTINGS_CACHE_MS) {
+    return json({ ok: true, settings: cachedSettings });
+  }
+
+  if (g._tsSettingsInFlight) {
+    try {
+      const settings = await g._tsSettingsInFlight;
+      return json({ ok: true, settings });
+    } catch (err) {
+      return json({ ok: false, error: err.message }, 500);
+    }
+  }
+
+  g._tsSettingsInFlight = (async () => {
+    try {
+      const { settingsCol } = await getCols();
+      const doc = await settingsCol.findOne({ _id: SETTINGS_DOC_ID });
+      let settings = doc?.settings || {};
+
+      if (settings.bridgeUrl) {
+        globalThis._tsBridgeUrlOverride = String(settings.bridgeUrl).trim().replace(/\/$/, "");
+      }
+
+      if (settings.symbolMapping) {
+        setServerSymbolMapping(settings.symbolMapping);
+      } else {
+        settings.symbolMapping = getServerSymbolMapping();
+      }
+
+      cachedSettings = settings;
+      cachedSettingsAt = Date.now();
+      return settings;
+    } finally {
+      g._tsSettingsInFlight = null;
+    }
+  })();
+
   try {
-    const { settingsCol } = await getCols();
-    const doc = await settingsCol.findOne({ _id: SETTINGS_DOC_ID });
-    let settings = doc?.settings || {};
-
-    if (settings.bridgeUrl) {
-      globalThis._tsBridgeUrlOverride = String(settings.bridgeUrl).trim().replace(/\/$/, "");
-    }
-
-    if (settings.symbolMapping) {
-      setServerSymbolMapping(settings.symbolMapping);
-    } else {
-      settings.symbolMapping = getServerSymbolMapping();
-    }
-
+    const settings = await g._tsSettingsInFlight;
     return json({ ok: true, settings });
   } catch (err) {
     return json({ ok: false, error: err.message }, 500);
@@ -30,6 +60,8 @@ export async function GET() {
 
 export async function PATCH(req) {
   try {
+    cachedSettings = null;
+    cachedSettingsAt = 0;
     const updates = await req.json();
     if (!updates || typeof updates !== 'object') {
       return json({ ok: false, error: "invalid body" }, 400);
