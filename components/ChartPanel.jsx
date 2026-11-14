@@ -261,6 +261,8 @@ export default function ChartPanel({
   const biasPrimRef = useRef(null);   // BiasEnginePrimitive attached to the series
   const drawingManagerRef = useRef(null); // DrawingManager from lightweight-charts-drawing
   const barsRef = useRef([]);        // full bar array the detectors run on
+  const barsKeyRef = useRef(null);   // track "${symbol}:${tf}" that barsRef belongs to
+  const lastSymbolRef = useRef(symbol); // track symbol changes for clean visual transition
   const [dataVersion, setDataVersion] = useState(0); // bumped on load + bar close
   const hoverPriceRef = useRef(null);
   const [barsDigits, setBarsDigits] = useState(null);
@@ -655,9 +657,25 @@ export default function ChartPanel({
       }
       if (!cleanBars.length) return;
 
-      seriesRef.current.setData(cleanBars);
-      lastBarRef.current = { key: currentKey, bar: cleanBars[cleanBars.length - 1] };
-      barsRef.current = cleanBars;
+      // Sanity filter: detect and purge cross-symbol contamination (e.g. BTC 67,000 mixed into forex 1.10)
+      let validBars = cleanBars;
+      if (cleanBars.length > 5) {
+        const samplePrices = cleanBars.slice(-10).map((b) => b.close).filter((p) => p > 0);
+        samplePrices.sort((a, b) => a - b);
+        const medianPrice = samplePrices[Math.floor(samplePrices.length / 2)] || cleanBars[cleanBars.length - 1].close;
+        if (medianPrice > 0) {
+          validBars = cleanBars.filter((b) => {
+            const ratio = b.close / medianPrice;
+            return ratio >= 0.1 && ratio <= 10.0;
+          });
+        }
+      }
+      if (!validBars.length) return;
+
+      seriesRef.current.setData(validBars);
+      lastBarRef.current = { key: currentKey, bar: validBars[validBars.length - 1] };
+      barsRef.current = validBars;
+      barsKeyRef.current = currentKey;
       setDataVersion((v) => v + 1);
       lastClientActiveRef.current = Date.now();
       retryCountRef.current = 0;
@@ -713,7 +731,8 @@ export default function ChartPanel({
       if (fetchGenerationRef.current !== genId) return;
 
       const cached = barsCache.current.get(key);
-      const hasExistingBars = (Array.isArray(cached?.bars) && cached.bars.length > 0) || (Array.isArray(barsRef.current) && barsRef.current.length > 0);
+      const isBarsRefMatching = barsKeyRef.current === key && Array.isArray(barsRef.current) && barsRef.current.length > 0;
+      const hasExistingBars = (Array.isArray(cached?.bars) && cached.bars.length > 0) || isBarsRefMatching;
 
       // Smart bar counts:
       // - Silent background gap-heal / refresh: only 5 bars needed! (Transfers in ~1ms, <500 bytes)
@@ -783,19 +802,21 @@ export default function ChartPanel({
       newBars = normalizeCandles(newBars, curTf);
       if (fetchGenerationRef.current !== genId) return;
 
-      // Seamless delta stitching: merge delta bars with existing historical bars
+      // Seamless delta stitching: merge delta bars with existing historical bars strictly for same symbol/tf
       let finalBars = newBars;
       if (hasExistingBars && count < 200) {
-        const baseBars = (cached?.bars?.length ? cached.bars : barsRef.current) || [];
-        const timeMap = new Map();
-        for (const b of baseBars) timeMap.set(b.time, b);
-        for (const b of newBars) timeMap.set(b.time, b);
-        finalBars = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
+        const baseBars = (cached?.bars?.length ? cached.bars : (barsKeyRef.current === key ? barsRef.current : [])) || [];
+        if (baseBars.length > 0) {
+          const timeMap = new Map();
+          for (const b of baseBars) timeMap.set(b.time, b);
+          for (const b of newBars) timeMap.set(b.time, b);
+          finalBars = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
+        }
       }
 
-      // Stale regression guard: Never overwrite newer live bars with older stale/offline bars
+      // Stale regression guard: Never overwrite newer live bars with older stale/offline bars (strictly same symbol/tf)
       if ((data?.stale || data?.offline) && hasExistingBars) {
-        const currentBars = (barsRef.current && barsRef.current.length > 0) ? barsRef.current : (cached?.bars || []);
+        const currentBars = (barsKeyRef.current === key && barsRef.current && barsRef.current.length > 0) ? barsRef.current : (cached?.bars || []);
         const latestExistingTime = currentBars.length > 0 ? currentBars[currentBars.length - 1].time : 0;
         const latestNewTime = newBars.length > 0 ? newBars[newBars.length - 1].time : 0;
         if (latestExistingTime > 0 && latestNewTime < latestExistingTime) {
@@ -900,6 +921,10 @@ export default function ChartPanel({
     activeFetchKeyRef.current = key;
     hasReachedHistoryStartRef.current = false;
 
+    // Detect cross-symbol change vs pure timeframe switch
+    const isSymbolChange = lastSymbolRef.current !== symbol;
+    lastSymbolRef.current = symbol;
+
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
@@ -931,8 +956,12 @@ export default function ChartPanel({
     }
 
     // 3. COLD / STALE CACHE (>= 5m) or FIRST LOAD:
-    // Non-destructive transition: show smooth loading state and load fresh bars directly from MT5.
-    // NEVER blank the canvas with seriesRef.current.setData([]); atomic applyBars smoothly updates the series!
+    // When switching symbol, cleanly isolate canvas so previous symbol's candles never bleed across!
+    if (isSymbolChange) {
+      seriesRef.current?.setData([]);
+      barsRef.current = [];
+      barsKeyRef.current = null;
+    }
     lastBarRef.current = null;
     setLoading(true);
     setError(null);
@@ -1200,12 +1229,20 @@ export default function ChartPanel({
       }
     }
 
+    // Safety check against cross-symbol tick anomalies:
+    // If incoming tick price deviates from last.close by more than 3x (e.g. 67,000 to 1.88):
+    // Never bridge open/high/low to last.close!
+    const isPricePlausible = last.close > 0 && (price / last.close >= 0.33 && price / last.close <= 3.0);
+    const validOpen = (isNextConsecutive && isPricePlausible) ? last.close : price;
+    const validHigh = (isNextConsecutive && isPricePlausible) ? Math.max(last.close, price) : price;
+    const validLow = (isNextConsecutive && isPricePlausible) ? Math.min(last.close, price) : price;
+
     const nextBar = isNewBar
       ? { 
           time: barTime, 
-          open: isNextConsecutive ? last.close : price, 
-          high: isNextConsecutive ? Math.max(last.close, price) : price, 
-          low: isNextConsecutive ? Math.min(last.close, price) : price, 
+          open: validOpen, 
+          high: validHigh, 
+          low: validLow, 
           close: price 
         }
       : { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };

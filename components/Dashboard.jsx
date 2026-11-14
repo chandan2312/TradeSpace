@@ -280,9 +280,13 @@ export default function Dashboard() {
             const now = Date.now();
             for (const [k, v] of Object.entries(parsed)) {
               // Institutional Freshness Gate: strictly discard persistent cache older than 3 minutes.
-              // Never contaminate the chart with hours-old candles from a prior session!
+              // Never contaminate the chart with hours-old candles or cross-symbol price anomalies!
               if (v && v.at && (now - v.at < 180_000) && Array.isArray(v.bars) && v.bars.length > 0) {
-                barsCache.current.set(k, v);
+                const first = v.bars[0]?.close;
+                const last = v.bars[v.bars.length - 1]?.close;
+                if (first > 0 && last > 0 && (last / first >= 0.2 && last / first <= 5.0)) {
+                  barsCache.current.set(k, v);
+                }
               }
             }
           } catch {}
