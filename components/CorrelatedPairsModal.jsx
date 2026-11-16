@@ -116,6 +116,9 @@ export default function CorrelatedPairsModal({
   const [biasMap, setBiasMap] = useState({});
   const inFlightBiasFetchRef = useRef(new Set());
 
+  const selectedArr = Array.from(selected);
+  const displaySymbols = fullScreenSym ? [fullScreenSym] : selectedArr;
+
   // Batched Bias fetcher: retrieves all missing display symbols in ONE single call
   useEffect(() => {
     if (step !== 2 || !displaySymbols.length) return;
@@ -166,9 +169,6 @@ export default function CorrelatedPairsModal({
     setSelected(next);
   };
 
-  const selectedArr = Array.from(selected);
-  const displaySymbols = fullScreenSym ? [fullScreenSym] : selectedArr;
-
   useEffect(() => {
     if (step === 2 && displaySymbols.length > 0) {
       onVisibleSymbolsChange?.(displaySymbols);
@@ -216,8 +216,17 @@ export default function CorrelatedPairsModal({
             {["M5", "M15", "H1", "H4"].map(t => (
               <button 
                 key={t}
-                className={tf === t ? "primary" : "ghost"}
-                style={{ fontSize: 12, padding: "3px 8px" }}
+                className="tf-btn"
+                style={{ 
+                  fontSize: 12, 
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  fontWeight: tf === t ? 700 : 500,
+                  background: tf === t ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+                  border: tf === t ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+                  color: tf === t ? "var(--text)" : "var(--muted)",
+                  transition: "all 0.15s ease",
+                }}
                 onClick={() => setTf(t)}
               >
                 {t}
