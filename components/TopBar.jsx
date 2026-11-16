@@ -351,7 +351,7 @@ export default function TopBar({
       {/* Mobile Top Controls: Quick Auto Cockpit Button + Hamburger Menu */}
       <div className="hide-desktop" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
         <button
-          className={autoCockpitOpen ? "primary" : "ghost"}
+          className="ghost"
           onClick={onOpenAutoCockpit}
           title="Open Autonomous Cockpit"
           style={{
@@ -364,13 +364,19 @@ export default function TopBar({
             borderRadius: 6,
             border: displayAutoTrades.length > 0
               ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.5)" : "rgba(239, 83, 80, 0.5)"}`
+              : autoCockpitOpen
+              ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.3))"
               : "1px solid var(--border)",
             background: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.15)" : "rgba(239, 83, 80, 0.15)")
+              : autoCockpitOpen
+              ? "var(--accent-soft, rgba(255, 255, 255, 0.12))"
               : "transparent",
             color: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
-              : "var(--text)",
+              : autoCockpitOpen
+              ? "var(--text)"
+              : "var(--muted)",
           }}
         >
           <Zap size={12} style={{ color: displayAutoTrades.length > 0 ? (isAutoNetProfit ? "var(--green)" : "var(--red)") : "var(--accent)" }} />
@@ -447,10 +453,29 @@ export default function TopBar({
             <div>
               <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4, textTransform: "uppercase", fontWeight: 600 }}>Sync Across Charts</div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                <button className={syncOpts.symbol ? "primary" : "ghost"} onClick={() => toggleSync("symbol")} style={{padding: "2px 6px", fontSize: 11}}>SYM</button>
-                <button className={syncOpts.tf ? "primary" : "ghost"} onClick={() => toggleSync("tf")} style={{padding: "2px 6px", fontSize: 11}}>TF</button>
-                <button className={syncOpts.time ? "primary" : "ghost"} onClick={() => toggleSync("time")} style={{padding: "2px 6px", fontSize: 11}}>TIME</button>
-                <button className={syncOpts.crosshair ? "primary" : "ghost"} onClick={() => toggleSync("crosshair")} style={{padding: "2px 6px", fontSize: 11}}>CROSS</button>
+                {["symbol", "tf", "time", "crosshair"].map((k) => {
+                  const active = Boolean(syncOpts[k]);
+                  const label = k === "symbol" ? "SYM" : k === "tf" ? "TF" : k === "time" ? "TIME" : "CROSS";
+                  return (
+                    <button
+                      key={k}
+                      className="ghost"
+                      onClick={() => toggleSync(k)}
+                      style={{
+                        padding: "3px 7px",
+                        fontSize: 11,
+                        fontWeight: active ? 700 : 500,
+                        borderRadius: 4,
+                        background: active ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+                        border: active ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+                        color: active ? "var(--text)" : "var(--muted)",
+                        transition: "all 0.12s ease",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -513,7 +538,7 @@ export default function TopBar({
 
       {/* Desktop Taskbar: Staged Trades Indicator Toggle */}
       <button
-        className={`hide-mobile ${indicators?.stagedTrades !== false ? "primary" : "ghost"}`}
+        className="hide-mobile ghost"
         onClick={() => {
           setIndicators?.((prev) => ({ ...prev, stagedTrades: prev?.stagedTrades === false ? true : false }));
         }}
@@ -528,9 +553,11 @@ export default function TopBar({
           fontWeight: 600,
           whiteSpace: "nowrap",
           flexShrink: 0,
-          background: indicators?.stagedTrades !== false ? "rgba(245, 158, 11, 0.2)" : "transparent",
+          borderRadius: 6,
+          background: indicators?.stagedTrades !== false ? "rgba(245, 158, 11, 0.15)" : "transparent",
           border: indicators?.stagedTrades !== false ? "1px solid rgba(245, 158, 11, 0.45)" : "1px solid transparent",
           color: indicators?.stagedTrades !== false ? "#fbbf24" : "var(--muted)",
+          transition: "all 0.15s ease",
         }}
       >
         <Clock size={14} style={{ color: indicators?.stagedTrades !== false ? "#fbbf24" : "var(--muted)" }} />
@@ -552,7 +579,7 @@ export default function TopBar({
 
       {/* Desktop Taskbar: Radar Ideas Indicator Toggle */}
       <button
-        className={`hide-mobile ${indicators?.radarTrades !== false ? "primary" : "ghost"}`}
+        className="hide-mobile ghost"
         onClick={() => {
           setIndicators?.((prev) => ({ ...prev, radarTrades: prev?.radarTrades === false ? true : false }));
         }}
@@ -567,9 +594,11 @@ export default function TopBar({
           fontWeight: 600,
           whiteSpace: "nowrap",
           flexShrink: 0,
-          background: indicators?.radarTrades !== false ? "rgba(168, 85, 247, 0.2)" : "transparent",
+          borderRadius: 6,
+          background: indicators?.radarTrades !== false ? "rgba(168, 85, 247, 0.15)" : "transparent",
           border: indicators?.radarTrades !== false ? "1px solid rgba(168, 85, 247, 0.45)" : "1px solid transparent",
           color: indicators?.radarTrades !== false ? "var(--purple, #c084fc)" : "var(--muted)",
+          transition: "all 0.15s ease",
         }}
       >
         <Radar size={14} style={{ color: indicators?.radarTrades !== false ? "#c084fc" : "var(--muted)" }} />
@@ -591,7 +620,7 @@ export default function TopBar({
 
       {/* Desktop Taskbar: Bias Engine & Market Brain Overlay Toggle */}
       <button
-        className={`hide-mobile ${indicators?.biasEngine !== false ? "primary" : "ghost"}`}
+        className="hide-mobile ghost"
         onClick={() => {
           setIndicators?.((prev) => ({ ...prev, biasEngine: prev?.biasEngine === false ? true : false }));
         }}
@@ -606,9 +635,11 @@ export default function TopBar({
           fontWeight: 600,
           whiteSpace: "nowrap",
           flexShrink: 0,
-          background: indicators?.biasEngine !== false ? "rgba(6, 182, 212, 0.2)" : "transparent",
+          borderRadius: 6,
+          background: indicators?.biasEngine !== false ? "rgba(6, 182, 212, 0.15)" : "transparent",
           border: indicators?.biasEngine !== false ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
           color: indicators?.biasEngine !== false ? "#22d3ee" : "var(--muted)",
+          transition: "all 0.15s ease",
         }}
       >
         <Compass size={14} style={{ color: indicators?.biasEngine !== false ? "#22d3ee" : "var(--muted)" }} />
@@ -687,7 +718,7 @@ export default function TopBar({
       <div style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center", flexShrink: 0 }}>
         {/* Autonomous Live Cockpit Trigger */}
         <button
-          className={autoCockpitOpen ? "primary" : "ghost"}
+          className="ghost"
           onClick={onOpenAutoCockpit}
           title={`Autonomous Cockpit${displayAutoTrades.length > 0 ? ` (${displayAutoTrades.length} Active${hasAutoR ? ` · ${formatR(autoNetR)}` : ""})` : stagedAutoTrades.length > 0 ? ` (${stagedAutoTrades.length} Staged)` : " (Idle)"}`}
           aria-label="Toggle Autonomous Cockpit"
@@ -700,12 +731,18 @@ export default function TopBar({
             borderRadius: 6,
             border: displayAutoTrades.length > 0
               ? `1px solid ${isAutoNetProfit ? "rgba(38, 166, 154, 0.45)" : "rgba(239, 83, 80, 0.45)"}`
+              : autoCockpitOpen
+              ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.3))"
               : "1px solid var(--border)",
             background: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "rgba(38, 166, 154, 0.12)" : "rgba(239, 83, 80, 0.12)")
+              : autoCockpitOpen
+              ? "var(--accent-soft, rgba(255, 255, 255, 0.12))"
               : "transparent",
             color: displayAutoTrades.length > 0
               ? (isAutoNetProfit ? "var(--green)" : "var(--red)")
+              : autoCockpitOpen
+              ? "var(--text)"
               : "var(--fg)",
             fontWeight: 600,
             cursor: "pointer",
@@ -946,10 +983,28 @@ export default function TopBar({
               <div>
                 <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 4, textTransform: "uppercase", fontWeight: 700 }}>Sync Options</div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  <button className={syncOpts.symbol ? "primary" : "ghost"} onClick={() => toggleSync("symbol")} style={{padding: "2px 6px", fontSize: 10}}>SYM</button>
-                  <button className={syncOpts.tf ? "primary" : "ghost"} onClick={() => toggleSync("tf")} style={{padding: "2px 6px", fontSize: 10}}>TF</button>
-                  <button className={syncOpts.time ? "primary" : "ghost"} onClick={() => toggleSync("time")} style={{padding: "2px 6px", fontSize: 10}}>TIME</button>
-                  <button className={syncOpts.crosshair ? "primary" : "ghost"} onClick={() => toggleSync("crosshair")} style={{padding: "2px 6px", fontSize: 10}}>CROSS</button>
+                  {["symbol", "tf", "time", "crosshair"].map((k) => {
+                    const active = Boolean(syncOpts[k]);
+                    const label = k === "symbol" ? "SYM" : k === "tf" ? "TF" : k === "time" ? "TIME" : "CROSS";
+                    return (
+                      <button
+                        key={k}
+                        className="ghost"
+                        onClick={() => toggleSync(k)}
+                        style={{
+                          padding: "3px 6px",
+                          fontSize: 10,
+                          fontWeight: active ? 700 : 500,
+                          borderRadius: 4,
+                          background: active ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+                          border: active ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+                          color: active ? "var(--text)" : "var(--muted)",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1034,7 +1089,18 @@ export default function TopBar({
               })}
             </div>
             <div style={{ display: "flex", gap: 4 }}>
-              <button className={watchlistOpen ? "primary" : "ghost"} onClick={() => setWatchlistOpen(!watchlistOpen)} title="Watchlist" style={{ padding: "4px 8px", borderRadius: 4 }}>
+              <button
+                className="ghost"
+                onClick={() => setWatchlistOpen(!watchlistOpen)}
+                title="Watchlist"
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  background: watchlistOpen ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+                  border: watchlistOpen ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+                  color: watchlistOpen ? "var(--text)" : "var(--muted)",
+                }}
+              >
                 <Sidebar size={14} />
               </button>
               <button className="ghost" onClick={() => { setMobileMenuOpen(false); onOpenAlerts?.(); }} title="Alerts" style={{ padding: "4px 8px", borderRadius: 4 }}>

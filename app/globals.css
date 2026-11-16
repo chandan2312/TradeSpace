@@ -159,15 +159,15 @@ button {
 }
 button:hover { border-color: var(--border-hi); }
 button.primary {
-  background: var(--bg-inverse, #ffffff);
-  border-color: var(--bg-inverse, #ffffff);
-  color: var(--text-inverse, #0a0e17);
+  background: var(--accent-soft, rgba(255, 255, 255, 0.12));
+  border-color: var(--border-hi, rgba(255, 255, 255, 0.28));
+  color: var(--text);
   font-weight: 700;
 }
 button.primary:hover {
-  background: var(--panel-inverse, #e2e8f0);
-  border-color: var(--panel-inverse, #e2e8f0);
-  color: var(--text-inverse, #0a0e17);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.38);
+  color: var(--text);
 }
 button.primary svg {
   stroke: currentColor;
