@@ -22,18 +22,42 @@ export default function IndicatorsMenu({ indicators, setIndicators }) {
   const toggle = (id) =>
     setIndicators((prev) => ({ ...prev, [id]: !prev?.[id] }));
 
+  const isActive = open || activeCount > 0;
+
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
       <button
-        className={open || activeCount ? "primary" : "ghost"}
+        className="ghost"
         onClick={() => setOpen(!open)}
         title="Indicators & Overlays"
         aria-label="Indicators & Overlays"
-        style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 4, fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
+        style={{
+          padding: "4px 8px",
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          fontSize: 12,
+          fontWeight: 600,
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+          borderRadius: 6,
+          background: isActive ? "rgba(59, 130, 246, 0.2)" : "transparent",
+          border: isActive ? "1px solid rgba(59, 130, 246, 0.45)" : "1px solid transparent",
+          color: isActive ? "#60a5fa" : "var(--muted)",
+          transition: "all 0.15s ease",
+        }}
       >
-        <Sparkles size={14} />
+        <Sparkles size={14} style={{ color: isActive ? "#60a5fa" : "var(--muted)" }} />
         {activeCount > 0 && (
-          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 8, background: "var(--text-inverse)", color: "var(--bg-inverse)", fontWeight: 700 }}>
+          <span style={{
+            fontSize: 10,
+            padding: "1px 5px",
+            borderRadius: 8,
+            background: "rgba(59, 130, 246, 0.35)",
+            border: "1px solid rgba(59, 130, 246, 0.5)",
+            color: "#93c5fd",
+            fontWeight: 800,
+          }}>
             {activeCount}
           </span>
         )}

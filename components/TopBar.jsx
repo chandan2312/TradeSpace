@@ -162,19 +162,44 @@ export default function TopBar({
         Trade<span style={{ opacity: 0.8, fontWeight: 500 }}>Space</span>
       </div>
 
-      <button className="primary symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
-        style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
-        <span style={{ opacity: 0.8 }}>⌕</span> {symbol}
+      <button className="symbol-btn" onClick={onOpenPalette} title="Switch symbol (Ctrl+K or /)"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          background: "var(--accent-soft, rgba(255, 255, 255, 0.08))",
+          border: "1px solid var(--border-hi, rgba(255, 255, 255, 0.2))",
+          color: "var(--text)",
+          borderRadius: 6,
+          padding: "4px 10px",
+          transition: "all 0.15s ease"
+        }}>
+        <span style={{ opacity: 0.7 }}>⌕</span> {symbol}
         <SessionLedDot symbol={symbol} size={6.5} style={{ marginLeft: 2 }} />
       </button>
 
       <div style={{ position: "relative", flexShrink: 0 }}>
         <button 
-          className={toolsMenuOpen ? "primary" : "ghost"} 
+          className="ghost" 
           onClick={() => setToolsMenuOpen(!toolsMenuOpen)} 
           title="Tools & Analytics" 
           aria-label="Tools & Analytics"
-          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}
+          style={{ 
+            padding: "4px 8px", 
+            fontSize: 12, 
+            display: "flex", 
+            alignItems: "center", 
+            gap: 6, 
+            flexShrink: 0,
+            borderRadius: 6,
+            background: toolsMenuOpen ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+            border: toolsMenuOpen ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.25))" : "1px solid transparent",
+            color: toolsMenuOpen ? "var(--text)" : "var(--muted)",
+            transition: "all 0.15s ease"
+          }}
         >
           <Wrench size={14} />
         </button>
@@ -215,22 +240,36 @@ export default function TopBar({
 
       {/* Desktop Timeframe Buttons (Full 7 buttons on wide screens) */}
       <div className={`tf-container tf-full-group ${isCompactTf ? "hidden-tf" : ""}`} style={{ gap: 4, flexShrink: 0 }}>
-        {TFS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTf(t)}
-            className={`tf-btn ${tf === t ? "primary" : "ghost"}`}
-            style={{ padding: "4px 9px", fontSize: 12, whiteSpace: "nowrap", flexShrink: 0 }}
-          >
-            {TF_LABEL[t]}
-          </button>
-        ))}
+        {TFS.map((t) => {
+          const isActive = tf === t;
+          return (
+            <button
+              key={t}
+              onClick={() => setTf(t)}
+              className="tf-btn"
+              style={{
+                padding: "4px 9px",
+                fontSize: 12,
+                fontWeight: isActive ? 700 : 500,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                borderRadius: 6,
+                background: isActive ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+                border: isActive ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+                color: isActive ? "var(--text)" : "var(--muted)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {TF_LABEL[t]}
+            </button>
+          );
+        })}
       </div>
 
       {/* Collapsed Timeframe Dropdown (Active on Mobile Portrait, Mobile Landscape, and Compact Viewports) */}
       <div className={`tf-dropdown-group ${isCompactTf ? "visible-tf" : ""}`} style={{ position: "relative", flexShrink: 0 }} ref={mobileTfRef}>
         <button
-          className="primary"
+          className="ghost"
           onClick={() => setMobileTfOpen(!mobileTfOpen)}
           title="Select Timeframe"
           aria-label="Select Timeframe"
@@ -244,6 +283,10 @@ export default function TopBar({
             borderRadius: 6,
             whiteSpace: "nowrap",
             flexShrink: 0,
+            background: "var(--accent-soft, rgba(255, 255, 255, 0.12))",
+            border: "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))",
+            color: "var(--text)",
+            transition: "all 0.15s ease",
           }}
         >
           <span>{TF_LABEL[tf] || tf}</span>
@@ -274,26 +317,32 @@ export default function TopBar({
                 minWidth: 160,
               }}
             >
-              {TFS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => {
-                    setTf(t);
-                    setMobileTfOpen(false);
-                  }}
-                  className={tf === t ? "primary" : "ghost"}
-                  style={{
-                    padding: "6px 8px",
-                    fontSize: 12,
-                    fontWeight: tf === t ? 700 : 500,
-                    borderRadius: 4,
-                    textAlign: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {TF_LABEL[t]}
-                </button>
-              ))}
+              {TFS.map((t) => {
+                const isActive = tf === t;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setTf(t);
+                      setMobileTfOpen(false);
+                    }}
+                    style={{
+                      padding: "6px 8px",
+                      fontSize: 12,
+                      fontWeight: isActive ? 700 : 500,
+                      borderRadius: 4,
+                      textAlign: "center",
+                      justifyContent: "center",
+                      background: isActive ? "var(--accent-soft, rgba(255, 255, 255, 0.15))" : "transparent",
+                      border: isActive ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.3))" : "1px solid transparent",
+                      color: isActive ? "var(--text)" : "var(--muted)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {TF_LABEL[t]}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
@@ -339,11 +388,22 @@ export default function TopBar({
       <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
         <div style={{ position: "relative", borderLeft: "1px solid var(--border)", paddingLeft: 8, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <button 
-          className={showLayoutMenu ? "primary" : "ghost"} 
+          className="ghost" 
           onClick={() => setShowLayoutMenu(!showLayoutMenu)} 
           title="Layout Settings"
           aria-label="Layout Settings"
-          style={{ padding: "4px 8px", display: "flex", alignItems: "center", fontSize: 12, flexShrink: 0 }}
+          style={{ 
+            padding: "4px 8px", 
+            display: "flex", 
+            alignItems: "center", 
+            fontSize: 12, 
+            flexShrink: 0,
+            borderRadius: 6,
+            background: showLayoutMenu ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+            border: showLayoutMenu ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+            color: showLayoutMenu ? "var(--text)" : "var(--muted)",
+            transition: "all 0.15s ease",
+          }}
         >
           <LayoutGrid size={14} />
         </button>
@@ -427,7 +487,7 @@ export default function TopBar({
 
       {/* Desktop Taskbar: Auto Trades Indicator Toggle */}
       <button
-        className={`hide-mobile ${indicators?.autoTrades !== false ? "primary" : "ghost"}`}
+        className="hide-mobile ghost"
         onClick={() => {
           setIndicators?.((prev) => ({ ...prev, autoTrades: prev?.autoTrades === false ? true : false }));
         }}
@@ -441,9 +501,14 @@ export default function TopBar({
           fontWeight: 600,
           whiteSpace: "nowrap",
           flexShrink: 0,
+          borderRadius: 6,
+          background: indicators?.autoTrades !== false ? "rgba(34, 197, 94, 0.2)" : "transparent",
+          border: indicators?.autoTrades !== false ? "1px solid rgba(34, 197, 94, 0.45)" : "1px solid transparent",
+          color: indicators?.autoTrades !== false ? "#4ade80" : "var(--muted)",
+          transition: "all 0.15s ease",
         }}
       >
-        <Zap size={14} style={{ color: indicators?.autoTrades !== false ? "var(--text-inverse)" : "var(--muted)" }} />
+        <Zap size={14} style={{ color: indicators?.autoTrades !== false ? "#4ade80" : "var(--muted)" }} />
       </button>
 
       {/* Desktop Taskbar: Staged Trades Indicator Toggle */}
@@ -552,11 +617,22 @@ export default function TopBar({
 
       <div style={{ position: "relative", flexShrink: 0 }} className="hide-mobile">
         <button
-          className={themeMenuOpen ? "primary" : "ghost"}
+          className="ghost"
           onClick={() => setThemeMenuOpen(!themeMenuOpen)}
           title={`Theme: ${THEME_LIST.find(t => t.id === activeTheme)?.label || "Dark"}`}
           aria-label="Switch Theme"
-          style={{ padding: "4px 8px", fontSize: 12, display: "flex", alignItems: "center", flexShrink: 0 }}
+          style={{ 
+            padding: "4px 8px", 
+            fontSize: 12, 
+            display: "flex", 
+            alignItems: "center", 
+            flexShrink: 0,
+            borderRadius: 6,
+            background: themeMenuOpen ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+            border: themeMenuOpen ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid transparent",
+            color: themeMenuOpen ? "var(--text)" : "var(--muted)",
+            transition: "all 0.15s ease",
+          }}
         >
           {activeTheme === "light" ? <Sun size={14} /> :
            activeTheme === "navyblue" ? <Compass size={14} /> :
@@ -775,11 +851,14 @@ export default function TopBar({
           {/* Row 2: Analysis & Views Tabs */}
           <div style={{ display: "grid", gridTemplateColumns: layout === "1" ? "repeat(5, 1fr)" : "repeat(4, 1fr)", gap: 6 }}>
             <button
-              className={showLayoutMenu ? "primary" : "ghost"}
+              className="ghost"
               onClick={() => setShowLayoutMenu(!showLayoutMenu)}
               style={{
                 fontSize: 11, padding: "6px 4px", display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                borderRadius: 6, border: "1px solid var(--border)"
+                borderRadius: 6,
+                background: showLayoutMenu ? "var(--accent-soft, rgba(255, 255, 255, 0.12))" : "transparent",
+                border: showLayoutMenu ? "1px solid var(--border-hi, rgba(255, 255, 255, 0.28))" : "1px solid var(--border)",
+                color: showLayoutMenu ? "var(--text)" : "var(--muted)",
               }}
             >
               <LayoutGrid size={12} /> <span>Grid</span>
@@ -879,30 +958,46 @@ export default function TopBar({
           {/* Row 3: Overlays & Indicators Segmented Chips */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)" }}>
             <button
-              className={indicators?.autoTrades !== false ? "primary" : "ghost"}
               onClick={() => setIndicators?.(p => ({ ...p, autoTrades: p?.autoTrades === false }))}
-              style={{ flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600 }}
+              style={{
+                flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600,
+                background: indicators?.autoTrades !== false ? "rgba(34, 197, 94, 0.2)" : "transparent",
+                border: indicators?.autoTrades !== false ? "1px solid rgba(34, 197, 94, 0.45)" : "1px solid transparent",
+                color: indicators?.autoTrades !== false ? "#4ade80" : "var(--muted)",
+              }}
             >
               Auto {indicators?.autoTrades !== false ? "ON" : "OFF"}
             </button>
             <button
-              className={indicators?.stagedTrades !== false ? "primary" : "ghost"}
               onClick={() => setIndicators?.(p => ({ ...p, stagedTrades: p?.stagedTrades === false }))}
-              style={{ flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600 }}
+              style={{
+                flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600,
+                background: indicators?.stagedTrades !== false ? "rgba(245, 158, 11, 0.2)" : "transparent",
+                border: indicators?.stagedTrades !== false ? "1px solid rgba(245, 158, 11, 0.45)" : "1px solid transparent",
+                color: indicators?.stagedTrades !== false ? "#fbbf24" : "var(--muted)",
+              }}
             >
               Staged {symbolStagedCount > 0 ? `(${symbolStagedCount})` : (indicators?.stagedTrades !== false ? "ON" : "OFF")}
             </button>
             <button
-              className={indicators?.radarTrades !== false ? "primary" : "ghost"}
               onClick={() => setIndicators?.(p => ({ ...p, radarTrades: p?.radarTrades === false }))}
-              style={{ flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600 }}
+              style={{
+                flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600,
+                background: indicators?.radarTrades !== false ? "rgba(168, 85, 247, 0.2)" : "transparent",
+                border: indicators?.radarTrades !== false ? "1px solid rgba(168, 85, 247, 0.45)" : "1px solid transparent",
+                color: indicators?.radarTrades !== false ? "#c084fc" : "var(--muted)",
+              }}
             >
               Radar {symbolRadarCount > 0 ? `(${symbolRadarCount})` : (indicators?.radarTrades !== false ? "ON" : "OFF")}
             </button>
             <button
-              className={indicators?.biasEngine !== false ? "primary" : "ghost"}
               onClick={() => setIndicators?.(p => ({ ...p, biasEngine: p?.biasEngine === false }))}
-              style={{ flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600 }}
+              style={{
+                flex: 1, fontSize: 10, padding: "4px 6px", borderRadius: 4, fontWeight: 600,
+                background: indicators?.biasEngine !== false ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                border: indicators?.biasEngine !== false ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+                color: indicators?.biasEngine !== false ? "#22d3ee" : "var(--muted)",
+              }}
             >
               Bias {indicators?.biasEngine !== false ? "ON" : "OFF"}
             </button>

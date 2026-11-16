@@ -176,6 +176,39 @@ button.ghost { background: transparent; border-color: transparent; color: var(--
 button.ghost:hover { color: var(--text); background: var(--panel-2); border-color: transparent; }
 button.danger:hover { border-color: var(--red); color: var(--red); }
 
+.symbol-btn {
+  background: var(--accent-soft, rgba(255, 255, 255, 0.08)) !important;
+  border: 1px solid var(--border-hi, rgba(255, 255, 255, 0.2)) !important;
+  color: var(--text) !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+.symbol-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+.tf-btn.primary, .tf-btn.active {
+  background: var(--accent-soft, rgba(255, 255, 255, 0.12)) !important;
+  border: 1px solid var(--border-hi, rgba(255, 255, 255, 0.28)) !important;
+  color: var(--text) !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+.tf-btn.ghost {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--muted) !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+.tf-btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--text) !important;
+}
+
 .dropdown-btn {
   display: flex;
   align-items: center;
