@@ -852,31 +852,35 @@ def handle_rates(payload):
     cache_key = (app_symbol, tf_name, count, offset)
     now_mono = time.monotonic()
     ttl = _tf_cache_ttl(tf_name)
+    force_refresh = bool(payload.get("refresh") or payload.get("force"))
+
+    if not force_refresh:
+        with CACHE_LOCK:
+            # 1. Exact cache match
+            cached = _RATES_CACHE.get(cache_key)
+            if cached and (now_mono - cached[0] < ttl):
+                return cached[1]
+
+            # 2. Dynamic cache slicing: if an existing cached entry with offset 0 has >= count bars, slice and serve directly
+            if offset == 0:
+                for (k_sym, k_tf, k_cnt, k_off), (c_time, c_res) in list(_RATES_CACHE.items()):
+                    if k_sym == app_symbol and k_tf == tf_name and k_off == 0 and (now_mono - c_time < ttl):
+                        bars = c_res.get("bars", [])
+                        if len(bars) >= count:
+                            sliced_bars = bars[-count:]
+                            sliced_res = {
+                                "ok": True,
+                                "status": "rates",
+                                "app_symbol": app_symbol,
+                                "symbol": c_res.get("symbol", app_symbol),
+                                "timeframe": tf_name,
+                                "count": len(sliced_bars),
+                                "bars": sliced_bars,
+                            }
+                            _RATES_CACHE[cache_key] = (c_time, sliced_res)
+                            return sliced_res
+
     with CACHE_LOCK:
-        # 1. Exact cache match
-        cached = _RATES_CACHE.get(cache_key)
-        if cached and (now_mono - cached[0] < ttl):
-            return cached[1]
-
-        # 2. Dynamic cache slicing: if an existing cached entry with offset 0 has >= count bars, slice and serve directly
-        if offset == 0:
-            for (k_sym, k_tf, k_cnt, k_off), (c_time, c_res) in list(_RATES_CACHE.items()):
-                if k_sym == app_symbol and k_tf == tf_name and k_off == 0 and (now_mono - c_time < ttl):
-                    bars = c_res.get("bars", [])
-                    if len(bars) >= count:
-                        sliced_bars = bars[-count:]
-                        sliced_res = {
-                            "ok": True,
-                            "status": "rates",
-                            "app_symbol": app_symbol,
-                            "symbol": c_res.get("symbol", app_symbol),
-                            "timeframe": tf_name,
-                            "count": len(sliced_bars),
-                            "bars": sliced_bars,
-                        }
-                        _RATES_CACHE[cache_key] = (c_time, sliced_res)
-                        return sliced_res
-
         # 3. In-flight single-flight coalescing
         flight_event = _IN_FLIGHT_RATES.get(cache_key)
         if flight_event is None:

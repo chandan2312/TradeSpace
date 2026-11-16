@@ -804,23 +804,56 @@ export default function ChartPanel({
 
       // Seamless delta stitching: merge delta bars with existing historical bars strictly for same symbol/tf
       let finalBars = newBars;
-      if (hasExistingBars && count < 200) {
-        const baseBars = (cached?.bars?.length ? cached.bars : (barsKeyRef.current === key ? barsRef.current : [])) || [];
+      if (hasExistingBars) {
+        const baseBars = (barsKeyRef.current === key && Array.isArray(barsRef.current) && barsRef.current.length > 0)
+          ? barsRef.current
+          : (Array.isArray(cached?.bars) ? cached.bars : []);
+
         if (baseBars.length > 0) {
           const timeMap = new Map();
-          for (const b of baseBars) timeMap.set(b.time, b);
-          for (const b of newBars) timeMap.set(b.time, b);
+          // 1. Seed with existing historical bars (if count < 200, retain full history)
+          if (count < 200) {
+            for (const b of baseBars) {
+              if (b && b.time != null) timeMap.set(b.time, b);
+            }
+          }
+          // 2. Overwrite / insert authoritative bars from MT5
+          for (const b of newBars) {
+            if (b && b.time != null) timeMap.set(b.time, b);
+          }
+
+          // 3. Live tick preservation:
+          // If a live tick formed an active candle with time > latest incoming MT5 bar,
+          // preserve it at the end while stitching its open to the latest MT5 bar's close!
+          const latestBaseBar = baseBars[baseBars.length - 1];
+          const latestNewBar = newBars[newBars.length - 1];
+          if (latestBaseBar && latestNewBar && latestBaseBar.time > latestNewBar.time) {
+            const sec = TF_SEC[curTf] || 300;
+            const gap = latestBaseBar.time - latestNewBar.time;
+            const isConsecutive = (curTf === "D1" || curTf === "1D")
+              ? (gap >= 86400 && gap <= 86400 * 1.5)
+              : (Math.abs(gap - sec) <= 2);
+
+            if (isConsecutive && latestNewBar.close > 0) {
+              latestBaseBar.open = latestNewBar.close;
+              latestBaseBar.high = Math.max(latestBaseBar.high, latestBaseBar.open);
+              latestBaseBar.low = Math.min(latestBaseBar.low, latestBaseBar.open);
+            }
+            timeMap.set(latestBaseBar.time, latestBaseBar);
+          }
+
           finalBars = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
         }
       }
 
-      // Stale regression guard: Never overwrite newer live bars with older stale/offline bars (strictly same symbol/tf)
-      if ((data?.stale || data?.offline) && hasExistingBars) {
+      // Offline fallback safety: If the bridge is completely offline and returned older historical data,
+      // never regress a chart that was already ahead via live ticks or local cache.
+      if (data?.offline && !forceRefresh && hasExistingBars) {
         const currentBars = (barsKeyRef.current === key && barsRef.current && barsRef.current.length > 0) ? barsRef.current : (cached?.bars || []);
         const latestExistingTime = currentBars.length > 0 ? currentBars[currentBars.length - 1].time : 0;
         const latestNewTime = newBars.length > 0 ? newBars[newBars.length - 1].time : 0;
-        if (latestExistingTime > 0 && latestNewTime < latestExistingTime) {
-          console.warn(`[ChartPanel] Suppressed stale candle rollback: current latest=${latestExistingTime}, incoming stale latest=${latestNewTime}`);
+        if (latestExistingTime > 0 && latestNewTime < latestExistingTime && currentBars.length >= finalBars.length) {
+          console.warn(`[ChartPanel] Preserving active bars during offline bridge fallback`);
           finalBars = currentBars;
         }
       }
@@ -1224,7 +1257,7 @@ export default function ChartPanel({
     if (isNewBar && !isNextConsecutive) {
       if (lastGapReconciledBarTimeRef.current !== barTime) {
         lastGapReconciledBarTimeRef.current = barTime;
-        const missedBars = Math.max(3, Math.min(Math.round(gap / sec) + 5, 200));
+        const missedBars = Math.max(50, Math.min(Math.round(gap / sec) + 20, 500));
         reconcileBackgroundGaps(true, true, missedBars);
       }
     }
@@ -2069,7 +2102,10 @@ export default function ChartPanel({
           <button
             className="ghost"
             style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 12px", fontSize: 11 }}
-            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false)}
+            onClick={() => {
+              barsCache.current.delete(`${symbol}:${tf}`);
+              loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true, 500);
+            }}
           >
             Retry Connection
           </button>
@@ -2130,7 +2166,10 @@ export default function ChartPanel({
               background: "rgba(249, 115, 22, 0.3)",
               fontWeight: 700,
             }}
-            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true, 500)}
+            onClick={() => {
+              barsCache.current.delete(`${symbol}:${tf}`);
+              loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true, 500);
+            }}
             title="Force re-sync candles from MT5"
           >
             Sync Now
@@ -2193,7 +2232,10 @@ export default function ChartPanel({
               cursor: isAutoReconnecting ? "wait" : "pointer",
               color: "#fdba74",
             }}
-            onClick={() => loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true)}
+            onClick={() => {
+              barsCache.current.delete(`${symbol}:${tf}`);
+              loadBars(`${symbol}:${tf}`, fetchGenerationRef.current, false, true, 500);
+            }}
             title="Reconnect immediately"
           >
             Retry

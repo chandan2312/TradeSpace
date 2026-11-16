@@ -28,14 +28,14 @@ const TF_RATES_TTL_MS = {
 
 const inFlightRequests = new Map();
 
-async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey) {
+async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey, force = false) {
   // For live stream (off === 0), prefetch 500 bars if requested count is > 10 (intraday charting).
   // For small requests (n <= 10, e.g. D1 daily open or gap healing), fetch only requested n bars.
   const fetchCount = (off === 0 && n > 10) ? Math.max(n, 500) : n;
-  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 10_000 });
+  let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off, refresh: force, force }, { timeoutMs: 10_000 });
   if (!d?.ok && !d?.circuitOpen) {
     await new Promise((r) => setTimeout(r, 200));
-    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off }, { timeoutMs: 10_000 });
+    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off, refresh: force, force }, { timeoutMs: 10_000 });
   }
   if (d?.ok && Array.isArray(d.bars)) {
     d.bars = d.bars.map((b) => ({
@@ -90,7 +90,7 @@ export async function GET(req) {
   const force = sp.get("refresh") === "1" || sp.get("force") === "1";
   const cached = ratesCache.get(key) || ratesCache.get(brokerKey);
   const effectiveTtl = off > 0 ? 3600_000 : (TF_RATES_TTL_MS[tf] || RATES_TTL_MS || 60_000);
-  const flightKey = off === 0 ? `${brokerSym}:${tf}:live` : `${brokerSym}:${tf}:${n}:${off}`;
+  const flightKey = off === 0 ? `${brokerSym}:${tf}:live${force ? ":force" : ""}` : `${brokerSym}:${tf}:${n}:${off}${force ? ":force" : ""}`;
 
   const historyHeaders = off > 0 ? { headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" } } : undefined;
 
@@ -144,7 +144,7 @@ export async function GET(req) {
   }
 
   try {
-    const fetchPromise = fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey);
+    const fetchPromise = fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey, force);
     inFlightRequests.set(flightKey, fetchPromise);
     let data;
     try {

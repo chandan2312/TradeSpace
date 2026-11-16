@@ -1085,10 +1085,27 @@ export default function Dashboard() {
   const symbol = activePane.symbol;
   const tf = activePane.tf;
 
+  const handleSetSyncOpts = useCallback((updater) => {
+    setSyncOpts((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      // If symbol sync was just enabled, immediately sync all panes to activePane.symbol
+      if (!prev?.symbol && next?.symbol && activePane?.symbol) {
+        setPanes((pList) => pList.map((p) => ({ ...p, symbol: activePane.symbol })));
+      }
+      // If timeframe sync was just enabled, immediately sync all panes to activePane.tf
+      if (!prev?.tf && next?.tf && activePane?.tf) {
+        setPanes((pList) => pList.map((p) => ({ ...p, tf: activePane.tf })));
+      }
+      return next;
+    });
+  }, [activePane?.symbol, activePane?.tf]);
+
   const changeSymbol = (newSym) => {
     if (fullScreenPaneId) {
       setPanes(prev => prev.map(p => p.id === fullScreenPaneId ? { ...p, symbol: newSym } : p));
-    } else if (syncOpts.symbol || layout === "1") {
+    } else if (syncOpts.symbol) {
+      setPanes(prev => prev.map(p => ({ ...p, symbol: newSym })));
+    } else if (layout === "1") {
       setPanes(prev => prev.map(p => p.id === activePaneId ? { ...p, symbol: newSym } : p));
     } else {
       const existingPane = panes.find(p => p.symbol === newSym);
@@ -1753,7 +1770,7 @@ export default function Dashboard() {
         layout={layout}
         setLayout={changeLayout}
         syncOpts={syncOpts}
-        setSyncOpts={setSyncOpts}
+        setSyncOpts={handleSetSyncOpts}
         watchlistOpen={watchlistOpen}
         setWatchlistOpen={setWatchlistOpen}
         savedLayouts={savedLayouts}
