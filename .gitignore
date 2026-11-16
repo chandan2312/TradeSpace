@@ -26,3 +26,9 @@ __pycache__/
 # agent & editor caches
 .opencode/
 .claude/
+
+# Experimental research models & backtest artifacts (kept locally, excluded from git)
+lib/autonomous_custom_models/
+lib/structural_denoiser/
+scripts/*.json
+
