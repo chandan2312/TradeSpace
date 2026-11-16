@@ -20,6 +20,7 @@ import {
 import { normalizeCandles } from "../lib/candleNormalization.js";
 import { getEetTime, getTradingDateString, getEetOffsetSec, getTradingDayKey, getEetDayOfWeek } from "../lib/time.js";
 import { BiasEnginePrimitive } from "../lib/bias/primitive.js";
+import { getSymbolZoom, saveSymbolZoom } from "../lib/chart/zoomMemory.js";
 
 const TF_SEC = {
   M1: 60, "1M": 60,
@@ -285,6 +286,8 @@ export default function ChartPanel({
   const [spawnY, setSpawnY] = useState(null); // mouse Y for layer ghost line
   const dragStateRef = useRef(null);
   const staleStreakRef = useRef(0); // Tracks consecutive stale/offline occurrences to suppress false alarms
+  const programmaticRangeRef = useRef(null);
+  const isSettingRangeRef = useRef(false);
 
   const [chartReady, setChartReady] = useState(false);
   const [isScrolledLeft, setIsScrolledLeft] = useState(false);
@@ -688,16 +691,28 @@ export default function ChartPanel({
       if (!isSilent) {
         chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
         const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
-        const visibleBars = isMobile ? 60 : 80;
-        const rightOffset = isMobile ? 8 : 12;
+        const defaultVisibleBars = isMobile ? 60 : 80;
+        const defaultRightOffset = isMobile ? 8 : 12;
+
+        const savedZoom = getSymbolZoom(symbol, tf);
+        const visibleBars = (savedZoom?.visibleBars >= 10 && savedZoom?.visibleBars <= 2500)
+          ? savedZoom.visibleBars
+          : defaultVisibleBars;
+        const rightOffset = (savedZoom?.rightOffset != null && savedZoom?.rightOffset >= -50 && savedZoom?.rightOffset <= 150)
+          ? savedZoom.rightOffset
+          : defaultRightOffset;
+
         const from = Math.max(0, cleanBars.length - visibleBars);
         const to = cleanBars.length + rightOffset;
+        isSettingRangeRef.current = true;
+        programmaticRangeRef.current = { from, to };
         chartRef.current?.timeScale().setVisibleLogicalRange({ from, to });
         setTimeout(() => {
+          isSettingRangeRef.current = false;
           if (chartRef.current) {
             try { chartRef.current.priceScale("right").applyOptions({ autoScale: false }); } catch {}
           }
-        }, 100);
+        }, 120);
       }
 
       // Ensure drawings are redrawn after the time scale has applied the new range
@@ -1779,7 +1794,6 @@ export default function ChartPanel({
     return () => cancelAnimationFrame(rafId);
   }, [dragHandle, dragging, paneId, isMobile, digits]);
 
-  const programmaticRangeRef = useRef(null);
   const isFetchingHistory = useRef(false);
 
   // ---------- Sync Logical Range ----------
@@ -1788,71 +1802,99 @@ export default function ChartPanel({
     if (!chart) return;
     const timeScale = chart.timeScale();
     const handler = (range) => {
-      if (range) {
-        const totalBars = barsRef.current?.length || 0;
-        if (totalBars > 0) {
-          setIsScrolledLeft(range.to < totalBars + 5);
-          
-          if (
-            range.from < 30 &&
-            !isFetchingHistory.current &&
-            !hasReachedHistoryStartRef.current &&
-            totalBars < 5000
-          ) {
-            if (historyFetchDebounceRef.current) clearTimeout(historyFetchDebounceRef.current);
-            historyFetchDebounceRef.current = setTimeout(() => {
-              if (isFetchingHistory.current || hasReachedHistoryStartRef.current) return;
-              isFetchingHistory.current = true;
-              (async () => {
-                try {
-                  const curTotal = barsRef.current?.length || 0;
-                  const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=300&offset=${curTotal}`);
-                  const data = await res.json();
-                  if (data?.ok && Array.isArray(data.bars) && data.bars.length > 0) {
-                    let newBars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
-                    // Filter out completely anomalous MT5 glitches (0 prices or 100x spikes)
-                    newBars = newBars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+      if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to)) return;
 
-                    // MT5 might return the current bars if offset is too far, ensure we don't overlap time
-                    const oldestExistingTime = barsRef.current?.[0]?.time || 0;
-                    const filteredNewBars = newBars.filter(b => b.time < oldestExistingTime);
-                    
-                    if (filteredNewBars.length > 0) {
-                      const combined = normalizeCandles([...filteredNewBars, ...barsRef.current], tf);
-                      barsRef.current = combined;
-                      barsCache.current.set(`${symbol}:${tf}`, { at: Date.now(), bars: combined });
-                      // Preserve the scroll position by shifting logical indices
-                      const currentRange = chart.timeScale().getVisibleLogicalRange();
-                      seriesRef.current.setData(combined);
-                      if (currentRange) {
-                         chart.timeScale().setVisibleLogicalRange({
-                           from: currentRange.from + filteredNewBars.length,
-                           to: currentRange.to + filteredNewBars.length
-                         });
-                      }
-                    } else {
-                      // Broker returned bars but none are older than what we already have: end of history
-                      hasReachedHistoryStartRef.current = true;
+      const totalBars = barsRef.current?.length || 0;
+      const prog = programmaticRangeRef.current;
+      const isProgMatch = Boolean(prog && Math.abs(range.from - prog.from) < 1.0 && Math.abs(range.to - prog.to) < 1.0);
+      const isProg = isSettingRangeRef.current || isProgMatch;
+
+      if (totalBars > 0) {
+        setIsScrolledLeft(range.to < totalBars + 5);
+
+        // Record user zoom changes per symbol and timeframe
+        if (!isProg) {
+          const span = range.to - range.from;
+          if (span >= 10 && span <= 2500) {
+            let rightOffset = isMobile ? 8 : 12;
+            let visibleBars = Math.round(span);
+            if (range.to >= totalBars - 20) {
+              rightOffset = Math.round(range.to - totalBars);
+              visibleBars = Math.max(10, Math.round(span - Math.max(0, rightOffset)));
+            } else {
+              const existing = getSymbolZoom(symbol, tf);
+              rightOffset = existing?.rightOffset ?? (isMobile ? 8 : 12);
+              visibleBars = Math.max(10, Math.round(span - Math.max(0, rightOffset)));
+            }
+            saveSymbolZoom(symbol, tf, { visibleBars, rightOffset });
+          }
+        }
+
+        if (
+          range.from < 30 &&
+          !isFetchingHistory.current &&
+          !hasReachedHistoryStartRef.current &&
+          totalBars < 5000
+        ) {
+          if (historyFetchDebounceRef.current) clearTimeout(historyFetchDebounceRef.current);
+          historyFetchDebounceRef.current = setTimeout(() => {
+            if (isFetchingHistory.current || hasReachedHistoryStartRef.current) return;
+            isFetchingHistory.current = true;
+            (async () => {
+              try {
+                const curTotal = barsRef.current?.length || 0;
+                const res = await fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}&tf=${tf}&count=300&offset=${curTotal}`);
+                const data = await res.json();
+                if (data?.ok && Array.isArray(data.bars) && data.bars.length > 0) {
+                  let newBars = data.bars.map((b) => ({ time: b.t / 1000, open: b.o, high: b.h, low: b.l, close: b.c }));
+                  // Filter out completely anomalous MT5 glitches (0 prices or 100x spikes)
+                  newBars = newBars.filter(b => b.close > 0 && b.high > 0 && b.low > 0 && b.high < b.low * 10);
+
+                  // MT5 might return the current bars if offset is too far, ensure we don't overlap time
+                  const oldestExistingTime = barsRef.current?.[0]?.time || 0;
+                  const filteredNewBars = newBars.filter(b => b.time < oldestExistingTime);
+                  
+                  if (filteredNewBars.length > 0) {
+                    const combined = normalizeCandles([...filteredNewBars, ...barsRef.current], tf);
+                    barsRef.current = combined;
+                    barsCache.current.set(`${symbol}:${tf}`, { at: Date.now(), bars: combined });
+                    // Preserve the scroll position by shifting logical indices
+                    const currentRange = chart.timeScale().getVisibleLogicalRange();
+                    seriesRef.current.setData(combined);
+                    if (currentRange) {
+                       const nextRange = {
+                         from: currentRange.from + filteredNewBars.length,
+                         to: currentRange.to + filteredNewBars.length
+                       };
+                       programmaticRangeRef.current = nextRange;
+                       chart.timeScale().setVisibleLogicalRange(nextRange);
                     }
                   } else {
-                    // Broker returned empty or error: end of history reached
+                    // Broker returned bars but none are older than what we already have: end of history
                     hasReachedHistoryStartRef.current = true;
                   }
-                } catch (e) {
-                  console.error("lazy load failed", e);
+                } else {
+                  // Broker returned empty or error: end of history reached
                   hasReachedHistoryStartRef.current = true;
-                } finally {
-                  isFetchingHistory.current = false;
                 }
-              })();
-            }, 150);
-          }
+              } catch (e) {
+                console.error("lazy load failed", e);
+                hasReachedHistoryStartRef.current = true;
+              } finally {
+                isFetchingHistory.current = false;
+              }
+            })();
+          }, 150);
         }
       }
 
-      if (!syncOpts?.time) return;
-      const prog = programmaticRangeRef.current;
-      if (prog && range && Math.abs(range.from - prog.from) < 0.05 && Math.abs(range.to - prog.to) < 0.05) {
+      if (!syncOpts?.time) {
+        if (isProgMatch) programmaticRangeRef.current = null;
+        return;
+      }
+      const progVal = programmaticRangeRef.current;
+      if (progVal && Math.abs(range.from - progVal.from) < 0.05 && Math.abs(range.to - progVal.to) < 0.05) {
+        programmaticRangeRef.current = null;
         return; // Ignore programmatic echo
       }
       programmaticRangeRef.current = null; // Clear if user initiated
@@ -1865,7 +1907,7 @@ export default function ChartPanel({
       if (historyFetchDebounceRef.current) clearTimeout(historyFetchDebounceRef.current);
       timeScale.unsubscribeVisibleLogicalRangeChange(handler);
     };
-  }, [syncOpts?.time, paneId, setSyncedLogicalRange, chartReady, symbol, tf]);
+  }, [syncOpts?.time, paneId, setSyncedLogicalRange, chartReady, symbol, tf, isMobile]);
 
   useEffect(() => {
     if (!chartRef.current || !syncOpts?.time || !syncedLogicalRange) return;
