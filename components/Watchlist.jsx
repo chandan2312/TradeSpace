@@ -493,20 +493,23 @@ export default function Watchlist({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [list, symbol, setSymbol]);
 
+  const isFlagList = Boolean(list?.color && (list?.isVirtual || list?._id?.startsWith("flag-")));
+
   const handleGridClick = () => {
-    if (!list || !list.symbols || !list.symbols.length) return;
-    if (list.isVirtual) {
+    const symbolsToUse = (renderedSymbols && renderedSymbols.length > 0) ? renderedSymbols : (list?.symbols || []);
+    if (!list || !symbolsToUse.length) return;
+    if (isFlagList) {
       setGridifyFlags([list.color]);
     } else {
       setGridifyFlags([]);
     }
-    setGridifySelection(list.symbols.slice(0, 8)); // select first 8 by default
+    setGridifySelection(symbolsToUse.slice(0, 8)); // select first 8 by default
     setSelectedGridifyLayout(null);
     setGridifyOpen(true);
   };
 
-  let gridifyPool = list?.symbols || [];
-  if (gridifyFlags.length > 0) {
+  let gridifyPool = (renderedSymbols && renderedSymbols.length > 0) ? renderedSymbols : (list?.symbols || []);
+  if (isFlagList && gridifyFlags.length > 0) {
     const pool = [];
     gridifyFlags.forEach(color => {
       const vList = virtualWatchlists.find(v => v.color === color);
@@ -839,13 +842,13 @@ export default function Watchlist({
               onJump={() => setSymbol(sym)}
               onDoubleClick={() => { if (onDoubleJump) onDoubleJump(sym); }}
               onRemove={() => {
-                if (list.isVirtual) {
+                if (isFlagList) {
                   setSymbolFlags(p => {
                     const next = { ...p };
                     delete next[sym];
                     return next;
                   });
-                } else {
+                } else if (!list.isVirtual) {
                   onRemoveSymbol(list._id, sym);
                 }
               }}
@@ -1082,7 +1085,7 @@ export default function Watchlist({
               Select up to 8 symbols to display in the grid view.
             </p>
 
-            {gridifyFlags.length > 0 && (
+            {isFlagList && gridifyFlags.length > 0 && (
               <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                 {["red", "blue", "green", "yellow"].map(color => {
                   const isActive = gridifyFlags.includes(color);
