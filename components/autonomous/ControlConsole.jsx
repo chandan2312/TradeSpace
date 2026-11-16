@@ -581,7 +581,8 @@ export default function ControlConsole({
         ...form,
         enableScalpHorizon: isScalp,
         enabledHorizons: {
-          ...form.enabledHorizons,
+          day: form.enabledHorizons?.day !== false,
+          swing: Boolean(form.enabledHorizons?.swing),
           scalp: isScalp,
         },
         allowedTimeSlots: { ...form.allowedTimeSlots, dead_zone: false },
