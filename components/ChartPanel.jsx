@@ -443,6 +443,7 @@ export default function ChartPanel({
       borderVisible: settings.borderVisible,
       priceFormat: {
         type: "custom",
+        minMove: Math.pow(10, -digits),
         formatter: (price) => {
           if (price == null || !Number.isFinite(price)) return "";
           const abs = Math.abs(price);
