@@ -783,6 +783,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!loopMenuOpen || layout !== "1") return;
     const handleKeyDown = (e) => {
+      if (e.defaultPrevented || (typeof window !== "undefined" && window.__ts_drawing_selected)) return;
       const tag = e.target?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || e.target?.isContentEditable) return;
 
