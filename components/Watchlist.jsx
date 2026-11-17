@@ -270,26 +270,52 @@ export default function Watchlist({
 
   const [tabContextMenu, setTabContextMenu] = useState(null); // { list: w, x: number, y: number }
   const tabLongPressTimer = useRef(null);
+  const tabTouchStartPos = useRef({ x: 0, y: 0 });
+  const suppressTabClickUntilRef = useRef(0);
+  const menuOpenedAtRef = useRef(0);
   const attemptedDailyOpensRef = useRef(new Set());
+
+  const openTabContextMenu = (w, x, y) => {
+    suppressTabClickUntilRef.current = Date.now() + 500;
+    menuOpenedAtRef.current = Date.now();
+    setTabContextMenu({ list: w, x, y });
+  };
 
   const handleTabTouchStart = (w, e) => {
     if (tabLongPressTimer.current) clearTimeout(tabLongPressTimer.current);
+    if (!e.touches || !e.touches[0]) return;
     const touch = e.touches[0];
     const clientX = touch.clientX;
     const clientY = touch.clientY;
+    tabTouchStartPos.current = { x: clientX, y: clientY };
+
     tabLongPressTimer.current = setTimeout(() => {
+      tabLongPressTimer.current = null;
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         try { navigator.vibrate(50); } catch {}
       }
-      setTabContextMenu({ list: w, x: clientX, y: clientY });
-      tabLongPressTimer.current = null;
+      openTabContextMenu(w, clientX, clientY);
     }, 450);
   };
 
-  const handleTabTouchEnd = () => {
+  const handleTabTouchMove = (e) => {
+    if (!tabLongPressTimer.current || !e.touches || !e.touches[0]) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - tabTouchStartPos.current.x);
+    const dy = Math.abs(touch.clientY - tabTouchStartPos.current.y);
+    if (dx > 8 || dy > 8) {
+      clearTimeout(tabLongPressTimer.current);
+      tabLongPressTimer.current = null;
+    }
+  };
+
+  const handleTabTouchEnd = (e) => {
     if (tabLongPressTimer.current) {
       clearTimeout(tabLongPressTimer.current);
       tabLongPressTimer.current = null;
+    }
+    if (Date.now() < suppressTabClickUntilRef.current) {
+      if (e && e.cancelable) e.preventDefault();
     }
   };
 
@@ -542,14 +568,23 @@ export default function Watchlist({
           ) : (
               <button
                 key={w._id}
-                onClick={() => setActiveListId(w._id)}
+                onClick={(e) => {
+                  if (Date.now() < suppressTabClickUntilRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
+                  setActiveListId(w._id);
+                }}
                 onDoubleClick={() => !w.isVirtual && startRename(w)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setTabContextMenu({ list: w, x: e.clientX, y: e.clientY });
+                  if (Date.now() < suppressTabClickUntilRef.current) return;
+                  openTabContextMenu(w, e.clientX, e.clientY);
                 }}
                 onTouchStart={(e) => handleTabTouchStart(w, e)}
+                onTouchMove={handleTabTouchMove}
                 onTouchEnd={handleTabTouchEnd}
                 onTouchCancel={handleTabTouchEnd}
                 className={w._id === activeListId && !w.isVirtual ? "primary" : "ghost"}
@@ -557,6 +592,7 @@ export default function Watchlist({
                 style={{
                   fontSize: 11, padding: "3px 8px", whiteSpace: "nowrap",
                   display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
+                  userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "pan-x",
                   ...(w.isVirtual && w.color ? { 
                     background: w.color === "red" ? "rgba(239, 83, 80, 0.2)" : 
                                 w.color === "blue" ? "rgba(41, 98, 255, 0.2)" : 
@@ -770,6 +806,27 @@ export default function Watchlist({
               <Settings2 size={14} /> Edit
             </button>
           )}
+          {isFlagList && (list.symbols || []).length > 0 && (
+            <button
+              className="ghost danger"
+              onClick={() => {
+                if (confirm(`Unflag all ${(list.symbols || []).length} symbols in “${list.name}”?`)) {
+                  setSymbolFlags((prev) => {
+                    const next = { ...prev };
+                    for (const s of list.symbols || []) {
+                      if (next[s] === list.color) delete next[s];
+                    }
+                    return next;
+                  });
+                  setActiveListId(watchlists[0]?._id || "main");
+                }
+              }}
+              title="Unflag all symbols in this list"
+              style={{ fontSize: 12, padding: "4px 8px", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, color: "var(--red)" }}
+            >
+              <Eraser size={14} /> Unflag All
+            </button>
+          )}
           {list && (list.symbols || []).length > 0 && (
             <button className="ghost" onClick={handleGridClick} title="Grid View" style={{ padding: "4px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--brand)" }}>
               <LayoutGrid size={14} />
@@ -797,6 +854,27 @@ export default function Watchlist({
               style={{ padding: "2px 4px", display: "flex", alignItems: "center" }}
             >
               <Trash2 size={13} />
+            </button>
+          )}
+          {isFlagList && (list.symbols || []).length > 0 && (
+            <button
+              className="ghost danger"
+              onClick={() => {
+                if (confirm(`Unflag all ${(list.symbols || []).length} symbols in “${list.name}”?`)) {
+                  setSymbolFlags((prev) => {
+                    const next = { ...prev };
+                    for (const s of list.symbols || []) {
+                      if (next[s] === list.color) delete next[s];
+                    }
+                    return next;
+                  });
+                  setActiveListId(watchlists[0]?._id || "main");
+                }
+              }}
+              title="Unflag all symbols in this list"
+              style={{ fontSize: 11, padding: "2px 5px", fontWeight: 600, display: "flex", alignItems: "center", gap: 2, color: "var(--red)" }}
+            >
+              <Eraser size={13} /> Unflag All
             </button>
           )}
           {list && !list.isVirtual && (
@@ -955,122 +1033,201 @@ export default function Watchlist({
         <>
           <div
             style={{ position: "fixed", inset: 0, zIndex: 1200 }}
-            onClick={() => setTabContextMenu(null)}
+            onClick={(e) => {
+              if (Date.now() - menuOpenedAtRef.current < 450) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+              setTabContextMenu(null);
+            }}
+            onTouchStart={(e) => {
+              if (Date.now() - menuOpenedAtRef.current < 450) {
+                e.stopPropagation();
+                return;
+              }
+              setTabContextMenu(null);
+            }}
             onContextMenu={(e) => { e.preventDefault(); setTabContextMenu(null); }}
           />
-          <div
-            style={{
-              position: "fixed",
-              top: Math.min(tabContextMenu.y || 100, typeof window !== "undefined" ? window.innerHeight - 250 : 300),
-              left: Math.min(tabContextMenu.x || 100, typeof window !== "undefined" ? window.innerWidth - 220 : 200),
-              zIndex: 1201,
-              background: "var(--panel)",
-              border: "1px solid var(--border-hi)",
-              borderRadius: 8,
-              boxShadow: "0 10px 28px rgba(0,0,0,0.65)",
-              minWidth: 200,
-              padding: 6,
-              display: "flex",
-              flexDirection: "column",
-              gap: 3,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: "6px 10px 8px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>{tabContextMenu.list.name}</span>
-              <span className="muted" style={{ fontSize: 11 }}>{(tabContextMenu.list.symbols || []).length} symbols</span>
-            </div>
+          {(() => {
+            const screenW = typeof window !== "undefined" ? window.innerWidth : 800;
+            const screenH = typeof window !== "undefined" ? window.innerHeight : 600;
+            const menuWidth = 220;
+            const menuHeight = 250;
+            const pad = 12;
 
-            {!tabContextMenu.list.isVirtual && (
-              <button
-                className="ghost"
-                onClick={() => {
-                  const l = tabContextMenu.list;
-                  setTabContextMenu(null);
-                  startRename(l);
+            let top = (tabContextMenu.y || 80) + 20;
+            if (top + menuHeight > screenH - pad) {
+              top = Math.max(pad, (tabContextMenu.y || 80) - menuHeight - 10);
+            }
+            top = Math.max(pad, Math.min(top, screenH - menuHeight - pad));
+
+            let left = (tabContextMenu.x || 100) - 20;
+            if (left + menuWidth > screenW - pad) {
+              left = screenW - menuWidth - pad;
+            }
+            left = Math.max(pad, left);
+
+            return (
+              <div
+                style={{
+                  position: "fixed",
+                  top,
+                  left,
+                  zIndex: 1201,
+                  background: "var(--panel)",
+                  border: "1px solid var(--border-hi)",
+                  borderRadius: 8,
+                  boxShadow: "0 10px 28px rgba(0,0,0,0.65)",
+                  minWidth: 210,
+                  padding: 6,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3,
+                  userSelect: "none",
+                  WebkitUserSelect: "none"
                 }}
-                style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                <Settings2 size={14} /> Rename Watchlist
-              </button>
-            )}
+                <div style={{ padding: "6px 10px 8px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{tabContextMenu.list.name}</span>
+                  <span className="muted" style={{ fontSize: 11 }}>{(tabContextMenu.list.symbols || []).length} symbols</span>
+                </div>
 
-            {!tabContextMenu.list.isVirtual && (
-              <button
-                className="ghost"
-                onClick={() => {
-                  const l = tabContextMenu.list;
-                  setTabContextMenu(null);
-                  onCreate?.(`${l.name} (Copy)`, l.symbols || []);
-                }}
-                style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
-              >
-                <Copy size={14} /> Duplicate Watchlist
-              </button>
-            )}
-
-            <button
-              className="ghost"
-              onClick={() => {
-                const l = tabContextMenu.list;
-                setTabContextMenu(null);
-                if (confirm(`Clear all ${(l.symbols || []).length} symbols from “${l.name}”?`)) {
-                  onReorder(l._id, []);
-                }
-              }}
-              style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
-            >
-              <Eraser size={14} /> Clear All Symbols
-            </button>
-
-            {!tabContextMenu.list.isVirtual && (
-              <button
-                className="ghost"
-                onClick={() => {
-                  const l = tabContextMenu.list;
-                  setActiveListId(l._id);
-                  setTabContextMenu(null);
-                  setEditModalOpen(true);
-                }}
-                style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
-              >
-                <LayoutGrid size={14} /> Edit & Reorder Symbols
-              </button>
-            )}
-
-            {(() => {
-              const isDefault = tabContextMenu.list._id === "main" ||
-                                tabContextMenu.list.isDefault ||
-                                tabContextMenu.list.name?.toLowerCase() === "main" ||
-                                (watchlists.length <= 1 && watchlists[0]?._id === tabContextMenu.list._id);
-              if (isDefault) {
-                return (
-                  <div
-                    className="muted"
-                    title="Default watchlist cannot be deleted"
-                    style={{ padding: "8px 10px", fontSize: 12, opacity: 0.35, cursor: "not-allowed", display: "flex", alignItems: "center", gap: 8 }}
+                {!tabContextMenu.list.isVirtual && (
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      const l = tabContextMenu.list;
+                      setTabContextMenu(null);
+                      startRename(l);
+                    }}
+                    style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
                   >
-                    <Trash2 size={14} /> Delete (Default Protected)
-                  </div>
-                );
-              }
-              return (
+                    <Settings2 size={14} /> Rename Watchlist
+                  </button>
+                )}
+
+                {!tabContextMenu.list.isVirtual && (
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      const l = tabContextMenu.list;
+                      setTabContextMenu(null);
+                      onCreate?.(`${l.name} (Copy)`, l.symbols || []);
+                    }}
+                    style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+                  >
+                    <Copy size={14} /> Duplicate Watchlist
+                  </button>
+                )}
+
                 <button
-                  className="ghost danger"
+                  className="ghost"
                   onClick={() => {
                     const l = tabContextMenu.list;
                     setTabContextMenu(null);
-                    if (confirm(`Delete watchlist “${l.name}”?`)) {
-                      onDelete(l._id);
+                    const symCount = (l.symbols || []).length;
+                    if (l.isVirtual && l.color) {
+                      if (confirm(`Unflag all ${symCount} symbols in “${l.name}”?`)) {
+                        setSymbolFlags((prev) => {
+                          const next = { ...prev };
+                          for (const sym of l.symbols || []) {
+                            if (next[sym] === l.color) delete next[sym];
+                          }
+                          return next;
+                        });
+                        if (activeListId === l._id) {
+                          setActiveListId(watchlists[0]?._id || "main");
+                        }
+                      }
+                    } else if (!l.isVirtual) {
+                      if (confirm(`Clear all ${symCount} symbols from “${l.name}”?`)) {
+                        onReorder(l._id, []);
+                      }
                     }
                   }}
                   style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
                 >
-                  <Trash2 size={14} /> Delete Watchlist
+                  <Eraser size={14} /> {l.isVirtual && l.color ? `Unflag All Symbols (${(l.symbols || []).length})` : "Clear All Symbols"}
                 </button>
-              );
-            })()}
-          </div>
+
+                {!tabContextMenu.list.isVirtual && (
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      const l = tabContextMenu.list;
+                      setActiveListId(l._id);
+                      setTabContextMenu(null);
+                      setEditModalOpen(true);
+                    }}
+                    style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+                  >
+                    <LayoutGrid size={14} /> Edit & Reorder Symbols
+                  </button>
+                )}
+
+                {tabContextMenu.list.isVirtual ? (
+                  tabContextMenu.list.color ? (
+                    <button
+                      className="ghost danger"
+                      onClick={() => {
+                        const l = tabContextMenu.list;
+                        setTabContextMenu(null);
+                        if (confirm(`Unflag all ${(l.symbols || []).length} symbols to remove the “${l.name}” flag list?`)) {
+                          setSymbolFlags((prev) => {
+                            const next = { ...prev };
+                            for (const sym of l.symbols || []) {
+                              if (next[sym] === l.color) delete next[sym];
+                            }
+                            return next;
+                          });
+                          if (activeListId === l._id) {
+                            setActiveListId(watchlists[0]?._id || "main");
+                          }
+                        }
+                      }}
+                      style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+                    >
+                      <Trash2 size={14} /> Unflag & Remove List
+                    </button>
+                  ) : null
+                ) : (() => {
+                  const isDefault = tabContextMenu.list._id === "main" ||
+                                    tabContextMenu.list.isDefault ||
+                                    tabContextMenu.list.name?.toLowerCase() === "main" ||
+                                    (watchlists.length <= 1 && watchlists[0]?._id === tabContextMenu.list._id);
+                  if (isDefault) {
+                    return (
+                      <div
+                        className="muted"
+                        title="Default watchlist cannot be deleted"
+                        style={{ padding: "8px 10px", fontSize: 12, opacity: 0.35, cursor: "not-allowed", display: "flex", alignItems: "center", gap: 8 }}
+                      >
+                        <Trash2 size={14} /> Delete (Default Protected)
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      className="ghost danger"
+                      onClick={() => {
+                        const l = tabContextMenu.list;
+                        setTabContextMenu(null);
+                        if (confirm(`Delete watchlist “${l.name}”?`)) {
+                          onDelete(l._id);
+                        }
+                      }}
+                      style={{ textAlign: "left", padding: "8px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, borderRadius: 4 }}
+                    >
+                      <Trash2 size={14} /> Delete Watchlist
+                    </button>
+                  );
+                })()}
+              </div>
+            );
+          })()}
         </>
       )}
 
@@ -1268,6 +1425,8 @@ function WatchRow({
   const longPressTimer = useRef(null);
   const dragTouchStart = useRef({ x: 0, y: 0 });
   const hasDraggedHorizontally = useRef(false);
+  const suppressRowClickUntilRef = useRef(0);
+  const paletteOpenedAtRef = useRef(0);
 
   const cancelLongPress = () => {
     if (longPressTimer.current) {
@@ -1329,6 +1488,8 @@ function WatchRow({
           if (hasDraggedHorizontally.current && currentOver && currentOver !== sym) {
             if (onHorizontalReorder) onHorizontalReorder(sym, currentOver);
           } else if (!hasDraggedHorizontally.current) {
+            suppressRowClickUntilRef.current = Date.now() + 500;
+            paletteOpenedAtRef.current = Date.now();
             setShowPalette(true);
           }
           return null;
@@ -1360,6 +1521,7 @@ function WatchRow({
   useEffect(() => {
     if (!showPalette) return;
     const close = (e) => {
+      if (Date.now() - paletteOpenedAtRef.current < 400) return;
       if (!paletteRef.current?.contains(e.target)) setShowPalette(false);
     };
     document.addEventListener("mousedown", close);
@@ -1422,9 +1584,22 @@ function WatchRow({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      onClick={onJump}
+      onClick={(e) => {
+        if (Date.now() < suppressRowClickUntilRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        onJump?.();
+      }}
       onDoubleClick={onDoubleClick}
-      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setShowPalette(true); }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Date.now() < suppressRowClickUntilRef.current) return;
+        paletteOpenedAtRef.current = Date.now();
+        setShowPalette(true);
+      }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={cancelLongPress}

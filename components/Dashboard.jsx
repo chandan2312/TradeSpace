@@ -27,7 +27,7 @@ import { sanitizeDrawings } from "../lib/draw/core.js";
 import { canonOf } from "../lib/autonomous/symbols.js";
 import { toCanonicalSymbol } from "../lib/symbols/mapping.js";
 import { hydrateTemplatesFromServer } from "../lib/draw/templates.js";
-import { getTradingDayKey } from "../lib/time.js";
+import { getTradingDayKey, getTradingDateString } from "../lib/time.js";
 
 // Strip un-anchored (pre-time-model) drawings from a stored {symbol:[...]} blob
 // so loading an old layout can't reintroduce drawings that won't place on TF.
@@ -261,8 +261,23 @@ export default function Dashboard() {
         if (s) setSyncOpts(JSON.parse(s));
         const w = localStorage.getItem("ts_watchlist_open");
         if (w) setWatchlistOpen(w === "true");
+        const today = getTradingDateString(Date.now());
         const f = localStorage.getItem("ts_symbol_flags");
-        if (f) setSymbolFlags(JSON.parse(f));
+        const fDate = localStorage.getItem("ts_symbol_flags_date");
+        if (f) {
+          try {
+            const parsed = JSON.parse(f);
+            const storedDate = parsed?.tradingDate || fDate;
+            const flagsObj = parsed?.flags && typeof parsed.flags === "object" ? parsed.flags : (parsed?.tradingDate ? {} : parsed);
+            if (!storedDate || storedDate === today) {
+              setSymbolFlags(flagsObj || {});
+            } else {
+              setSymbolFlags({});
+              localStorage.setItem("ts_symbol_flags", JSON.stringify({}));
+              localStorage.setItem("ts_symbol_flags_date", today);
+            }
+          } catch {}
+        }
         const ind = localStorage.getItem("ts_indicators");
         if (ind) {
           const parsed = JSON.parse(ind);
@@ -312,8 +327,21 @@ export default function Dashboard() {
     fetch("/api/settings").then(r => r.json()).then(d => {
       if (d.ok && d.settings) {
         if (d.settings.flags) {
-          setSymbolFlags(d.settings.flags);
-          localStorage.setItem("ts_symbol_flags", JSON.stringify(d.settings.flags));
+          const today = getTradingDateString(Date.now());
+          const storedDate = d.settings.flagsDate || d.settings.flags?.tradingDate;
+          const flagsObj = d.settings.flags?.flags && typeof d.settings.flags.flags === "object"
+            ? d.settings.flags.flags
+            : (d.settings.flags?.tradingDate ? {} : d.settings.flags);
+          if (!storedDate || storedDate === today) {
+            setSymbolFlags(flagsObj || {});
+            localStorage.setItem("ts_symbol_flags", JSON.stringify(flagsObj || {}));
+            localStorage.setItem("ts_symbol_flags_date", today);
+          } else {
+            setSymbolFlags({});
+            localStorage.setItem("ts_symbol_flags", JSON.stringify({}));
+            localStorage.setItem("ts_symbol_flags_date", today);
+            fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ flags: {}, flagsDate: today }) }).catch(()=>{});
+          }
         }
         if (d.settings.indicators) {
           setIndicators(prev => ({ biasEngine: true, autoTrades: true, stagedTrades: true, radarTrades: true, ...d.settings.indicators }));
@@ -587,10 +615,43 @@ export default function Dashboard() {
   
   useEffect(() => { 
     if (isHydrated) {
+      const today = getTradingDateString(Date.now());
       localStorage.setItem("ts_symbol_flags", JSON.stringify(symbolFlags)); 
-      fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ flags: symbolFlags }) }).catch(()=>{});
+      localStorage.setItem("ts_symbol_flags_date", today);
+      fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ flags: symbolFlags, flagsDate: today }) }).catch(()=>{});
     }
   }, [symbolFlags, isHydrated]);
+
+  // Auto-reset symbol flags at day end (Europe/Athens midnight rollover / 5:00 PM New York)
+  const lastFlagsDateRef = useRef(getTradingDateString(Date.now()));
+  useEffect(() => {
+    const checkFlagsDayRollover = () => {
+      const today = getTradingDateString(Date.now());
+      if (!today) return;
+      if (today !== lastFlagsDateRef.current) {
+        lastFlagsDateRef.current = today;
+        setSymbolFlags((prev) => {
+          if (!prev || Object.keys(prev).length === 0) return prev;
+          console.log("[Flags] Trading day rollover to", today, "— resetting flags for the new day.");
+          try {
+            localStorage.setItem("ts_symbol_flags", JSON.stringify({}));
+            localStorage.setItem("ts_symbol_flags_date", today);
+            fetch("/api/settings", { method: "PATCH", body: JSON.stringify({ flags: {}, flagsDate: today }) }).catch(()=>{});
+          } catch {}
+          return {};
+        });
+      }
+    };
+
+    const interval = setInterval(checkFlagsDayRollover, 15000);
+    window.addEventListener("focus", checkFlagsDayRollover);
+    document.addEventListener("visibilitychange", checkFlagsDayRollover);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", checkFlagsDayRollover);
+      document.removeEventListener("visibilitychange", checkFlagsDayRollover);
+    };
+  }, []);
 
   useEffect(() => { 
     if (isHydrated) {
@@ -1595,6 +1656,19 @@ export default function Dashboard() {
   }, [loadAutonomousTrades]);
 
   const reorderWatchlist = useCallback(async (listId, newSymbols) => {
+    if (typeof listId === "string" && listId.startsWith("flag-")) {
+      const color = listId.replace("flag-", "");
+      if (Array.isArray(newSymbols) && newSymbols.length === 0) {
+        setSymbolFlags((prev) => {
+          const next = { ...prev };
+          for (const [sym, col] of Object.entries(next)) {
+            if (col === color) delete next[sym];
+          }
+          return next;
+        });
+      }
+      return;
+    }
     setWatchlists((prev) =>
       prev.map((w) => (w._id === listId ? { ...w, symbols: newSymbols } : w))
     );
