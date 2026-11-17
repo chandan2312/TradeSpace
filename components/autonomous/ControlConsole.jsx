@@ -131,6 +131,12 @@ export const FALLBACK_ENTRY_MODELS = [
   { id: "po3_daily_cycle", name: "Power of 3 Daily Cycle", badge: "PO3 Cycle", description: "NY Midnight / Daily Open manipulation into discount/premium followed by 15M displacement reclaim." },
 ];
 
+export const CATEGORY_PROFILE_KEYS = new Set([
+  "US_INDICES", "EU_INDICES", "METALS_CRYPTO", "EU_FOREX", "ASIA_YEN_FOREX", "CROSS_YEN_FOREX",
+  "us_indices", "eu_indices", "metal_crypto", "eu_forex", "asia_yen_forex", "cross_yen_forex",
+  "metals_crypto", "cross_yex_forex"
+]);
+
 const TABS = [
   { id: "execution", label: "Mode & Execution", icon: Sliders },
   { id: "risk", label: "Risk & Capital", icon: Shield },
@@ -231,6 +237,11 @@ export default function ControlConsole({
       const raw = { ...(config.symbolTimeSlots || {}) };
       if (raw.US30 && !raw.DJ30) raw.DJ30 = raw.US30;
       delete raw.US30;
+      for (const k of Object.keys(raw)) {
+        if (CATEGORY_PROFILE_KEYS.has(k) || /_INDICES$|_FOREX$|_CRYPTO$/i.test(k)) {
+          delete raw[k];
+        }
+      }
       return raw;
     })(),
     sessionFilters: {
@@ -386,20 +397,22 @@ export default function ControlConsole({
   const getSymbolDefaultSlots = useMemo(() => {
     return (sym) => {
       const clean = String(sym || "").toUpperCase().replace(/\.I$/, "");
-      if (allSymbolProfiles?.[clean]?.allowedSlotIds) {
+      if (allSymbolProfiles?.[clean]?.allowedSlotIds && !CATEGORY_PROFILE_KEYS.has(clean)) {
         return allSymbolProfiles[clean].allowedSlotIds;
       }
-      for (const prof of Object.values(allSymbolProfiles || {})) {
-        if (prof.symbols?.includes(clean) || prof.symbols?.includes(sym)) {
-          return prof.allowedSlotIds || [];
+      for (const [key, prof] of Object.entries(allSymbolProfiles || {})) {
+        if (CATEGORY_PROFILE_KEYS.has(key)) {
+          if (prof.symbols?.includes(clean) || prof.symbols?.includes(sym)) {
+            return prof.allowedSlotIds || [];
+          }
         }
       }
-      if (/^(NAS|US|DJ|SP)/i.test(clean)) return ["ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
-      if (/^(GER|DAX|DE)/i.test(clean)) return ["pre_london_prep", "london_open", "london_lunch", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
+      if (/^(NAS|US|DJ|SP)/i.test(clean)) return ["pre_ny_prep", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
+      if (/^(GER|DAX|DE)/i.test(clean)) return ["pre_london_prep", "london_open", "london_lunch", "pre_ny_prep", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
       if (/^(BTC|ETH|XAU|GOLD)/i.test(clean)) {
-        return ["asian_range", "pre_london_prep", "london_open", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
+        return ["asian_range", "pre_london_prep", "london_open", "london_lunch", "pre_ny_prep", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
       }
-      return ["pre_london_prep", "london_open", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
+      return ["pre_london_prep", "london_open", "pre_ny_prep", "ny_open", "ny_silver_bullet", "london_close", "ny_pm"];
     };
   }, [allSymbolProfiles]);
 
@@ -407,7 +420,6 @@ export default function ControlConsole({
   const getSymbolMeta = useMemo(() => {
     return (sym) => {
       const clean = String(sym || "").toUpperCase().replace(/\.I$/, "");
-      if (allSymbolProfiles?.[clean]) return allSymbolProfiles[clean];
       for (const prof of Object.values(allSymbolProfiles || {})) {
         if (prof.symbols?.includes(clean) || prof.symbols?.includes(sym)) return prof;
       }
@@ -424,19 +436,19 @@ export default function ControlConsole({
       ...(universe || []),
       ...(config.universe || []),
       ...Object.keys(form.symbolTimeSlots || {}),
-      ...Object.keys(allSymbolProfiles || {}),
       ...customAddedSymbols,
       "NAS100", "DJ30", "SP500", "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "GER40", "XAUUSD", "BTCUSD", "ETHUSD",
     ];
     const normalized = raw
       .filter(Boolean)
-      .map((s) => (String(s).toUpperCase().trim() === "US30" ? "DJ30" : String(s).toUpperCase().trim()));
+      .map((s) => (String(s).toUpperCase().trim() === "US30" ? "DJ30" : String(s).toUpperCase().trim()))
+      .filter((s) => !CATEGORY_PROFILE_KEYS.has(s) && !/_INDICES$|_FOREX$|_CRYPTO$/i.test(s));
     const list = Array.from(new Set(normalized));
 
     if (!symbolSearch.trim()) return list;
     const q = symbolSearch.trim().toLowerCase();
     return list.filter((s) => s.toLowerCase().includes(q));
-  }, [universe, config.universe, form.symbolTimeSlots, allSymbolProfiles, customAddedSymbols, symbolSearch]);
+  }, [universe, config.universe, form.symbolTimeSlots, customAddedSymbols, symbolSearch]);
 
   const handleAddCustomSymbol = (e) => {
     if (e) e.preventDefault();
@@ -576,6 +588,11 @@ export default function ControlConsole({
     try {
       const isScalp = Boolean(form.enabledHorizons?.scalp);
       const cleanedSlots = { ...form.symbolTimeSlots };
+      for (const k of Object.keys(cleanedSlots)) {
+        if (CATEGORY_PROFILE_KEYS.has(k) || /_INDICES$|_FOREX$|_CRYPTO$/i.test(k)) {
+          delete cleanedSlots[k];
+        }
+      }
       if (cleanedSlots.DJ30) cleanedSlots.US30 = cleanedSlots.DJ30;
 
       await onSaveConfig({
