@@ -30,5 +30,10 @@ __pycache__/
 # Experimental research models & backtest artifacts (kept locally, excluded from git)
 lib/autonomous_custom_models/
 lib/structural_denoiser/
+lib/system_alpha/
+AIspace/
+third_party/
+docs/
+scripts/ml_alpha/
 scripts/*.json
 
