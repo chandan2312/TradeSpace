@@ -12,6 +12,7 @@ import {
   Layers,
   ArrowLeft,
   BookOpen,
+  Timer,
 } from "lucide-react";
 
 import { getCurrentTimeSlot, getEetTime, getEffectiveTimeSlots } from "../../lib/autonomous/timeslots.js";
@@ -292,6 +293,27 @@ export default function AutonomousHeader({
           title={`Horizon Mode: ${horizonMode}`}
         >
           <Compass size={13} style={{ color: "var(--accent)" }} /> {horizonMode}
+        </div>
+
+        {/* Scan Cadence Badge */}
+        <div
+          className="autonomous-badge-chip"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "4px 8px",
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            background: config?.scanIntervalMinutes === 1 ? "rgba(234, 179, 8, 0.15)" : "rgba(255, 255, 255, 0.04)",
+            border: `1px solid ${config?.scanIntervalMinutes === 1 ? "rgba(234, 179, 8, 0.35)" : "var(--border)"}`,
+            color: config?.scanIntervalMinutes === 1 ? "var(--orange, #f59e0b)" : "var(--fg)",
+          }}
+          title={`Autonomous Scan Cadence: ${config?.scanIntervalMinutes === "adaptive" ? "Adaptive (5m/15m)" : `${config?.scanIntervalMinutes ?? 5} min`}`}
+        >
+          <Timer size={13} style={{ color: config?.scanIntervalMinutes === 1 ? "var(--orange, #f59e0b)" : "var(--accent)" }} />
+          {config?.scanIntervalMinutes === "adaptive" ? "AUTO 5/15M" : `${config?.scanIntervalMinutes ?? 5}M CADENCE`}
         </div>
 
         {/* Active Time Slot & Killzone */}

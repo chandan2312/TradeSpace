@@ -28,6 +28,9 @@ export async function POST(req) {
       stopAutonomousLoop();
     } else if (patch.enabled === true) {
       startAutonomousLoop();
+    } else if (config.enabled && typeof g._tsRescheduleScan === "function") {
+      // Re-trigger/reschedule autonomous scan cadence immediately to apply new interval without latency
+      g._tsRescheduleScan(100);
     }
 
     // Invalidate route-level HTTP response cache

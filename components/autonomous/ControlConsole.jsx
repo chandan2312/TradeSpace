@@ -180,6 +180,7 @@ export default function ControlConsole({
 
   const [form, setForm] = useState(() => ({
     executionMode: config.executionMode ?? "paper",
+    scanIntervalMinutes: config.scanIntervalMinutes ?? (config.fastScheduleConfig?.fastIntervalMinutes ?? 5),
     liveTrading: config.liveTrading ?? false,
     horizonMode: config.horizonMode ?? "adaptive",
     enableScalpHorizon: config.enableScalpHorizon ?? config.enabledHorizons?.scalp ?? false,
@@ -579,6 +580,7 @@ export default function ControlConsole({
 
       await onSaveConfig({
         ...form,
+        scanIntervalMinutes: form.scanIntervalMinutes,
         enableScalpHorizon: isScalp,
         enabledHorizons: {
           day: form.enabledHorizons?.day !== false,
@@ -839,6 +841,20 @@ export default function ControlConsole({
                         <option value="paper">Paper simulation</option>
                         <option value="copilot">Copilot approval</option>
                         <option value="auto">Autonomous execution</option>
+                      </select>
+                    </label>
+                    <label style={{ color: "var(--muted)", fontSize: 11 }}>
+                      Scan Cadence (Interval)
+                      <select
+                        style={{ ...inputStyle, marginTop: 4, fontWeight: 600, color: "var(--fg)" }}
+                        value={String(form.scanIntervalMinutes ?? 5)}
+                        onChange={(event) => change("scanIntervalMinutes", event.target.value === "adaptive" ? "adaptive" : Number(event.target.value))}
+                      >
+                        <option value="1">⚡ 1m (Ultra Fast - Session Open)</option>
+                        <option value="5">🚀 5m (Standard Fast)</option>
+                        <option value="10">⏱️ 10m (Intermediate)</option>
+                        <option value="15">☕ 15m (Relaxed / Off-Peak)</option>
+                        <option value="adaptive">🔄 Adaptive (Auto 5m peak / 15m lull)</option>
                       </select>
                     </label>
                     <label style={{ color: "var(--muted)", fontSize: 11 }}>
