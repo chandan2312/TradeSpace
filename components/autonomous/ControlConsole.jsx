@@ -687,6 +687,7 @@ export default memo(function ControlConsole({
           width: "100%",
           maxWidth: 820,
           maxHeight: "92dvh",
+          height: "92dvh",
           display: "flex",
           flexDirection: "column",
           minWidth: 0,
@@ -704,6 +705,7 @@ export default memo(function ControlConsole({
             padding: "16px 20px",
             borderBottom: "1px solid var(--border)",
             background: "var(--panel-2)",
+            flexShrink: 0,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -759,6 +761,8 @@ export default memo(function ControlConsole({
             overflowX: "auto",
             background: "var(--panel)",
             scrollbarWidth: "none",
+            flexShrink: 0,
+            minHeight: 44,
           }}
         >
           {TABS.map((tab) => {
@@ -788,6 +792,7 @@ export default memo(function ControlConsole({
                   borderRight: "none",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
+                  flexShrink: 0,
                   transition: "all 0.15s ease",
                 }}
               >
@@ -816,6 +821,7 @@ export default memo(function ControlConsole({
         <div
           style={{
             flex: 1,
+            minHeight: 0,
             overflowY: "auto",
             padding: "18px 20px",
             minWidth: 0,
@@ -2074,6 +2080,7 @@ export default memo(function ControlConsole({
             background: "var(--panel-2)",
             flexWrap: "wrap",
             gap: 10,
+            flexShrink: 0,
           }}
         >
           {error ? (
