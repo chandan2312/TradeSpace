@@ -184,7 +184,9 @@ export default function AutonomousLiveHUD({
       setTimeout(() => setIsScanning(false), 2000);
     }
   };
-  const handleSaveConfig = (patch) => mutate(patch, "/api/autonomous/config");
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const closeInspector = useCallback(() => setInspectedPair(null), []);
+  const handleSaveConfig = useCallback((patch) => mutate(patch, "/api/autonomous/config"), [mutate]);
 
   // Only fetch auxiliary state if parent did not provide config prop (e.g. standalone mounting)
   useEffect(() => {
@@ -1923,7 +1925,7 @@ export default function AutonomousLiveHUD({
             <BrainInspectorModal
               pair={effectiveRadarPairs.find((p) => (p.radarKey && inspectedPair.radarKey ? p.radarKey === inspectedPair.radarKey : p.symbol === inspectedPair.symbol)) || inspectedPair}
               ticks={ticks}
-              onClose={() => setInspectedPair(null)}
+              onClose={closeInspector}
             />
           )}
 
@@ -1936,7 +1938,7 @@ export default function AutonomousLiveHUD({
               allEntryModels={effectiveAllEntryModels}
               universe={effectiveUniverse.length > 0 ? effectiveUniverse : (effectiveConfig.universe || [])}
               onSaveConfig={handleSaveConfig}
-              onClose={() => setSettingsOpen(false)}
+              onClose={closeSettings}
             />
           )}
         </aside>

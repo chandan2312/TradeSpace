@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, memo } from "react";
 import {
   Sliders,
   X,
@@ -167,7 +167,7 @@ function NumberField({ label, name, form, onChange, min, max, step = "any" }) {
   );
 }
 
-export default function ControlConsole({
+export default memo(function ControlConsole({
   config = {},
   brokerAccount = null,
   allTimeSlots = [],
@@ -282,19 +282,23 @@ export default function ControlConsole({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
     dialogRef.current?.focus();
     const onKey = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current?.();
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      previousFocus?.focus();
+      previousFocus?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   const change = (name, value) => setForm((previous) => ({ ...previous, [name]: value }));
 
@@ -675,6 +679,7 @@ export default function ControlConsole({
         aria-labelledby="autonomous-config-title"
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
         style={{
           background: "var(--panel)",
           border: "1px solid var(--border)",
@@ -2113,4 +2118,4 @@ export default function ControlConsole({
       </div>
     </div>
   );
-}
+});

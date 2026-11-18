@@ -292,7 +292,7 @@ export default function AutonomousDashboard() {
   const handleDismissTrade = (tradeId) => mutate({ action: "dismiss", tradeId }).catch(() => {});
   const handleCloseActiveTrade = (tradeId, opts = {}) => mutate({ action: "close", tradeId, ...opts }).catch(() => {});
   const handleModifyTradeTarget = (tradeId, { targetRR, tpPrice }) => mutate({ action: "modify_target", tradeId, targetRR, tpPrice });
-  const handleSaveConfig = (patch) => mutate(patch, "/api/autonomous/config");
+  const handleSaveConfig = useCallback((patch) => mutate(patch, "/api/autonomous/config"), []);
 
   const handleToggleWhitelist = async (sym) => {
     if (!data?.config) return;

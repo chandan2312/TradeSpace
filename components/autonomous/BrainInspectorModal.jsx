@@ -15,19 +15,23 @@ import SessionLedDot from "./SessionLedDot";
 export default function BrainInspectorModal({ pair, onClose, ticks = {}, config = {} }) {
   const dialogRef = useRef(null);
   const [activeTab, setActiveTab] = useState("chart"); // "chart" | "structure" | "confluence" | "all"
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
     dialogRef.current?.focus();
     const onKey = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current?.();
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      previousFocus?.focus();
+      previousFocus?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   if (!pair) return null;
 
