@@ -761,8 +761,9 @@ export default memo(function ControlConsole({
             overflowX: "auto",
             background: "var(--panel)",
             scrollbarWidth: "none",
-            flexShrink: 0,
+            flex: "0 0 44px",
             minHeight: 44,
+            height: 44,
           }}
         >
           {TABS.map((tab) => {
