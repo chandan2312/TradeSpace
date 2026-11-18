@@ -1381,7 +1381,6 @@ export default function Dashboard() {
     if (data.ok) {
       setSavedLayouts(data.layouts);
       if (loadedLayoutId === id) setLoadedLayoutId(null);
-      if (defaultLayoutId === id) setDefaultLayoutId(null);
       showToast("Layout deleted");
     }
   };
@@ -2249,6 +2248,7 @@ export default function Dashboard() {
         isOpen={autoCockpitOpen}
         onClose={() => setAutoCockpitOpen(false)}
       />
+      <Toaster position="bottom-right" richColors expand={true} theme="dark" toastOptions={{ style: { background: "var(--panel)", border: "1px solid var(--border)", color: "var(--fg)", fontSize: "14px" } }} />
     </div>
   );
 }
@@ -2322,8 +2322,6 @@ function JoinChainModal({ alerts, targetId, onClose, onJoin }) {
            </div>
         )}
       </div>
-
-      <Toaster position={isMobile ? "top-center" : "bottom-right"} richColors expand={true} theme="dark" toastOptions={{ style: { background: "var(--panel)", border: "1px solid var(--border)", color: "var(--fg)", fontSize: "14px" } }} />
     </div>
   );
 }

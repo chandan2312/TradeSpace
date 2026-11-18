@@ -140,11 +140,15 @@ export default function Watchlist({
     };
     window.addEventListener("resize", delayed);
     window.addEventListener("orientationchange", delayed);
-    screen?.orientation?.addEventListener?.("change", delayed);
+    if (typeof window !== "undefined" && window.screen?.orientation?.addEventListener) {
+      window.screen.orientation.addEventListener("change", delayed);
+    }
     return () => {
       window.removeEventListener("resize", delayed);
       window.removeEventListener("orientationchange", delayed);
-      screen?.orientation?.removeEventListener?.("change", delayed);
+      if (typeof window !== "undefined" && window.screen?.orientation?.removeEventListener) {
+        window.screen.orientation.removeEventListener("change", delayed);
+      }
     };
   }, []);
 
@@ -1051,6 +1055,8 @@ export default function Watchlist({
             onContextMenu={(e) => { e.preventDefault(); setTabContextMenu(null); }}
           />
           {(() => {
+            const l = tabContextMenu.list;
+            if (!l) return null;
             const screenW = typeof window !== "undefined" ? window.innerWidth : 800;
             const screenH = typeof window !== "undefined" ? window.innerHeight : 600;
             const menuWidth = 220;
@@ -1091,15 +1097,14 @@ export default function Watchlist({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ padding: "6px 10px 8px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{tabContextMenu.list.name}</span>
-                  <span className="muted" style={{ fontSize: 11 }}>{(tabContextMenu.list.symbols || []).length} symbols</span>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{l.name}</span>
+                  <span className="muted" style={{ fontSize: 11 }}>{(l.symbols || []).length} symbols</span>
                 </div>
 
-                {!tabContextMenu.list.isVirtual && (
+                {!l.isVirtual && (
                   <button
                     className="ghost"
                     onClick={() => {
-                      const l = tabContextMenu.list;
                       setTabContextMenu(null);
                       startRename(l);
                     }}
@@ -1109,11 +1114,10 @@ export default function Watchlist({
                   </button>
                 )}
 
-                {!tabContextMenu.list.isVirtual && (
+                {!l.isVirtual && (
                   <button
                     className="ghost"
                     onClick={() => {
-                      const l = tabContextMenu.list;
                       setTabContextMenu(null);
                       onCreate?.(`${l.name} (Copy)`, l.symbols || []);
                     }}
@@ -1126,7 +1130,6 @@ export default function Watchlist({
                 <button
                   className="ghost"
                   onClick={() => {
-                    const l = tabContextMenu.list;
                     setTabContextMenu(null);
                     const symCount = (l.symbols || []).length;
                     if (l.isVirtual && l.color) {
@@ -1153,11 +1156,10 @@ export default function Watchlist({
                   <Eraser size={14} /> {l.isVirtual && l.color ? `Unflag All Symbols (${(l.symbols || []).length})` : "Clear All Symbols"}
                 </button>
 
-                {!tabContextMenu.list.isVirtual && (
+                {!l.isVirtual && (
                   <button
                     className="ghost"
                     onClick={() => {
-                      const l = tabContextMenu.list;
                       setActiveListId(l._id);
                       setTabContextMenu(null);
                       setEditModalOpen(true);
@@ -1168,12 +1170,11 @@ export default function Watchlist({
                   </button>
                 )}
 
-                {tabContextMenu.list.isVirtual ? (
-                  tabContextMenu.list.color ? (
+                {l.isVirtual ? (
+                  l.color ? (
                     <button
                       className="ghost danger"
                       onClick={() => {
-                        const l = tabContextMenu.list;
                         setTabContextMenu(null);
                         if (confirm(`Unflag all ${(l.symbols || []).length} symbols to remove the “${l.name}” flag list?`)) {
                           setSymbolFlags((prev) => {
@@ -1194,10 +1195,10 @@ export default function Watchlist({
                     </button>
                   ) : null
                 ) : (() => {
-                  const isDefault = tabContextMenu.list._id === "main" ||
-                                    tabContextMenu.list.isDefault ||
-                                    tabContextMenu.list.name?.toLowerCase() === "main" ||
-                                    (watchlists.length <= 1 && watchlists[0]?._id === tabContextMenu.list._id);
+                  const isDefault = l._id === "main" ||
+                                    l.isDefault ||
+                                    l.name?.toLowerCase() === "main" ||
+                                    (watchlists.length <= 1 && watchlists[0]?._id === l._id);
                   if (isDefault) {
                     return (
                       <div
@@ -1213,7 +1214,6 @@ export default function Watchlist({
                     <button
                       className="ghost danger"
                       onClick={() => {
-                        const l = tabContextMenu.list;
                         setTabContextMenu(null);
                         if (confirm(`Delete watchlist “${l.name}”?`)) {
                           onDelete(l._id);
