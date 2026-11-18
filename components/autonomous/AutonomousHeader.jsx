@@ -53,9 +53,9 @@ export default function AutonomousHeader({
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      const { h, m, s } = getEetTime(now);
+      const { h, m, s, tz } = getEetTime(now);
       setEetTime(
-        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} EET`
+        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} ${tz || "EET"}`
       );
 
       const slot = getCurrentTimeSlot(now, config);

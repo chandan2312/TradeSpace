@@ -8,6 +8,7 @@ import IndicatorsMenu from "./IndicatorsMenu";
 import { useChartSettings, switchTheme, THEME_PRESETS } from "../lib/chartSettings";
 import { tradeRiskTelemetry, formatR } from "./autonomous/TradeTelemetry";
 import SessionLedDot from "./autonomous/SessionLedDot";
+import { getEetTime } from "../lib/time";
 
 const TFS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"];
 const TF_LABEL = { M1: "1m", M5: "5m", M15: "15m", M30: "30m", H1: "1h", H4: "4h", D1: "1D" };
@@ -43,6 +44,23 @@ export default function TopBar({
   }, []);
 
   const activeTheme = mounted ? (settings.appTheme || "dark") : "dark";
+
+  const [eetClock, setEetClock] = useState("");
+  const [eetTz, setEetTz] = useState("EET");
+
+  useEffect(() => {
+    const tickClock = () => {
+      const now = new Date();
+      const { h, m, s, tz } = getEetTime(now);
+      if (Number.isFinite(h)) {
+        setEetClock(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+        setEetTz(tz || "EET");
+      }
+    };
+    tickClock();
+    const timer = setInterval(tickClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
@@ -350,6 +368,29 @@ export default function TopBar({
 
       {/* Mobile Top Controls: Quick Auto Cockpit Button + Hamburger Menu */}
       <div className="hide-desktop" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+        {eetClock && (
+          <span
+            title={`Session Clock: ${eetClock} ${eetTz}`}
+            style={{
+              fontSize: 10,
+              fontFamily: "monospace",
+              fontWeight: 600,
+              color: "var(--fg)",
+              padding: "2px 6px",
+              borderRadius: 5,
+              border: "1px solid var(--border)",
+              background: "rgba(255, 255, 255, 0.04)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              flexShrink: 0,
+            }}
+          >
+            <Clock size={10} style={{ color: "var(--accent)" }} />
+            <span>{eetClock}</span>
+            <span style={{ fontSize: 8.5, color: "var(--accent)", fontWeight: 700 }}>{eetTz}</span>
+          </span>
+        )}
         <button
           className="ghost"
           onClick={onOpenAutoCockpit}
@@ -804,7 +845,33 @@ export default function TopBar({
       </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {eetClock && (
+          <div
+            className="hide-mobile"
+            title={`Market Session Clock: ${eetClock} ${eetTz} (${eetTz === "EEST" ? "UTC+3 Summer" : "UTC+2 Winter"})\nEurope/Athens DST-synchronized to 17:00 NY Cash Close`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "3px 8px",
+              borderRadius: 6,
+              fontSize: 11,
+              fontFamily: "monospace",
+              fontWeight: 600,
+              color: "var(--fg)",
+              background: "rgba(255, 255, 255, 0.04)",
+              border: "1px solid var(--border)",
+              letterSpacing: "0.2px",
+              flexShrink: 0,
+              userSelect: "none",
+            }}
+          >
+            <Clock size={12} style={{ color: "var(--accent)" }} />
+            <span>{eetClock}</span>
+            <span style={{ fontSize: 9, color: "var(--accent)", fontWeight: 700 }}>{eetTz}</span>
+          </div>
+        )}
         {tick && (
           <div className="num hide-mobile" style={{ fontSize: 15, fontWeight: 600 }}>
             <span className={tick.dir >= 0 ? "up" : "down"}>{Number(tick.bid).toFixed(digits)}</span>

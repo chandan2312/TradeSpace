@@ -48,6 +48,7 @@ import ModelBadge from "./ModelBadge";
 import SessionLedDot from "./SessionLedDot";
 import ControlConsole from "./ControlConsole";
 import ExecutionDiagnostics from "./ExecutionDiagnostics";
+import { getEetTime } from "../../lib/time";
 
 export default function AutonomousLiveHUD({
   trades = [],
@@ -95,6 +96,22 @@ export default function AutonomousLiveHUD({
   const [auxAllEntryModels, setAuxAllEntryModels] = useState({});
   const [auxUniverse, setAuxUniverse] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [eetClock, setEetClock] = useState("");
+  const [eetTz, setEetTz] = useState("EET");
+
+  useEffect(() => {
+    const tickClock = () => {
+      const now = new Date();
+      const { h, m, s, tz } = getEetTime(now);
+      if (Number.isFinite(h)) {
+        setEetClock(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+        setEetTz(tz || "EET");
+      }
+    };
+    tickClock();
+    const timer = setInterval(tickClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
   const inFlightAuxRef = useRef(false);
   const lastAuxFetchRef = useRef(0);
 
@@ -643,6 +660,33 @@ export default function AutonomousLiveHUD({
                   }}
                 />
                 <span>${effectiveBrokerAccount.equity ? Math.round(effectiveBrokerAccount.equity).toLocaleString() : "MT5"}</span>
+              </span>
+            )}
+
+            {/* Live EET/EEST Session Clock Pill */}
+            {eetClock && (
+              <span
+                title={`Autonomous Market Session Clock: ${eetClock} ${eetTz} (${eetTz === "EEST" ? "UTC+3 Summer" : "UTC+2 Winter"})\nEurope/Athens DST-synchronized to 17:00 NY Cash Close`}
+                style={{
+                  fontSize: 10,
+                  fontFamily: "monospace",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 7px",
+                  borderRadius: 5,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                  userSelect: "none",
+                }}
+              >
+                <Clock size={11} style={{ color: "var(--accent)" }} />
+                <span>{eetClock}</span>
+                <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: 9 }}>{eetTz}</span>
               </span>
             )}
           </div>
