@@ -1,7 +1,12 @@
 import { getCols } from "@/lib/mongo";
 import { broadcast } from "@/lib/realtime";
 import { json, oid } from "@/lib/http";
-import { invalidateAlertsCache } from "@/lib/alert-engine";
+import {
+  updateActiveAlert,
+  removeActiveAlert,
+  removeActiveAlertsByChainId,
+  addActiveAlert,
+} from "@/lib/alert-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +63,7 @@ export async function PATCH(req, { params }) {
   }
 
   await alertsCol.updateOne({ _id }, { $set: update });
-  invalidateAlertsCache();
+  updateActiveAlert(_id, update);
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
 }
@@ -75,26 +80,33 @@ export async function DELETE(req, { params }) {
 
   if (!target.chainId) {
     await alertsCol.deleteOne({ _id });
+    removeActiveAlert(_id);
   } else {
     if (deleteChain) {
        await alertsCol.deleteMany({ symbol: target.symbol, chainId: target.chainId });
+       removeActiveAlertsByChainId(target.symbol, target.chainId);
     } else {
        await alertsCol.deleteOne({ _id });
+       removeActiveAlert(_id);
        await alertsCol.updateMany(
          { symbol: target.symbol, chainId: target.chainId, chainOrder: { $gt: target.chainOrder } },
          { $inc: { chainOrder: -1 } }
        );
        
        if (target.status === "active") {
-          await alertsCol.updateOne(
+          const activated = await alertsCol.findOneAndUpdate(
             { symbol: target.symbol, chainId: target.chainId, chainOrder: target.chainOrder, status: "pending_chain" },
-            { $set: { status: "active" } }
+            { $set: { status: "active" } },
+            { returnDocument: "after" }
           );
+          const nextAlert = activated?.value || activated;
+          if (nextAlert) {
+            addActiveAlert(nextAlert);
+          }
        }
     }
   }
 
-  invalidateAlertsCache();
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
 }

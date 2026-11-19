@@ -4,6 +4,12 @@ import { json } from "@/lib/http";
 import { toCanonicalSymbol } from "@/lib/symbols/mapping";
 import { getSymbolAliases } from "@/lib/watchlistAliases";
 import { getTradingDayStartSec } from "@/lib/time";
+import {
+  addActiveAlert,
+  removeActiveAlertsBySymbol,
+  invalidateAlertsCache,
+  pruneStaleTriggeredAlerts,
+} from "@/lib/alert-engine";
 
 export const dynamic = "force-dynamic";
 export const dynamicParams = true;
@@ -15,37 +21,6 @@ if (!(g._tsAlertsRouteInFlight instanceof Map)) g._tsAlertsRouteInFlight = new M
 if (!(g._tsAlertsRouteCache instanceof Map)) g._tsAlertsRouteCache = new Map();
 if (!g._tsAlertsCache || !(g._tsAlertsCache instanceof Map)) g._tsAlertsCache = new Map();
 let lastPruneAlertsAt = 0;
-
-function invalidateAlertsCache() {
-  if (g._tsAlertsRouteCache instanceof Map) g._tsAlertsRouteCache.clear();
-  if (g._tsAlertsCache instanceof Map) g._tsAlertsCache.clear();
-  g._tsAlertEngineActiveList = null;
-  g._tsAlertEngineActiveAt = 0;
-}
-
-async function pruneStaleTriggeredAlerts() {
-  try {
-    const { alertsCol } = await getCols();
-    const todayStartSec = getTradingDayStartSec(new Date());
-    const todayStartDate = new Date(todayStartSec * 1000);
-
-    const cleanupRes = await alertsCol.deleteMany({
-      status: "triggered",
-      $or: [
-        { triggeredAt: { $lt: todayStartDate } },
-        { triggeredAt: null, createdAt: { $lt: todayStartDate } }
-      ]
-    });
-
-    if (cleanupRes.deletedCount > 0) {
-      invalidateAlertsCache();
-      broadcast({ type: "alerts_changed" });
-    }
-    return cleanupRes.deletedCount || 0;
-  } catch {
-    return 0;
-  }
-}
 
 export async function GET(req) {
   const rawSymbol = req.nextUrl.searchParams.get("symbol");
@@ -146,7 +121,7 @@ export async function POST(req) {
 
   const { insertedId } = await alertsCol.insertOne(alert);
   alert._id = insertedId;
-  invalidateAlertsCache();
+  addActiveAlert(alert);
   broadcast({ type: "alerts_changed" });
   return json({ ok: true, alert });
 }
@@ -167,7 +142,7 @@ export async function DELETE(req) {
     query.$or = [{ rating: null }, { rating: { $exists: false } }];
   }
   await alertsCol.deleteMany(query);
-  invalidateAlertsCache();
+  removeActiveAlertsBySymbol(rawSymbol, filter);
   broadcast({ type: "alerts_changed" });
   return json({ ok: true });
 }
