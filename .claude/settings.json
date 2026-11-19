@@ -1,5 +1,63 @@
 {
+  "permissionMode": "bypassPermissions",
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "fm_a54b20bba7331f6a7407744d58feba6e07d30324a5dbe4e0",
+    "ANTHROPIC_API_KEY": "fm_a54b20bba7331f6a7407744d58feba6e07d30324a5dbe4e0",
+    "ANTHROPIC_BASE_URL": "https://freemodel.in/v1",
+    "ANTHROPIC_MODEL": "claude-opus-5-5",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "0",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "CLAUDE_CODE_DISABLE_PREFETCH": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "API_TIMEOUT_MS": "600000"
+  },
+  "model": "claude-opus-5-5",
+  "modelPicker": {
+    "options": [
+      {
+        "model": "claude-opus-5-5",
+        "label": "Claude Opus 5.5 (Flagship — Full Reasoning & Context)"
+      },
+      {
+        "model": "claude-fable-5-1",
+        "label": "Claude Fable 5.1 (1M Context Mythos Agent)"
+      },
+      {
+        "model": "claude-sonnet-5-5",
+        "label": "Claude Sonnet 5.5 (High Speed Hybrid)"
+      },
+      {
+        "model": "claude-fable-5",
+        "label": "Claude Fable 5 (Fast Coding)"
+      }
+    ],
+    "replaceBuiltInOptions": false
+  },
+  "agents": {
+    "architect": {
+      "description": "HARD: High-complexity tasks, multi-timeframe state machine design, mathematical modeling, and core institutional architecture.",
+      "model": "claude-opus-5-5",
+      "prompt": "You are the Principal Quantitative Architect for TradeSpace. You operate on Claude Opus 5.5 with full reasoning depth. Adhere strictly to the Deep-Thinking Protocol (Rule 1.1), Unified Timezone Protocol (Rule 1.7), and Causal Integrity (zero lookahead)."
+    },
+    "auditor": {
+      "description": "LONGER: Deep-context processing, multi-year backtest audits, tick/bar verification, and comprehensive cross-file documentation.",
+      "model": "claude-fable-5-1",
+      "prompt": "You are the Deep Backtest & System Auditor for TradeSpace. You operate on Claude Fable 5.1 with a 1M token context window. Ingest large tick datasets, verify backtest metrics (Method 2D, ~92.3% win rate baseline), and analyze simulation logs with deep precision."
+    },
+    "coder": {
+      "description": "MEDIUM: Developing Next.js frontend components, trading indicator interfaces, API endpoints, and comprehensive unit tests.",
+      "model": "claude-sonnet-5-5",
+      "prompt": "You are the Core Feature Developer for TradeSpace. You operate on Claude Sonnet 5.5 for balanced speed and coding proficiency."
+    },
+    "quickfix": {
+      "description": "SHORTER: Quick bug fixes, single-function adjustments, running test scripts, syntax cleanup, and rapid operational chores.",
+      "model": "claude-fable-5",
+      "prompt": "You are the Rapid Execution Agent for TradeSpace. You operate on Claude Fable 5 for fast Code Arena agility and concise, surgical solutions. Never execute npm run build or npm run dev autonomously."
+    }
+  },
   "enabledPlugins": {
     "ponytail@ponytail": true
-  }
+  },
+  "autoUpdatesChannel": "stable",
+  "theme": "dark"
 }
