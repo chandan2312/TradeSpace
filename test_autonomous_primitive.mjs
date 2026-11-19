@@ -60,10 +60,10 @@ assert(d1.points[1].time > d1.points[0].time, "Right boundary time must project 
 assert.equal(d1.points[1].price, 1.0850, "Right boundary horizontal price aligns with entry");
 assert.equal(Math.round(d1.style.stopLevel * 100000) / 100000, 0.0020, "stopLevel must equal initial SL distance 20 pips");
 assert.equal(Math.round(d1.style.profitLevel * 100000) / 100000, 0.0050, "profitLevel must equal TP distance 50 pips (2.5R)");
-assert.equal(d1.style.targetColor, "#0284c7", "Default model target color must be Electric Cobalt Blue");
-assert.equal(d1.style.stopColor, "#ea580c", "Default model stop color must be Vivid Tangerine Amber");
-assert.equal(d1.style.targetTransparency, 90, "targetTransparency must be 90 (10% fill opacity)");
-assert.equal(d1.style.stopTransparency, 90, "stopTransparency must be 90 (10% fill opacity)");
+assert.equal(d1.style.targetColor, "#10b981", "Target color must be high-visibility Vibrant Emerald Green");
+assert.equal(d1.style.stopColor, "#ef4444", "Stop color must be high-visibility Crisp Coral Red");
+assert.equal(d1.style.targetTransparency, 70, "targetTransparency must be 70 (30% fill opacity for dark theme visibility)");
+assert.equal(d1.style.stopTransparency, 70, "stopTransparency must be 70 (30% fill opacity for dark theme visibility)");
 assert.equal(d1.style.compactStats, true, "compactStats mode enabled");
 assert.equal(d1.locked, true, "Drawing must be locked");
 console.log("✅ PASS: Live Default Model BUY trade -> native 'long-position' verified");
@@ -94,11 +94,11 @@ assert.equal(d2.kind, "short-position", "SELL trade must produce native 'short-p
 assert.equal(d2.points[0].price, 1.0850, "Entry price must be 1.0850");
 assert.equal(Math.round(d2.style.stopLevel * 100000) / 100000, 0.0020, "stopLevel must equal initial SL distance 20 pips");
 assert.equal(Math.round(d2.style.profitLevel * 100000) / 100000, 0.0036, "profitLevel must equal TP distance 36 pips (1.8R)");
-assert.equal(d2.style.targetColor, "#a855f7", "Prop model target color must be Neon Violet");
-assert.equal(d2.style.stopColor, "#ec4899", "Prop model stop color must be Vivid Fuchsia/Magenta");
-assert.equal(d2.style.targetTransparency, 90, "10% fill opacity");
-assert.equal(d2.style.stopTransparency, 90, "10% fill opacity");
-assert.equal(d2.style.color, "#c084fc", "Prop model accent color must be Neon Violet");
+assert.equal(d2.style.targetColor, "#10b981", "Target color must be Vibrant Emerald Green");
+assert.equal(d2.style.stopColor, "#ef4444", "Stop color must be Crisp Coral Red");
+assert.equal(d2.style.targetTransparency, 70, "30% fill opacity");
+assert.equal(d2.style.stopTransparency, 70, "30% fill opacity");
+assert.equal(d2.style.color, "#38bdf8", "Entry line color must be Electric Sky Blue");
 console.log("✅ PASS: Live Prop-Firm Safe SELL trade -> native 'short-position' verified");
 
 // -------------------------------------------------------------
@@ -206,10 +206,10 @@ assert.equal(dBtc.points[0].price, 86512.33, "Entry price must be 86512.33");
 assert.equal(dBtc.points[0].time, Math.round(new Date("2026-10-05T17:18:00.000Z").getTime() / 1000), "Entry time must be 5 Oct 17:18 EET");
 assert.equal(Math.round(dBtc.style.stopLevel * 100) / 100, 626.67, "stopLevel must be |86512.33 - 87139| = 626.67");
 assert.equal(Math.round(dBtc.style.profitLevel * 100) / 100, 2044.33, "profitLevel must be |86512.33 - 84468| = 2044.33");
-assert.equal(dBtc.style.targetTransparency, 90, "Must enforce 10% opacity on TP side");
-assert.equal(dBtc.style.stopTransparency, 90, "Must enforce 10% opacity on SL side");
-assert(dBtc.style.targetColor !== "#089981" && dBtc.style.targetColor !== "#26a69a", "Target color must not be default green");
-assert(dBtc.style.stopColor !== "#f23645" && dBtc.style.stopColor !== "#ef5350", "Stop color must not be default red");
+assert.equal(dBtc.style.targetTransparency, 70, "Must enforce 30% opacity on TP side for dark theme");
+assert.equal(dBtc.style.stopTransparency, 70, "Must enforce 30% opacity on SL side for dark theme");
+assert.equal(dBtc.style.targetColor, "#10b981", "Target color is Vibrant Emerald Green");
+assert.equal(dBtc.style.stopColor, "#ef4444", "Stop color is Crisp Coral Red");
 console.log("✅ PASS: Live BTC trade verified with exact 5 Oct 17:18 EET entry & 87139 original SL");
 
 // -------------------------------------------------------------
@@ -724,13 +724,19 @@ const limitDrawings = tradeToPositionDrawings(limitOrderTrade, mockBars, tfSec);
 assert.equal(limitDrawings.length, 1, "Must return 1 native position tool for resting limit order");
 const limitDrawing = limitDrawings[0];
 assert.equal(limitDrawing.kind, "long-position", "BUY limit order produces long-position tool");
-assert.equal(limitDrawing.points[0].time, mockBars[10].time, "Starts at createdAt candle");
+const lastBar = mockBars[mockBars.length - 1];
+assert.equal(limitDrawing.points[0].time, lastBar.time + 4 * tfSec, "Starts 4 candles right of current candle, like staged/radar entries");
 assert.equal(limitDrawing.points[0].price, 10765.33, "Entry price matches limit order price");
+assert.equal(limitDrawing.points[1].time, limitDrawing.points[0].time + 12 * tfSec, "Right boundary is 12 candles width for clean visibility");
 assert.equal(limitDrawing.points[1].price, 10765.33, "Horizontal right boundary matches limit price");
 assert.equal(limitDrawing.style.lineStyle, "dashed", "Resting limit order entry line must be dashed");
+assert.equal(limitDrawing.style.targetColor, "#10b981", "Target color is Vibrant Emerald Green");
+assert.equal(limitDrawing.style.stopColor, "#ef4444", "Stop color is Crisp Coral Red");
+assert.equal(limitDrawing.style.targetTransparency, 70, "Target transparency is 70");
+assert.equal(limitDrawing.style.stopTransparency, 70, "Stop transparency is 70");
 assert.ok(limitDrawing.style.statsLabel.includes("RESTING LIMIT"), "Stats label must indicate RESTING LIMIT");
-assert.ok(limitDrawing.points[1].time > limitDrawing.points[0].time, "Right boundary must extend to current live candle + offset");
-console.log("✅ PASS: Resting Limit Order (pending) renders native RR tool with dashed entry line and RESTING LIMIT stats");
+assert.ok(limitDrawing.points[1].time > limitDrawing.points[0].time, "Right boundary must extend 12 candles");
+console.log("✅ PASS: Resting Limit Order (pending) renders native RR tool with dashed entry line, 12-bar width and RESTING LIMIT stats");
 
 // -------------------------------------------------------------
 // TEST 25: Mandatory SL Points/Pips & RR Stats on Limit and Staged Orders

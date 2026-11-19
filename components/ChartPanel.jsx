@@ -1501,7 +1501,7 @@ export default function ChartPanel({
 
     const autoDrawings = isEnabled
       ? chartTrades
-          .flatMap((t) => tradeToPositionDrawings(t, barsRef.current, tfSec, { includeMilestones: true }))
+          .flatMap((t, idx) => tradeToPositionDrawings(t, barsRef.current, tfSec, { includeMilestones: true, index: idx }))
           .filter((d) => d && !isDismissed(d.id))
       : [];
 

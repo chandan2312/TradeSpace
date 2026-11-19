@@ -27,8 +27,8 @@ console.log("✅ PASS: GBPJPY 25.0 pips calculated accurately (JPY 0.01 pip stan
 const xauusdDist = calculateSlDistance(2680.00, 2676.50, "XAUUSD");
 assert.strictEqual(xauusdDist.unit, "pips");
 assert.strictEqual(xauusdDist.short, "35.0p");
-assert.strictEqual(xauusdDist.formatted, "35.0 pips ($3.50)");
-console.log("✅ PASS: Gold (XAUUSD) 35.0 pips ($3.50) calculated accurately");
+assert.strictEqual(xauusdDist.formatted, "35.0 pips");
+console.log("✅ PASS: Gold (XAUUSD) 35.0 pips calculated accurately");
 
 // 4. Indices (NAS100, DJ30, GER40, UK100, SP500)
 const nas100Dist = calculateSlDistance(20500.0, 20455.0, "NAS100");

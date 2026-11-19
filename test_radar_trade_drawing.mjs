@@ -21,6 +21,12 @@ const mockPairLong = {
   entryPrice: 1.0850,
   slPrice: 1.0820,
   tpPrice: 1.0920,
+  stagedLevel: {
+    entry: 1.0850,
+    sl: 1.0820,
+    tp: 1.0920,
+    rr: 2.33,
+  },
   opportunityScore: 92,
   conviction: 88,
   dealingRange: {
@@ -40,6 +46,12 @@ const mockPairShort = {
   entryPrice: 1.2700,
   slPrice: 1.2750,
   tpPrice: 1.2580,
+  stagedLevel: {
+    entry: 1.2700,
+    sl: 1.2750,
+    tp: 1.2580,
+    rr: 2.4,
+  },
   opportunityScore: 85,
   conviction: 80,
   dealingRange: {
