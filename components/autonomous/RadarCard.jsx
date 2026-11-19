@@ -83,6 +83,7 @@ function RadarCardComponent({
   config = {},
   currentNow = null,
   tick = null,
+  ticks = {},
   scannedAt = null,
 }) {
   const sessionInfo = checkSessionAllowed(pair, config, currentNow);
@@ -139,7 +140,20 @@ function RadarCardComponent({
 
   const conviction = finiteNumber(pair.brain?.conviction);
   const sym = pair.tradeableSymbol || pair.symbol;
-  const currentMark = markPriceFor(pair, tick ? { [sym]: tick, [pair.symbol]: tick } : {});
+  const symUpper = String(sym || "").toUpperCase();
+  const symClean = symUpper.replace(/\.I$/i, "");
+  const canon = String(pair.canonicalSymbol || symClean).toUpperCase();
+  const tickDictionary = tick ? {
+    [sym]: tick,
+    [pair.symbol]: tick,
+    [symUpper]: tick,
+    [symClean]: tick,
+    [canon]: tick,
+    [`${symClean}.i`]: tick,
+    [`${symClean}.I`]: tick,
+    ...ticks,
+  } : ticks;
+  const currentMark = markPriceFor(pair, tickDictionary);
 
   const range = pair.dealingRange || pair.range || {};
   const rangeZone = range.h4Zone || range.zone || "EQUILIBRIUM";

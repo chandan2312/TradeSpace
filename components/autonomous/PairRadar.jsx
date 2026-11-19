@@ -815,7 +815,22 @@ export default function PairRadar({
         >
           {filteredAndSorted.map((pair, index) => {
             const sym = pair.tradeableSymbol || pair.symbol;
-            const pairTick = ticks[sym] || ticks[pair.symbol] || ticks[pair.tradeableSymbol];
+            const symUpper = String(sym || "").toUpperCase();
+            const symClean = symUpper.replace(/\.I$/i, "");
+            const canon = String(pair.canonicalSymbol || symClean).toUpperCase();
+            const pairTick =
+              ticks[sym] ||
+              ticks[pair.symbol] ||
+              ticks[pair.tradeableSymbol] ||
+              ticks[symUpper] ||
+              ticks[symClean] ||
+              ticks[canon] ||
+              ticks[`${symClean}.i`] ||
+              ticks[`${symClean}.I`] ||
+              ticks[`${canon}.i`] ||
+              ticks[`${canon}.I`] ||
+              ticks[`${symClean}.raw`] ||
+              ticks[`${symClean}.pro`];
             return (
               <RadarCard
                 key={pair.radarKey || `${pair.symbol}:${pair.horizon || index}`}
@@ -827,6 +842,7 @@ export default function PairRadar({
                 config={config}
                 currentNow={currentNow}
                 tick={pairTick}
+                ticks={ticks}
                 scannedAt={scannedAt}
               />
             );
