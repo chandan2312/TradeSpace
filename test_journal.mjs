@@ -17,14 +17,14 @@ function test(name, fn) {
   }
 }
 
-// 1. Normalization of Default Model Trade
-test("Normalizes Default Model WIN trade correctly", () => {
+// 1. Normalization of Trade to Institutional TradeProp Model
+test("Normalizes trade to TradeProp (Prop-Firm Safe) correctly", () => {
   const rawTrade = {
     _id: "60d5ec49f1b2c8b1f8e4e1a1",
     groupId: "grp_NAS100_1_123456",
-    legId: "default",
-    legLabel: "Default (50% Milestone + Runner)",
-    managementLogic: "milestone_50",
+    legId: "prop_firm",
+    legLabel: "Prop-Firm Safe (1.5R–2.5R)",
+    managementLogic: "prop_firm_safe",
     symbol: "NAS100",
     dir: 1,
     status: "closed_tp",
@@ -61,8 +61,8 @@ test("Normalizes Default Model WIN trade correctly", () => {
   assert.strictEqual(row.symbol, "NAS100");
   assert.strictEqual(row.dirLabel, "BUY");
   assert.strictEqual(row.outcome, "WIN");
-  assert.strictEqual(row.isPropFirm, false);
-  assert.strictEqual(row.managementModel, "Default (50% Milestone + Runner)");
+  assert.strictEqual(row.isPropFirm, true);
+  assert.strictEqual(row.managementModel, "Prop-Firm Safe (1.5R–2.5R)");
   assert.strictEqual(row.realizedR, 4.0);
   assert.strictEqual(row.peakR, 4.15);
   assert.strictEqual(row.maxDrawdownR, -0.25);

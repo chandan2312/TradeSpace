@@ -296,8 +296,8 @@ export default function JournalView() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [viewMode, setViewMode] = useState("spreadsheet"); // "spreadsheet" | "table"
 
-  // 1. Sheet Tabs: All Trades vs Default Model Sheet vs Prop-Firm Safe Sheet
-  const [activeSheet, setActiveSheet] = useState("ALL"); // "ALL" | "milestone_50" | "prop_firm_safe"
+  // 1. Sheet Tabs: All Trades vs TradeProp Safe Sheet
+  const [activeSheet, setActiveSheet] = useState("ALL"); // "ALL" | "prop_firm_safe"
 
   // 2. Multi-Select Filters
   // Default: exclude CANCELLED outcome trades by default!
@@ -323,8 +323,10 @@ export default function JournalView() {
       if (raw) {
         const saved = JSON.parse(raw);
         if (saved && typeof saved === "object") {
-          if (["ALL", "milestone_50", "prop_firm_safe"].includes(saved.activeSheet)) {
+          if (["ALL", "prop_firm_safe"].includes(saved.activeSheet)) {
             setActiveSheet(saved.activeSheet);
+          } else {
+            setActiveSheet("ALL");
           }
           if (["spreadsheet", "table"].includes(saved.viewMode)) {
             setViewMode(saved.viewMode);
@@ -596,21 +598,15 @@ export default function JournalView() {
       (t) => t.outcome !== "CANCELLED" && t.outcome !== "STAGED" && t.status !== "staged"
     );
     const all = validTrades.length;
-    const def = validTrades.filter(
-      (t) =>
-        !t.isPropFirm &&
-        t.managementLogic !== "prop_firm_safe" &&
-        t.managementModel !== "prop_firm_safe" &&
-        t.legId !== "prop"
-    ).length;
     const prop = validTrades.filter(
       (t) =>
         Boolean(t.isPropFirm) ||
         t.managementLogic === "prop_firm_safe" ||
         t.managementModel === "prop_firm_safe" ||
-        t.legId === "prop"
+        t.legId === "prop" ||
+        t.legId === "prop_firm"
     ).length;
-    return { all, def, prop };
+    return { all, prop };
   }, [trades]);
 
   // Filtered dataset
@@ -625,17 +621,16 @@ export default function JournalView() {
         t.managementLogic === "prop_firm_safe" ||
         t.managementModel === "prop_firm_safe" ||
         t.legId === "prop" ||
+        t.legId === "prop_firm" ||
         t.legLabel === "TradeProp";
 
       if (activeSheet !== "ALL") {
         if (activeSheet === "prop_firm_safe" && !isProp) return false;
-        if (activeSheet === "milestone_50" && isProp) return false;
       }
 
       // 2. Risk Model multi-select filter
       if (selectedModels.length > 0) {
-        const modelKey = isProp ? "prop_firm_safe" : "milestone_50";
-        if (!selectedModels.includes(modelKey)) return false;
+        if (!selectedModels.includes("prop_firm_safe")) return false;
       }
 
       // 3. Outcome multi-select filter (treats -0.2R to +0.2R as BREAKEVEN)
@@ -1395,41 +1390,6 @@ export default function JournalView() {
         </button>
 
         <button
-          onClick={() => setActiveSheet("milestone_50")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "7px 14px",
-            borderRadius: 7,
-            border: activeSheet === "milestone_50" ? "1px solid rgba(41, 98, 255, 0.4)" : "1px solid transparent",
-            background: activeSheet === "milestone_50" ? "rgba(41, 98, 255, 0.15)" : "transparent",
-            color: activeSheet === "milestone_50" ? "var(--accent)" : "var(--muted)",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
-          title="TradeDefault Sheet (50% Milestone + Runner)"
-          aria-label="TradeDefault Sheet (50% Milestone + Runner)"
-        >
-          <Zap size={14} />
-          {!isMobile && <span>TradeDefault (Milestone)</span>}
-          <span
-            style={{
-              fontSize: 10,
-              padding: "1px 6px",
-              borderRadius: 10,
-              background: activeSheet === "milestone_50" ? "var(--accent)" : "rgba(255, 255, 255, 0.08)",
-              color: activeSheet === "milestone_50" ? "#fff" : "var(--muted)",
-              fontWeight: 800,
-            }}
-          >
-            {sheetCounts.def}
-          </span>
-        </button>
-
-        <button
           onClick={() => setActiveSheet("prop_firm_safe")}
           style={{
             display: "inline-flex",
@@ -1449,7 +1409,7 @@ export default function JournalView() {
           aria-label="TradeProp Safe Sheet (1.5R–2.5R Target)"
         >
           <Shield size={14} />
-          {!isMobile && <span>TradeProp (Prop-Firm)</span>}
+          {!isMobile && <span>TradeProp</span>}
           <span
             style={{
               fontSize: 10,
@@ -1475,7 +1435,7 @@ export default function JournalView() {
       >
         <div style={{ background: "var(--panel, #151a23)", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)" }}>
           <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>
-            WIN RATE {activeSheet !== "ALL" ? `(${activeSheet === "milestone_50" ? "DEFAULT" : "PROP-FIRM"})` : "(ALL)"}
+            WIN RATE {activeSheet === "prop_firm_safe" ? "(TRADEPROP)" : "(ALL)"}
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: scopedKpis.winRate >= 50 ? "var(--green)" : "var(--orange)", fontFamily: "monospace" }}>
             {scopedKpis.winRate}%
@@ -1590,8 +1550,7 @@ export default function JournalView() {
           label="Model"
           icon={Shield}
           options={[
-            { value: "milestone_50", label: "Default (50% Milestone)", short: "Default" },
-            { value: "prop_firm_safe", label: "Prop-Firm Safe (1.5R–2.5R)", short: "Prop-Firm" },
+            { value: "prop_firm_safe", label: "TradeProp (Prop-Firm Safe)", short: "TradeProp" },
           ]}
           selected={selectedModels}
           onChange={setSelectedModels}
