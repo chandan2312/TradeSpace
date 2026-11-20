@@ -1170,19 +1170,31 @@ def handle_order(payload):
         if order_type is None:
             return {"ok": False, "status": "bad-request", "message": "action must be buy or sell"}
 
-        is_limit = payload.get("order_type") == "limit"
-        price = float(payload.get("entry_price") or 0) if is_limit else (tick.ask if action == "buy" else tick.bid)
+        req_order_type = payload.get("order_type")
+        is_limit = req_order_type == "limit"
+        is_stop = req_order_type == "stop"
+        is_pending = is_limit or is_stop
+        price = float(payload.get("entry_price") or 0) if is_pending else (tick.ask if action == "buy" else tick.bid)
         if not all(math.isfinite(v) for v in [volume, price, sl, tp]) or price <= 0:
             return {"ok": False, "status": "bad-request", "message": "Finite positive volume/entry required"}
         if is_limit:
             if (action == "buy" and price >= tick.ask) or (action == "sell" and price <= tick.bid):
                 # Market price has reached or crossed limit entry price during order transit.
                 # Convert immediately to market deal (TRADE_ACTION_DEAL) rather than failing with bad-limit!
-                is_limit = False
+                is_pending = False
                 order_type = mt5.ORDER_TYPE_BUY if action == "buy" else mt5.ORDER_TYPE_SELL
                 price = tick.ask if action == "buy" else tick.bid
             else:
                 order_type = mt5.ORDER_TYPE_BUY_LIMIT if action == "buy" else mt5.ORDER_TYPE_SELL_LIMIT
+        elif is_stop:
+            if (action == "buy" and price <= tick.ask) or (action == "sell" and price >= tick.bid):
+                # Market price has reached or crossed stop entry price during order transit.
+                # Convert immediately to market deal (TRADE_ACTION_DEAL)!
+                is_pending = False
+                order_type = mt5.ORDER_TYPE_BUY if action == "buy" else mt5.ORDER_TYPE_SELL
+                price = tick.ask if action == "buy" else tick.bid
+            else:
+                order_type = mt5.ORDER_TYPE_BUY_STOP if action == "buy" else mt5.ORDER_TYPE_SELL_STOP
         if payload.get("structural_levels"):
             minimum_distance = float(getattr(sym_info, "trade_stops_level", 0)) * float(sym_info.point)
             if sl <= 0 or tp <= 0 or (action == "buy" and not sl < price < tp) or (action == "sell" and not tp < price < sl) or min(abs(price - sl), abs(tp - price)) < minimum_distance:
@@ -1214,7 +1226,7 @@ def handle_order(payload):
             return {"ok": False, "status": "bad-volume", "message": "Volume violates broker min/max/step"}
 
         request = {
-            "action": mt5.TRADE_ACTION_PENDING if is_limit else mt5.TRADE_ACTION_DEAL,
+            "action": mt5.TRADE_ACTION_PENDING if is_pending else mt5.TRADE_ACTION_DEAL,
             "symbol": mt5_symbol,
             "volume": volume,
             "type": order_type,
@@ -1225,10 +1237,10 @@ def handle_order(payload):
             "magic": magic,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": getattr(mt5, "ORDER_FILLING_RETURN", 2) if is_limit else filling,
+            "type_filling": getattr(mt5, "ORDER_FILLING_RETURN", 2) if is_pending else filling,
         }
         expiration = int(payload.get("expiration") or 0)
-        if is_limit and expiration:
+        if is_pending and expiration:
             if expiration <= datetime.now(timezone.utc).timestamp():
                 return {"ok": False, "status": "expired", "message": "Pending expiration is in the past"}
             request["type_time"] = getattr(mt5, "ORDER_TIME_SPECIFIED", 2)

@@ -985,6 +985,39 @@ export default memo(function ControlConsole({
                   </div>
                 </div>
 
+                {/* Inverted Capped Execution Mode (Prop Firm Statistical Accelerator) */}
+                <div style={{ padding: 12, background: "rgba(168, 85, 247, 0.05)", border: "1px solid rgba(168, 85, 247, 0.25)", borderRadius: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--fg)", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Zap size={14} style={{ color: "#a855f7" }} />
+                      Inverted Capped Execution Mode (Prop Firm Accelerator)
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", fontWeight: 600, color: form.invertedExecution ? "#a855f7" : "var(--muted)" }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(form.invertedExecution)}
+                        onChange={(event) => change("invertedExecution", event.target.checked)}
+                      />
+                      <span>{form.invertedExecution ? "ACTIVE" : "DISABLED"}</span>
+                    </label>
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10, lineHeight: 1.4 }}>
+                    Reverses order side (Buy ↔ Sell) at the execution gate while keeping straight institutional scoring &amp; bias. Targets 1.0R adverse expansion TP with configurable SL capping and 50% spread reduction discount.
+                  </div>
+                  <div style={grid}>
+                    <NumberField label="Max Adverse SL Cap (R, 0=Uncapped)" name="invertedMaxSlR" form={form} onChange={change} min={0} max={5} step={0.1} />
+                    <NumberField label="Spread Reduction Discount (%)" name="invertedSpreadReductionPct" form={form} onChange={change} min={0} max={50} step={5} />
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--fg)", cursor: "pointer", marginTop: 14 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.invertedSymbolsOnly !== false}
+                        onChange={(event) => change("invertedSymbolsOnly", event.target.checked)}
+                      />
+                      <span>Elite 5 Assets Only (USDJPY, BTC, US Indices)</span>
+                    </label>
+                  </div>
+                </div>
+
                 <label style={{ display: "flex", gap: 8, fontSize: 11, alignItems: "center", cursor: "pointer" }}>
                   <input
                     type="checkbox"
