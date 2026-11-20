@@ -181,7 +181,14 @@ def analyze_htf_liquidity(frames: dict, structures: dict | None = None) -> dict:
     active_cycle = "IRL_TO_ERL"
     cycle_note = "Expanding towards External Range Liquidity targets"
 
-    if fresh_sweep:
+    is_counter_trend_raid = bool(
+        fresh_sweep and structures and (
+            (fresh_sweep["side"] == -1 and structures.get("H4", {}).get("dir") == -1) or
+            (fresh_sweep["side"] == 1 and structures.get("H4", {}).get("dir") == 1)
+        )
+    )
+
+    if fresh_sweep and not is_counter_trend_raid:
         active_cycle = "ERL_TO_IRL"
         cycle_note = f"Fresh {fresh_sweep['name']} sweep {fresh_sweep['age'] * 4}h ago; rotating into internal liquidity"
 
@@ -198,7 +205,7 @@ def analyze_htf_liquidity(frames: dict, structures: dict | None = None) -> dict:
             macro_dir = -1
 
     draw_on_liquidity = None
-    if active_cycle == "ERL_TO_IRL" and fresh_sweep:
+    if active_cycle == "ERL_TO_IRL" and fresh_sweep and not is_counter_trend_raid:
         if fresh_sweep["side"] == 1 and ssl:
             draw_on_liquidity = dict(ssl[0], targetSide="SSL", direction=-1, causal=True, confirmationTime=fresh_sweep["time"], catalyst=f"Rotation following {fresh_sweep['name']} sweep")
         elif fresh_sweep["side"] == -1 and bsl:

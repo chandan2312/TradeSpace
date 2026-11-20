@@ -233,6 +233,33 @@ assert.notStrictEqual(htfLiqResult.drawOnLiquidity?.direction, 1, "In a 4H downt
 assert.strictEqual(htfLiqResult.activeCycle, "IRL_TO_ERL", "Active cycle in 4H downtrend must remain IRL_TO_ERL (continuation downward)");
 pass("PDL sweep in 4H downtrend strictly maintains downward DOL and rejects false BSL rotation");
 
+// ---------------------------------------------------------------------------
+// TEST 5: Pre-Entry Validation Engine (APVE) Rejection on allowedToLong === false
+// ---------------------------------------------------------------------------
+console.log("\n--- 5. Testing APVE Last-Line Defense on allowedToLong === false ---");
+
+import { validatePreEntrySetup } from "./lib/autonomous/preEntryValidation.js";
+
+const preEntryCheck = await validatePreEntrySetup({
+  trade: {
+    symbol: "GBPJPY",
+    dir: 1,
+    entryPrice: 208.936,
+    slPrice: 208.630,
+    tpPrice: 209.786,
+    modelId: "turtle_soup",
+    brain: mockBrainFreightTrainLong
+  },
+  frames: { M15: Array.from({ length: 30 }, (_, i) => ({ open: 209, high: 209.2, low: 208.8, close: 209.1 })) },
+  currentPrice: 208.936,
+  brain: mockBrainFreightTrainLong,
+  config: { allowedTimeSlots: { dead_zone: true } }
+});
+
+assert.strictEqual(preEntryCheck.ok, false, "validatePreEntrySetup must reject when brain.allowedToLong is false");
+assert.strictEqual(preEntryCheck.vetoes.some(v => v.code === "BRAIN_NOT_PERMITTED"), true, "validatePreEntrySetup must include BRAIN_NOT_PERMITTED");
+pass("APVE correctly vetoes trade before entry fill when allowedToLong is false");
+
 console.log("\n=====================================================================");
 console.log(`🎯 ALL ${passed} COUNTER-TREND HARDENING TESTS PASSED WITH 100% SUCCESS!`);
 console.log("=====================================================================");
