@@ -10,9 +10,10 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-echo "[+] Step 1: Installing Box64 x86_64 emulator for ARM64..."
+echo "[+] Step 1: Installing Box64 x86_64 emulator and GUI libraries for ARM64..."
 apt-get update -y
-apt-get install -y wget curl gnupg2 software-properties-common xz-utils xvfb x11vnc cabextract
+apt-get install -y wget curl gnupg2 software-properties-common xz-utils xvfb x11vnc cabextract \
+  libx11-6 libxext6 libxrender1 libxinerama1 libxi6 libxrandr2 libxcursor1 libcups2 libgl1 libvulkan1 libasound2 libfontconfig1 libfreetype6 libgnutls30
 
 # Install Box64 repo
 wget -qO- https://ryanfortner.github.io/box64-debs/KEY.gpg | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/box64.gpg
@@ -32,14 +33,51 @@ if [ ! -f "wine-amd64.tar.xz" ]; then
 fi
 
 tar -xf wine-amd64.tar.xz -C /opt/wine-arm64/ --strip-components=1
-ln -sf /opt/wine-arm64/bin/wine /usr/local/bin/wine
-ln -sf /opt/wine-arm64/bin/wine64 /usr/local/bin/wine64
-ln -sf /opt/wine-arm64/bin/wineboot /usr/local/bin/wineboot
+
+# Create proper wrapper scripts so Wine finds its internal libraries under Box64
+cat << 'EOF' > /usr/local/bin/wine
+#!/usr/bin/env bash
+export WINEPREFIX="${WINEPREFIX:-/home/ubuntu/.wine}"
+export WINEARCH="win64"
+export WINEDEBUG="-all"
+export WINEDLLPATH="/opt/wine-arm64/lib64/wine:/opt/wine-arm64/lib/wine"
+export LD_LIBRARY_PATH="/opt/wine-arm64/lib64:/opt/wine-arm64/lib:$LD_LIBRARY_PATH"
+export BOX64_PATH="/opt/wine-arm64/bin"
+export BOX64_LD_LIBRARY_PATH="/opt/wine-arm64/lib64/wine:/opt/wine-arm64/lib/wine:/opt/wine-arm64/lib64:/opt/wine-arm64/lib"
+exec box64 /opt/wine-arm64/bin/wine64 "$@"
+EOF
+chmod +x /usr/local/bin/wine
+ln -sf /usr/local/bin/wine /usr/local/bin/wine64
+
+cat << 'EOF' > /usr/local/bin/wineboot
+#!/usr/bin/env bash
+export WINEPREFIX="${WINEPREFIX:-/home/ubuntu/.wine}"
+export WINEARCH="win64"
+export WINEDEBUG="-all"
+export WINEDLLOVERRIDES="mscoree,mshtml="
+export WINEDLLPATH="/opt/wine-arm64/lib64/wine:/opt/wine-arm64/lib/wine"
+export LD_LIBRARY_PATH="/opt/wine-arm64/lib64:/opt/wine-arm64/lib:$LD_LIBRARY_PATH"
+export BOX64_PATH="/opt/wine-arm64/bin"
+export BOX64_LD_LIBRARY_PATH="/opt/wine-arm64/lib64/wine:/opt/wine-arm64/lib/wine:/opt/wine-arm64/lib64:/opt/wine-arm64/lib"
+exec box64 /opt/wine-arm64/bin/wineboot "$@"
+EOF
+chmod +x /usr/local/bin/wineboot
+
+cat << 'EOF' > /usr/local/bin/wineserver
+#!/usr/bin/env bash
+export BOX64_PATH="/opt/wine-arm64/bin"
+export BOX64_LD_LIBRARY_PATH="/opt/wine-arm64/lib64/wine:/opt/wine-arm64/lib/wine:/opt/wine-arm64/lib64:/opt/wine-arm64/lib"
+exec box64 /opt/wine-arm64/bin/wineserver "$@"
+EOF
+chmod +x /usr/local/bin/wineserver
 
 echo "[+] Step 3: Initializing Wine prefix..."
-export WINEPREFIX="/root/.wine"
+export WINEPREFIX="/home/ubuntu/.wine"
 export WINEARCH="win64"
 export DISPLAY=":99"
+export WINEDLLOVERRIDES="mscoree,mshtml="
+
+rm -rf /root/.wine /home/ubuntu/.wine
 
 if ! pgrep -x "Xvfb" > /dev/null; then
   Xvfb :99 -screen 0 1024x768x16 &
@@ -70,6 +108,8 @@ fi
 
 wine mt5setup.exe /auto
 sleep 15
+
+chown -R ubuntu:ubuntu /home/ubuntu/.wine 2>/dev/null || true
 
 echo "============================================================"
 echo "  MT5 on ARM64 (Box64 + Wine) Installed Successfully!"

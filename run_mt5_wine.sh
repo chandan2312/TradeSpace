@@ -17,10 +17,10 @@ if ! pgrep -x "Xvfb" > /dev/null; then
 fi
 
 # Launch MT5 terminal if not already running
-if ! wine tasklist 2>/dev/null | grep -qi "terminal64.exe"; then
+if ! pgrep -f "terminal64.exe" > /dev/null; then
   echo "[+] Launching MetaTrader 5 in Wine..."
   wine "C:\\Program Files\\MetaTrader 5\\terminal64.exe" /portable &
-  sleep 6
+  sleep 8
 fi
 
 # Run the python MT5 bridge
