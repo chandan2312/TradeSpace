@@ -903,6 +903,18 @@ export default memo(function ControlConsole({
                         Day Trade (4H-15M)
                       </div>
                     </label>
+                    <label style={{ color: "var(--muted)", fontSize: 11 }}>
+                      Direction Filter
+                      <select
+                        style={{ ...inputStyle, marginTop: 4, fontWeight: 600, color: "var(--fg)" }}
+                        value={form.allowedDirections || "both"}
+                        onChange={(event) => change("allowedDirections", event.target.value)}
+                      >
+                        <option value="both">⚡ Both Directions (Auto)</option>
+                        <option value="long_only">🟢 Long Only</option>
+                        <option value="short_only">🔴 Short Only</option>
+                      </select>
+                    </label>
                   </div>
                 </div>
 

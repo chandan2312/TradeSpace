@@ -309,7 +309,7 @@ async function runFullPipelineVerification() {
   assert.equal(normWin.outcome, "WIN");
   assert.equal(normWin.actualR, 2.65);
   assert.equal(normWin.idealR, 3.0);
-  assert.equal(normWin.managementModel, "Default (50% Milestone + Runner)");
+  assert.equal(normWin.managementModel, "Prop-Firm Safe (1.5R–2.5R)");
 
   const rawBEDoc = {
     _id: "trade_be_1",
