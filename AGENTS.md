@@ -63,6 +63,11 @@ All agents operating in TradeSpace must follow the **Two Immutable Time Laws**:
    Always import time and session utilities from `lib/time.js`:
    `import { getEetTime, getTradingDayKey, sessionOf, isKillzone, toUtcSec } from "@/lib/time";`
 
+### 1.8 — Golden Source-of-Truth Backtesting Engine Protocol (NON-NEGOTIABLE)
+1. **Single Canonical Engine**: All backtesting, simulation, replay verification, and performance audits must strictly use the canonical **Digital Twin Replay Engine** (`lib/autonomous/replayDriver.js`), which drives `createAutonomousEngine()` directly with an in-memory virtual clock and point-in-time closed-bar windowing.
+2. **Strict Prohibition on Ad-Hoc Simulation Scripts**: NEVER write standalone batch scripts with custom `simulateTrade()` loops, vectorized lookups (`t <= targetTime`), pre-resampled future HTF arrays, or synthetic R formulas. These introduce lookahead leaks, peeking bugs, and phantom accounting.
+3. **Branching & Experimentation**: If significant experimental modifications are required, you MUST copy the main engine to a named experimental variant (e.g. `lib/autonomous/experimental_replayDriver.js` or `scripts/experiments/...`). Never mutate the golden engine or invent unvalidated parallel simulation logic.
+
 ---
 
 ## How Agents Are Invoked
