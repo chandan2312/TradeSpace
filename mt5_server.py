@@ -352,6 +352,34 @@ def ensure_mt5(force: bool = False) -> tuple[bool, str]:
                 # Terminal IPC is connected. Now verify if account is authorized.
                 acc = mt5.account_info()
                 if acc is not None:
+                    # Verify that MT5 terminal is actually connected to the broker trade server
+                    connected = getattr(info, "connected", True)
+                    if not connected:
+                        _LAST_MT5_STATUS = (False, "Terminal: Disconnected from broker trade server")
+                        with CACHE_LOCK:
+                            _TICK_CACHE.clear()
+                        # If disconnected for over 5s, attempt auto-reconnect
+                        if now - _LAST_INIT_ATTEMPT >= 5.0:
+                            _LAST_INIT_ATTEMPT = now
+                            mt5_login = os.getenv("MT5_LOGIN")
+                            if mt5_login:
+                                login_kw = {"login": int(mt5_login)}
+                                mt5_password = os.getenv("MT5_PASSWORD")
+                                mt5_server = os.getenv("MT5_SERVER")
+                                if mt5_password:
+                                    login_kw["password"] = mt5_password
+                                if mt5_server:
+                                    login_kw["server"] = mt5_server
+                                try:
+                                    if mt5.login(**login_kw):
+                                        print(f"[mt5] re-login succeeded for account {mt5_login}", flush=True)
+                                        _LAST_MT5_CHECK = now
+                                        _LAST_MT5_STATUS = (True, "ok")
+                                        return True, "ok"
+                                except Exception:
+                                    pass
+                        return _LAST_MT5_STATUS
+
                     _LAST_MT5_CHECK = now
                     _LAST_MT5_STATUS = (True, "ok")
                     return True, "ok"
@@ -393,7 +421,7 @@ def ensure_mt5(force: bool = False) -> tuple[bool, str]:
                 pass
 
             # Optional credentials support: auto-logins terminal if MT5 credentials are provided in .env
-            init_kwargs = {}
+            init_kwargs = {"timeout": 10000}
             mt5_login = os.getenv("MT5_LOGIN")
             mt5_password = os.getenv("MT5_PASSWORD")
             mt5_server = os.getenv("MT5_SERVER")
@@ -410,7 +438,7 @@ def ensure_mt5(force: bool = False) -> tuple[bool, str]:
             if mt5_path and os.path.exists(mt5_path):
                 init_kwargs["path"] = mt5_path
 
-            init_ok = mt5.initialize(**init_kwargs) if init_kwargs else mt5.initialize()
+            init_ok = mt5.initialize(**init_kwargs) if init_kwargs else mt5.initialize(timeout=10000)
             if not init_ok:
                 err = mt5.last_error()
                 _LAST_MT5_STATUS = (False, f"initialize failed: {err}")
@@ -586,9 +614,11 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
         with CACHE_LOCK:
             cached_entry = _TICK_CACHE.get(app_upper)
             if cached_entry and isinstance(cached_entry[1], dict) and cached_entry[1].get("ok"):
-                stale_tick = dict(cached_entry[1])
-                stale_tick["stale"] = True
-                return stale_tick
+                age_sec = now_mono - cached_entry[0]
+                if age_sec < 15.0:
+                    stale_tick = dict(cached_entry[1])
+                    stale_tick["stale"] = True
+                    return stale_tick
         return {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {symbol}", "app_symbol": app_symbol, "symbol": symbol}
 
     point, digits = spec
@@ -616,15 +646,59 @@ def tick_dict(app_symbol: str, payload: dict = None) -> dict:
     return res
 
 
-def handle_health(_payload):
-    # Instant, non-blocking liveness check.
-    # NEVER acquire LOCK or block on MT5 terminal queries here so health sentinels never time out under load.
+def handle_health(payload):
+    """
+    Health check.
+    - If payload has 'liveness': instant liveness check without testing MT5 or acquiring lock.
+    - Otherwise: checks if MT5 status is healthy and tests lock responsiveness.
+    """
+    if payload and payload.get("liveness"):
+        return {
+            "ok": True,
+            "status": "bridge-alive",
+            "auth": "required" if TOKEN else "open",
+            "capabilities": {"timeframes": list(TF_MAP.keys())},
+            "version": "2026.11.24.v3",
+            "time": time.time(),
+        }
+
+    # Fast check of cached MT5 health status
+    now_mono = time.monotonic()
+    if _LAST_MT5_STATUS[0] and (now_mono - _LAST_MT5_CHECK < 4.0):
+        return {
+            "ok": True,
+            "status": "bridge-ready",
+            "message": "healthy",
+            "mt5_connected": True,
+            "auth": "required" if TOKEN else "open",
+            "capabilities": {"timeframes": list(TF_MAP.keys())},
+            "version": "2026.11.24.v3",
+            "time": time.time(),
+        }
+
+    # Test lock acquisition with 0.8s timeout to detect if an MT5 call is deadlocked
+    acquired = LOCK.acquire(timeout=0.8)
+    if not acquired:
+        return {
+            "ok": False,
+            "status": "mt5-lock-held",
+            "message": "MT5 lock contention detected (>0.8s hold time)",
+            "auth": "required" if TOKEN else "open",
+            "time": time.time(),
+        }
+    try:
+        ok, msg = ensure_mt5()
+    finally:
+        LOCK.release()
+
     return {
-        "ok": True,
-        "status": "bridge-ready",
+        "ok": ok,
+        "status": "bridge-ready" if ok else "mt5-disconnected",
+        "message": msg if not ok else "healthy",
+        "mt5_connected": ok,
         "auth": "required" if TOKEN else "open",
         "capabilities": {"timeframes": list(TF_MAP.keys())},
-        "version": "2026.11.13.v2",
+        "version": "2026.11.24.v3",
         "time": time.time(),
     }
 
@@ -695,10 +769,12 @@ def handle_ticks(payload):
                     with CACHE_LOCK:
                         cached_entry = _TICK_CACHE.get(app_sym)
                         if cached_entry and isinstance(cached_entry[1], dict) and cached_entry[1].get("ok"):
-                            stale_tick = dict(cached_entry[1])
-                            stale_tick["stale"] = True
-                            ticks[app_sym] = stale_tick
-                            continue
+                            age_sec = now_mono - cached_entry[0]
+                            if age_sec < 15.0:
+                                stale_tick = dict(cached_entry[1])
+                                stale_tick["stale"] = True
+                                ticks[app_sym] = stale_tick
+                                continue
                     ticks[app_sym] = {"ok": False, "status": "symbol-unavailable", "message": f"no tick for {mt5_sym}", "app_symbol": app_sym, "symbol": mt5_sym}
                     continue
 
@@ -896,6 +972,7 @@ def handle_rates(payload):
             cached = _RATES_CACHE.get(cache_key)
             if cached:
                 return cached[1]
+        return {"ok": False, "status": "rates-timeout", "message": f"In-flight rates fetch timed out for {app_symbol} {tf_name}"}
 
     try:
         ok, msg = ensure_mt5()
@@ -961,10 +1038,12 @@ def handle_rates(payload):
             with CACHE_LOCK:
                 stale_entry = _RATES_CACHE.get(cache_key)
                 if stale_entry and isinstance(stale_entry[1], dict) and stale_entry[1].get("ok") and stale_entry[1].get("bars"):
-                    stale_res = dict(stale_entry[1])
-                    stale_res["stale"] = True
-                    stale_res["status"] = "rates-cached"
-                    return stale_res
+                    age_sec = now_mono - stale_entry[0]
+                    if age_sec < 60.0:
+                        stale_res = dict(stale_entry[1])
+                        stale_res["stale"] = True
+                        stale_res["status"] = "rates-cached"
+                        return stale_res
 
             err_res = {"ok": False, "status": "rates-unavailable", "message": f"no rates for {symbol}: {last_err}", "symbol": symbol}
             with CACHE_LOCK:
@@ -1821,10 +1900,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"ok": False, "status": "not-found", "message": f"unknown route {method} {path}"})
             return
 
-        # /health is a non-blocking liveness probe: zero auth, zero semaphores, zero waiting
+        # /health probe: evaluates MT5 connectivity and lock responsiveness
         if path == "/health":
             try:
-                self._send(200, handler({}))
+                payload = self._payload(parsed)
+                res = handler(payload)
+                status_code = 200 if res.get("ok") else 503
+                self._send(status_code, res)
             except Exception as exc:
                 self._send(500, {"ok": False, "status": "health-error", "message": str(exc)})
             return
@@ -1834,7 +1916,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # Acquire concurrency semaphore for data and execution routes (bounds active threads)
-        acquired = HTTP_SEMAPHORE.acquire(timeout=8.0)
+        acquired = HTTP_SEMAPHORE.acquire(timeout=5.0)
         if not acquired:
             self._send(503, {"ok": False, "status": 503, "message": "server busy - worker pool saturated"})
             return
@@ -1953,12 +2035,13 @@ def main():
 
     threading.Thread(target=_periodic_gc, daemon=True).start()
 
-    # Active internal memory guard
-    def _health_watchdog():
+    # Active internal MT5 IPC and memory supervisor
+    def _mt5_ipc_watchdog():
+        consecutive_stalls = 0
         while True:
             time.sleep(15)
             try:
-                # Memory guard: proactively trim caches if RSS exceeds 180MB
+                # 1. Memory guard: proactively trim caches if RSS exceeds 180MB
                 try:
                     import psutil
                     rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
@@ -1970,10 +2053,53 @@ def main():
                         gc.collect()
                 except Exception:
                     pass
-            except Exception:
-                pass
 
-    threading.Thread(target=_health_watchdog, daemon=True).start()
+                # 2. MT5 IPC and Lock liveness check
+                if mt5 is None:
+                    continue
+
+                lock_ok = LOCK.acquire(timeout=3.0)
+                if not lock_ok:
+                    consecutive_stalls += 1
+                    print(f"[watchdog] WARNING: MT5 LOCK held >3.0s (stall count: {consecutive_stalls})", flush=True)
+                    if consecutive_stalls >= 3:
+                        print("[watchdog] CRITICAL: MT5 IPC deadlock detected! Forcing reconnect...", flush=True)
+                        mark_mt5_disconnected()
+                        with CACHE_LOCK:
+                            for ev in list(_IN_FLIGHT_RATES.values()):
+                                try:
+                                    ev.set()
+                                except Exception:
+                                    pass
+                            _IN_FLIGHT_RATES.clear()
+                    continue
+
+                try:
+                    term = mt5.terminal_info()
+                    acc = mt5.account_info()
+                    now_mono = time.monotonic()
+                    is_conn = term is not None and getattr(term, "connected", False) and acc is not None
+                    if is_conn:
+                        consecutive_stalls = 0
+                        global _LAST_MT5_CHECK, _LAST_MT5_STATUS
+                        _LAST_MT5_CHECK = now_mono
+                        _LAST_MT5_STATUS = (True, "ok")
+                    else:
+                        consecutive_stalls += 1
+                        term_connected = getattr(term, "connected", False) if term else None
+                        print(f"[watchdog] MT5 not fully connected (term={bool(term)}, connected={term_connected}, acc={bool(acc)}). Triggering reconnect...", flush=True)
+                        mark_mt5_disconnected()
+                        ensure_mt5(force=True)
+                except Exception as exc:
+                    consecutive_stalls += 1
+                    print(f"[watchdog] MT5 IPC exception during health check: {exc}", flush=True)
+                    mark_mt5_disconnected()
+                finally:
+                    LOCK.release()
+            except Exception as exc:
+                print(f"[watchdog] loop exception: {exc}", flush=True)
+
+    threading.Thread(target=_mt5_ipc_watchdog, daemon=True).start()
 
     _SHUTDOWN_REQUESTED = False
     while not _SHUTDOWN_REQUESTED:

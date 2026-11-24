@@ -33,9 +33,9 @@ async function fetchAndCache(brokerSym, canonicalSym, tf, n, off, key, brokerKey
   // For small requests (n <= 10, e.g. D1 daily open or gap healing), fetch only requested n bars.
   const fetchCount = (off === 0 && n > 10) ? Math.max(n, 500) : n;
   let d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off, refresh: force, force }, { timeoutMs: 10_000 });
-  if (!d?.ok && !d?.circuitOpen) {
-    await new Promise((r) => setTimeout(r, 200));
-    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off, refresh: force, force }, { timeoutMs: 10_000 });
+  if (!d?.ok && !d?.circuitOpen && !d?.queueTimeout && !d?.queueSaturated && d?.status !== 504 && d?.status !== 503) {
+    await new Promise((r) => setTimeout(r, 300));
+    d = await bridge("POST", "/rates", { sym: brokerSym, timeframe: tf, count: fetchCount, offset: off, refresh: force, force }, { timeoutMs: 8_000 });
   }
   if (d?.ok && Array.isArray(d.bars)) {
     d.bars = d.bars.map((b) => ({

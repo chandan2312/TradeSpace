@@ -2055,6 +2055,8 @@ export default function ChartPanel({
   };
 
   const onChartDoubleClick = (ev) => {
+    // Defense-in-depth: Never allow chart double-clicks to bubble to parent containers or trigger unwanted gestures
+    if (ev?.stopPropagation) ev.stopPropagation();
     const mgr = drawingManagerRef.current;
     if (!mgr) return;
     const hovered = mgr.hoveredId();
@@ -2062,13 +2064,11 @@ export default function ChartPanel({
       mgr.select([hovered]);
       draw.setSelectedId(hovered);
       draw.setSettingsOpen(true);
-      ev.stopPropagation();
       return;
     }
     const sel = mgr.selection();
     if (sel && sel.length > 0) {
       draw.setSettingsOpen(true);
-      ev.stopPropagation();
     }
   };
 

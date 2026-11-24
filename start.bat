@@ -55,7 +55,7 @@ set /a MAX_CRASH_STREAK=5
 set "START_SEC="
 for /f %%A in ('powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" 2^>nul') do set "START_SEC=%%A"
 
-node --expose-gc --max-old-space-size=256 --optimize_for_size server.js
+node --expose-gc --max-old-space-size=512 --optimize_for_size server.js
 set "EXIT_CODE=%errorlevel%"
 
 set "END_SEC="

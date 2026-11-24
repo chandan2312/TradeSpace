@@ -1215,10 +1215,10 @@ export default function Dashboard() {
   };
 
   const handleDoubleJump = (sym) => {
-    if (layout === "1") return;
+    // Double clicking a watchlist item focuses that pane if it exists, without toggling fullscreen
     const pane = panes.find(p => p.symbol === sym);
-    if (pane) {
-      toggleFullscreen(pane.id);
+    if (pane && pane.id !== activePaneId) {
+      setActivePaneId(pane.id);
     }
   };
 
@@ -1277,34 +1277,14 @@ export default function Dashboard() {
     };
   }, [fullScreenPaneId, panes.length, layout]);
 
-  // Click tracker for Triple-Click fullscreen gesture (replaces accidental double-click)
-  const clickTrackerRef = useRef({ lastTime: 0, count: 0, paneId: null });
-
   const handlePaneClick = (e, paneId) => {
     // If the click originated inside an active popup, modal dialog, or overlay backdrop, ignore it completely
     if (e?.target?.closest && e.target.closest('.modal-backdrop, .modal-dialog, .drawing-settings-overlay, .drawing-settings-dialog, [role="dialog"], .portal-root')) {
       return;
     }
 
-    setActivePaneId(paneId);
-
-    // Triple-click detection:
-    // Requires 3 consecutive clicks within 500ms on the same pane, or DOM e.detail === 3.
-    // Double click (count === 2 or e.detail === 2) does NOT trigger fullscreen.
-    const now = Date.now();
-    const isConsecutive = (now - clickTrackerRef.current.lastTime < 500) && (clickTrackerRef.current.paneId === paneId);
-
-    if (isConsecutive) {
-      clickTrackerRef.current.count += 1;
-    } else {
-      clickTrackerRef.current.count = 1;
-      clickTrackerRef.current.paneId = paneId;
-    }
-    clickTrackerRef.current.lastTime = now;
-
-    if (e.detail === 3 || clickTrackerRef.current.count === 3) {
-      clickTrackerRef.current.count = 0; // reset
-      toggleFullscreen(paneId);
+    if (activePaneId !== paneId) {
+      setActivePaneId(paneId);
     }
   };
 
@@ -1949,7 +1929,7 @@ export default function Dashboard() {
                     {/* Standard Top-Left Pane Controls (Fullscreen, Symbol TF Tag, Correlated Pairs) */}
                     <div style={{ position: "absolute", top: 8, left: 12, zIndex: 10, display: "flex", gap: 6, alignItems: "center" }}>
                       {(panes.length > 1 || fullScreenPaneId || isMobile || layout === "1") && (
-                        <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title={fullScreenPaneId ? "Exit Fullscreen (or triple-click)" : "Fullscreen (or triple-click)"} style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
+                        <button className="ghost" onClick={(e) => { e.stopPropagation(); toggleFullscreen(pane.id); }} title={fullScreenPaneId ? "Exit Fullscreen (Ctrl+F)" : "Fullscreen (Ctrl+F)"} style={{ padding: "4px", background: "var(--panel)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
                           {fullScreenPaneId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                         </button>
                       )}

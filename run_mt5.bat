@@ -115,8 +115,8 @@ set /a HEARTBEAT_TICKS=0
 :health_sentinel_loop
 ping 127.0.0.1 -n 6 >nul
 
-REM Fast probe HTTP /health with 10s timeout (force IPv4, 4s connect timeout)
-curl.exe -4 -s -m 10 --connect-timeout 4 http://127.0.0.1:8765/health >nul 2>&1
+REM Fast probe HTTP /health with 8s timeout (force IPv4, 4s connect timeout, --fail on HTTP 500/503)
+curl.exe -4 -s -f -m 8 --connect-timeout 4 http://127.0.0.1:8765/health >nul 2>&1
 set "CURL_CODE=!ERRORLEVEL!"
 if "!CURL_CODE!"=="0" (
     REM Fast path: Server is active and healthy
@@ -130,12 +130,18 @@ if "!CURL_CODE!"=="0" (
         echo [Watchdog] MT5 Bridge Server active and healthy [Port 8765 responding].
         set /a HEARTBEAT_TICKS=0
     )
+    REM Verify terminal64.exe is still alive in background
+    tasklist /FI "IMAGENAME eq terminal64.exe" 2>nul | find /I "terminal64.exe" >nul
+    if errorlevel 1 (
+        echo [ALERT] MetaTrader 5 terminal64.exe is NOT running! Restarting MT5 terminal...
+        goto :recover_and_restart
+    )
     goto :health_sentinel_loop
 )
 
 REM Probe failed: Investigate whether server exited or is unresponsive
 set /a FAIL_STREAK+=1
-echo [Watchdog] Health probe slow/failed (curl code: !CURL_CODE!) [Streak: !FAIL_STREAK!/15]...
+echo [Watchdog] Health probe slow/failed (curl code: !CURL_CODE!) [Streak: !FAIL_STREAK!/6]...
 
 REM Check if Port 8765 is listening
 netstat -aon | findstr ":8765" | findstr "LISTENING" >nul
@@ -152,10 +158,10 @@ if errorlevel 1 (
     set /a PORT_FAIL_STREAK=0
 )
 
-if !FAIL_STREAK! geq 15 (
+if !FAIL_STREAK! geq 6 (
     echo.
     echo ============================================================
-    echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [15 consecutive failed probes, ~90s].
+    echo [CRITICAL AUTO-HEAL] Server is hung/unresponsive [6 consecutive failed probes, ~30s].
     echo [CRITICAL AUTO-HEAL] Forcibly terminating clogged process and reviving...
     goto :recover_and_restart
 )
