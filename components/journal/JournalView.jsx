@@ -633,13 +633,13 @@ export default function JournalView() {
         if (!selectedModels.includes("prop_firm_safe")) return false;
       }
 
-      // 3. Outcome multi-select filter (treats -0.2R to +0.2R as BREAKEVEN)
+      // 3. Outcome multi-select filter (treats ±0.25R as BREAKEVEN)
       const ar = Number(t.actualR ?? t.realizedR ?? 0);
       let effOutcome = t.outcome || "OPEN";
       if (effOutcome !== "OPEN") {
-        if (ar >= -0.2 && ar <= 0.2) effOutcome = "BREAKEVEN";
-        else if (ar > 0.2) effOutcome = "WIN";
-        else effOutcome = "LOSS";
+        if (ar > 0.25) effOutcome = "WIN";
+        else if (ar < -0.25) effOutcome = "LOSS";
+        else effOutcome = "BREAKEVEN";
       }
       if (selectedOutcomes.length > 0 && !selectedOutcomes.includes(effOutcome)) return false;
 
@@ -763,11 +763,11 @@ export default function JournalView() {
         filter: "agTextColumnFilter",
         cellRenderer: (params) => {
           const ar = Number(params.data?.actualR ?? params.data?.realizedR ?? 0);
-          let out = params.value || "OPEN";
+          let out = params.value || params.data?.outcome || "OPEN";
           if (out !== "CANCELLED" && out !== "OPEN") {
-            if (ar >= -0.2 && ar <= 0.2) out = "BREAKEVEN";
-            else if (ar > 0.2) out = "WIN";
-            else out = "LOSS";
+            if (ar > 0.25) out = "WIN";
+            else if (ar < -0.25) out = "LOSS";
+            else out = "BREAKEVEN";
           }
 
           let bg = "rgba(255, 255, 255, 0.08)";
@@ -814,14 +814,16 @@ export default function JournalView() {
         filter: "agNumberColumnFilter",
         cellStyle: (params) => {
           const v = Number(params.value);
-          if (v > 0.2) return { color: "var(--green)", fontWeight: "800", fontFamily: "monospace", backgroundColor: "rgba(38, 166, 154, 0.08)" };
-          if (v < -0.2) return { color: "var(--red)", fontWeight: "800", fontFamily: "monospace", backgroundColor: "rgba(239, 83, 80, 0.08)" };
-          return { color: "var(--muted)", fontWeight: "700", fontFamily: "monospace" };
+          const isBE = v >= -0.25 && v <= 0.25;
+          if (isBE) return { color: "var(--muted)", fontWeight: "700", fontFamily: "monospace" };
+          if (v > 0.25) return { color: "var(--green)", fontWeight: "800", fontFamily: "monospace", backgroundColor: "rgba(38, 166, 154, 0.08)" };
+          return { color: "var(--red)", fontWeight: "800", fontFamily: "monospace", backgroundColor: "rgba(239, 83, 80, 0.08)" };
         },
         valueFormatter: (params) => {
           const v = Number(params.value);
+          const isBE = v >= -0.25 && v <= 0.25;
+          if (isBE) return "0.00 AR (BE)";
           if (!Number.isFinite(v)) return "-";
-          if (v >= -0.2 && v <= 0.2) return "0.00 AR (BE)";
           return v > 0 ? `+${v.toFixed(2)} AR` : `${v.toFixed(2)} AR`;
         },
       },
@@ -1652,8 +1654,8 @@ export default function JournalView() {
           className={isLightOrCreamy ? "ag-theme-quartz" : "ag-theme-quartz-dark"}
           style={{
             width: "100%",
-            height: "calc(100vh - 290px)",
-            minHeight: 560,
+            height: filteredTrades.length <= 50 ? "auto" : "calc(100vh - 290px)",
+            minHeight: filteredTrades.length <= 15 ? "auto" : 480,
             borderRadius: 12,
             border: "1px solid var(--border)",
             overflow: "hidden",
@@ -1667,12 +1669,13 @@ export default function JournalView() {
             rowData={filteredTrades}
             columnDefs={colDefs}
             defaultColDef={defaultColDef}
+            domLayout={filteredTrades.length <= 50 ? "autoHeight" : "normal"}
             getRowId={(params) => String(params.data?.id || params.data?._id || params.data?.ticket)}
             rowSelection="single"
             animateRows={true}
             pagination={true}
             paginationPageSize={50}
-            paginationPageSizeSelector={[25, 50, 100, 250, 500]}
+            paginationPageSizeSelector={[15, 25, 50, 100]}
             onRowClicked={(event) => setSelectedTrade(event.data)}
             onGridReady={(params) => {
               restoreColumnState(params.api);
@@ -1705,8 +1708,8 @@ export default function JournalView() {
         <div
           style={{
             width: "100%",
-            height: "calc(100vh - 290px)",
-            minHeight: 560,
+            height: filteredTrades.length <= 50 ? "auto" : "calc(100vh - 290px)",
+            minHeight: filteredTrades.length <= 15 ? "auto" : 480,
             borderRadius: 12,
             border: "1px solid var(--border)",
             background: "var(--panel, #151a23)",
@@ -1749,7 +1752,7 @@ export default function JournalView() {
               </button>
             </div>
           ) : (
-            <div style={{ overflowX: "auto", flex: 1 }}>
+            <div style={{ overflow: "auto", flex: 1, maxHeight: filteredTrades.length <= 50 ? "none" : "calc(100vh - 350px)" }}>
               <table
                 style={{
                   width: "100%",
@@ -1796,13 +1799,15 @@ export default function JournalView() {
                     const ir = Number(t.idealR ?? t.targetRR ?? 0);
                     const pnl = Number(t.realizedPnlUsd ?? 0);
 
-                    // Classify outcome (-0.2R to +0.2R treated strictly as BREAKEVEN)
+                    // Classify outcome (-0.25R to +0.25R or explicit BREAKEVEN treated strictly as BREAKEVEN)
                     let out = t.outcome || "OPEN";
                     if (out !== "CANCELLED" && out !== "OPEN") {
-                      if (ar >= -0.2 && ar <= 0.2) out = "BREAKEVEN";
-                      else if (ar > 0.2) out = "WIN";
-                      else out = "LOSS";
+                      if (ar > 0.25) out = "WIN";
+                      else if (ar < -0.25) out = "LOSS";
+                      else out = "BREAKEVEN";
                     }
+
+                    const isBE = out === "BREAKEVEN" || (ar >= -0.25 && ar <= 0.25);
 
                     return (
                       <tr
@@ -1853,13 +1858,13 @@ export default function JournalView() {
                         <td style={{ padding: "10px 14px", fontFamily: "monospace", fontWeight: 800, whiteSpace: "nowrap" }}>
                           <span
                             style={{
-                              color: ar > 0.2 ? "var(--green)" : ar < -0.2 ? "var(--red)" : "var(--muted)",
-                              background: ar > 0.2 ? "rgba(38, 166, 154, 0.1)" : ar < -0.2 ? "rgba(239, 83, 80, 0.1)" : "transparent",
+                              color: isBE ? "var(--muted)" : ar > 0.25 ? "var(--green)" : "var(--red)",
+                              background: isBE ? "transparent" : ar > 0.25 ? "rgba(38, 166, 154, 0.1)" : "rgba(239, 83, 80, 0.1)",
                               padding: "2px 6px",
                               borderRadius: 4,
                             }}
                           >
-                            {ar >= -0.2 && ar <= 0.2 ? "0.00 AR (BE)" : ar > 0 ? `+${ar.toFixed(2)} AR` : `${ar.toFixed(2)} AR`}
+                            {isBE ? "0.00 AR (BE)" : ar > 0 ? `+${ar.toFixed(2)} AR` : `${ar.toFixed(2)} AR`}
                           </span>
                         </td>
                         <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>

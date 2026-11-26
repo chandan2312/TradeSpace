@@ -1883,7 +1883,7 @@ export default function AutonomousLiveHUD({
 
             {/* TAB: TRADING JOURNAL */}
             {tab === "journal" && (
-              <div style={{ flex: 1, minHeight: 480, overflowY: "auto" }}>
+              <div style={{ flex: 1, width: "100%" }}>
                 <JournalView />
               </div>
             )}

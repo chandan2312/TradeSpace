@@ -279,12 +279,12 @@ async function runFullPipelineVerification() {
     tpPrice: stagedLevel.entry + 2.0 * riskDist,
     targetRR: 2.0,
   };
-  const propActionHalf = evaluatePropFirmSafeAction(propTrade, stagedLevel.entry + 1.0 * riskDist, 1.0, spec);
-  assert.equal(propActionHalf?.action, "reduce_sl_half", "At 1.0R, prop firm should reduce SL risk in half");
+  const propActionHalf = evaluatePropFirmSafeAction(propTrade, stagedLevel.entry + 0.7 * riskDist, 0.7, spec);
+  assert.equal(propActionHalf?.action, "reduce_sl_half", "At 0.7R, prop firm should reduce SL risk in half");
 
-  const propActionBE = evaluatePropFirmSafeAction({ ...propTrade, slHalfMoved: true }, stagedLevel.entry + 1.5 * riskDist, 1.5, spec);
-  assert.equal(propActionBE?.action, "breakeven", "At 1.5R, prop firm should move SL to Breakeven");
-  console.log("✅ PASS: Prop-Firm Safe actions: 1.0R -> Reduce SL Half | 1.5R -> Breakeven");
+  const propActionBE = evaluatePropFirmSafeAction({ ...propTrade, slHalfMoved: true }, stagedLevel.entry + 1.0 * riskDist, 1.0, spec);
+  assert.equal(propActionBE?.action, "breakeven", "At 1.0R, prop firm should move SL to Breakeven");
+  console.log("✅ PASS: Prop-Firm Safe actions: 0.7R -> Reduce SL Half | 1.0R -> Breakeven");
 
   // -------------------------------------------------------------------------
   // 7. JOURNAL NORMALIZATION & KPI DUAL-R TELEMETRY
